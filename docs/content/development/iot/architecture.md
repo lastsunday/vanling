@@ -102,7 +102,7 @@ weight = 10
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
 | `runtime/system.rs` | `System` 契约：`tick` 收 `&mut DeviceManager` 与时钟，`intent` 只读意图已写入的状态；worker 句柄由系统自己持有 |
 | `runtime/coordinator/{mod,pacing}.rs`、`coordinator/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`pacing.rs` 持帧时间与下一帧截止点 |
-| `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄与协议；`mod.rs` 只有再导出与停帧线 `WAKE`；网络命令词汇表在 `shared/model/network.rs` |
+| `runtime/workers/{mod,inbox,input,playback,network}.rs` | 协调者 ↔ 工作者的全部句柄与协议；`mod.rs` 只有再导出，句柄唯一的家是 `runtime/mod.rs` 的 `Runtime`；网络命令词汇表在 `shared/model/network.rs` |
 | `runtime/feature/{mod,input}.rs` | 功能工作者；`mod.rs` 是唯一的 `wifi` 门控点。输入工作者：轮询、demand 调度、手势识别 |
 | `runtime/feature/playback/{mod,sounds/}` | 播放工作者与声音目录；状态→命令在 `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据 |
@@ -252,7 +252,13 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 **工作者由拥有其驱动的组合点启动。** 驱动半边由 `run` 用 `Wiring.spawner` 起（`IoPlacement::Inline`）或交给第二核（`Elsewhere`）。网络工作者的驱动类型只有入口认识，所以入口把 station 与 store 取走后就地建出 `Wifi::Worker(NetworkWorker)`——一个只接收 `Spawner` 的闭包；`run` 在 `run_loop` 之前执行它，既不认识射频，也不持有 worker 清单。加一个工作者仍是组合点的一行闭包，而不是多一种交给 `run` 的形状。`main` 因此不 `join` 任何工作者，`run_loop` 是它唯一 `await` 的协调者。`feed_task` 与 `panel_service` 仍由 `start_executors` 起——只有那里知道中断执行器与第二个核。`network::serve` 用本地 `Spawner` 起成任务，future 不必 `Send`：它留在 core 0 的执行器上，跨核的只有 `Io` 束。
 
-句柄由各自的系统持有，组合根在 `register` 时交给它：一个工作者一个系统，加第二个协议只加一个文件与一行 `register`，不改共享结构体。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。停帧时只等一条 `WAKE` 线，由异步发布的工作者 poke，主循环因此不点名任何 worker。
+句柄由各自的系统持有，组合根在 `register` 时交给它：一个工作者一个系统，加第二个协议只加一个文件与一行 `register`，不改共享结构体。方向名只用角色（`to` 给工作者、`from` 给协调者），peer 名留在 peer 结构体里。停帧时等三条就绪线（意图环、采集窗口、扫描列表），谁发布了谁自然叫醒循环，主循环因此不点名任何 worker。
+
+**句柄只从入口流下去，不从模块路径摸上来。** 组合根有一份 `static RUNTIME: Runtime`（`runtime/mod.rs`），里面是跨层要用的全部存储：意图环、采集窗口、网络与播放的队列、喂数唤醒、`Readiness`。往下传的永远是具体句柄或一个内聚的旁值，不传整个 `Runtime`：`Io` 是驱动半边跨核要带走的那一束，网络工作者拿到的是 `NetCtx { bus, network, readiness, heap_free }`（`readiness` 与堆读数只有组合点知道）。意图环自己数它拒掉的意图（`IntentBus::dropped_count()`），所以那个计数没有第二根句柄。函数签名因此就是它的输入清单，测试可以自己造一份而不用抢全局单例。
+
+旁值只在边界上产生：组合根（`Wiring`、`NetCtx`）、板层（`PanelContext`）、任务/会话起点（`BootFacts`）。协调者、渲染、页面、状态不得就地拼包——那是被删掉的 `Frame` 的形状。判据与两条栅栏见 `records/iot/layering.md`。
+
+`Playback`、`Network`、`CaptureWindow` 都自己拥有通道（`const fn new()`），不再是「static 通道 + 指向它的句柄」：跨核锁只在确有必要时出现，`LinkWatch` 的「上次报告」与「未送出的 MAC」因此在任务自己的栈上，用普通 `Cell`。
 
 三种形状按语义选，不按方便选：
 
@@ -282,7 +288,7 @@ DeviceState.page → light_diagnostics() → Appearance::Diagnostics
 
 采集窗口是第三种形状：它是**窗口**不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽通道：`HasAudio::take_audio(&'static dyn CaptureSink)` 把目的地交给板子，`input_task` 的 poll 往里发布，`run_loop` 在 intent 之后取走。
 
-第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的 `INTENT_BUS` 定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后 `INTENT_BUS` 是 896 B，窗口自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
+第二个理由是宽度：`Channel<T, N>` 的每个槽按 `size_of::<T>()` 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的意图环（`Runtime.bus`）定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后意图环是 896 B，窗口自己 1,824 B（记在 [Wi-Fi 实现记录](@/records/iot/wifi.md)）。
 
 顺序是顺带的：`input_task` 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一帧画过的那一张。
 

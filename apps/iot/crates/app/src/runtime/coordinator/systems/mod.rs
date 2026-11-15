@@ -65,8 +65,10 @@ impl<'a> Schedule<'a> {
     /// Bus → state. Each intent is applied and its command delivered to the system that
     /// declared its type, and only then is every system asked to react: two edges in one frame
     /// (mute, then unmute) must not collapse into the last one. A leftover command means the
-    /// boundary was registered without a system that takes it.
+    /// boundary was registered without a system that takes it. The ring's refusal count is
+    /// folded first, so the snapshot moves with the frame it belongs to.
     pub(crate) fn process_intents(&mut self, bus: &IntentBus, manager: &mut DeviceManager) {
+        manager.observe_dropped(bus.dropped_count());
         while let Ok(intent) = bus.try_receive() {
             let mut command: Option<Command> = manager.apply_intent(intent);
             self.deliver(&mut command);
@@ -103,12 +105,13 @@ mod tests {
     //! The registry's contract: registration order is execution order, each intent reaches
     //! every system once, and a frame ticks each system once.
 
+    use alloc::boxed::Box;
     use alloc::rc::Rc;
     use core::cell::RefCell;
 
     use super::*;
     use crate::runtime::feature::input::IntentBus;
-    use crate::runtime::workers::NETWORK;
+    use crate::runtime::workers::Network;
     use crate::shared::intent::{
         BusinessIntent, Intent, LightAction, LinkIntent, NetworkPageIntent,
     };
@@ -218,11 +221,11 @@ mod tests {
 
     #[test]
     fn a_network_command_reaches_the_worker_once_per_intent() {
-        while NETWORK.commands.try_receive().is_some() {}
+        let network = Box::leak(Box::new(Network::new()));
         let bus = IntentBus::new();
         let mut manager = manager();
         let mut schedule = Schedule::new();
-        schedule.register(NetworkSystem::new(manager.state_ref(), NETWORK));
+        schedule.register(NetworkSystem::new(manager.state_ref(), network));
 
         let _ = bus.try_send(Intent::Business(BusinessIntent::Link(LinkIntent::Status(
             LinkStatus {
@@ -234,12 +237,39 @@ mod tests {
         let _ = bus.try_send(leave());
         schedule.process_intents(&bus, &mut manager);
 
-        assert_eq!(NETWORK.commands.try_receive(), Some(NetworkCommand::Leave));
-        assert_eq!(NETWORK.commands.try_receive(), Some(NetworkCommand::Leave));
+        assert_eq!(network.commands.try_receive(), Some(NetworkCommand::Leave));
+        assert_eq!(network.commands.try_receive(), Some(NetworkCommand::Leave));
         assert_eq!(
-            NETWORK.commands.try_receive(),
+            network.commands.try_receive(),
             None,
             "two edges in one frame do not collapse into one"
+        );
+    }
+
+    #[test]
+    fn the_frame_folds_what_the_ring_refused_into_the_snapshot() {
+        let bus = IntentBus::new();
+        let mut manager = manager();
+        let mut schedule = Schedule::new();
+        for _ in 0..crate::runtime::feature::input::INTENT_SLOTS {
+            assert!(
+                bus.try_send(Intent::Business(BusinessIntent::Invalid))
+                    .is_ok(),
+                "the ring takes a full pass"
+            );
+        }
+        assert!(
+            bus.try_send(Intent::Business(BusinessIntent::Invalid))
+                .is_err(),
+            "the full ring refuses the next one"
+        );
+
+        schedule.process_intents(&bus, &mut manager);
+
+        assert_eq!(
+            manager.state_ref().dropped_intents,
+            1,
+            "a refusal the panel cannot see is a drop nobody can diagnose"
         );
     }
 

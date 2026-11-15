@@ -25,14 +25,15 @@ pub mod shared;
 pub mod state;
 
 use render::wired;
+use runtime::Runtime;
 use runtime::coordinator::{
     CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
     Schedule, run_loop,
 };
-use runtime::feature::input::{INTENT_BUS, input_task};
+use runtime::feature::input::{IntentBus, input_task};
 use runtime::feature::playback::{playback_tasks, share};
 use runtime::system::System;
-use runtime::workers::{CAPTURE, Input, NETWORK, PLAYBACK, SharedDemand};
+use runtime::workers::{FeedWake, Input, Playback, SharedDemand};
 use state::env::{boot_override, boot_page};
 
 pub enum Feed {
@@ -63,9 +64,15 @@ pub type IoQueue = embassy_sync::channel::Channel<
 pub struct Io {
     pub sources: Vec<PollEntry>,
     pub configurator: Configurator,
-    pub demand: &'static SharedDemand,
+    pub input: Input<'static>,
     pub speaker: Option<&'static runtime::feature::playback::Shared>,
+    pub playback: &'static Playback,
     pub feed: Feed,
+    /// Where this half reports upward: the entry's bus, carried because on a second core this
+    /// task is handed the bundle and cannot reach the coordinator's stack.
+    pub bus: &'static IntentBus,
+    /// The feeder's poke, for the same reason the bus is here.
+    pub feed_wake: &'static FeedWake,
     /// How to read the second core's stack, when the part has one. The composition root
     /// injects it, so the library names no chip family.
     pub second_core_peak: fn() -> Option<(usize, usize)>,
@@ -104,6 +111,8 @@ impl Wifi {
 
 pub struct Wiring<C> {
     pub clock: C,
+    /// The handles the entry built once; every half below reaches them through this value.
+    pub runtime: &'static Runtime,
     pub feed: Feed,
     /// The radio: whether there is one, and how to start the worker that uses it.
     pub wifi: Wifi,
@@ -125,15 +134,17 @@ async fn io_loop(io: Io) {
     let Io {
         sources,
         configurator,
-        demand,
+        input,
         speaker,
+        playback,
         feed,
+        bus,
+        feed_wake,
         second_core_peak,
     } = io;
-    let input = Input::new(demand);
     match join(
-        input_task(&INTENT_BUS, sources, &configurator, input, second_core_peak),
-        playback_tasks(speaker, feed, PLAYBACK, &INTENT_BUS),
+        input_task(bus, sources, &configurator, input, second_core_peak),
+        playback_tasks(speaker, feed, playback, bus, feed_wake),
     )
     .await {}
 }
@@ -176,6 +187,7 @@ where
 {
     let Wiring {
         mut clock,
+        runtime,
         feed,
         wifi,
         surfaces,
@@ -183,11 +195,18 @@ where
         spawner,
         second_core_peak,
     } = wiring;
+    let bus = &runtime.bus;
+    let capture = &runtime.capture;
+    let network = &runtime.network;
+    let scan = &network.scan;
+    let playback = &runtime.playback;
+    let feed_wake = &runtime.feed_wake;
+    let readiness = &runtime.readiness;
 
     // Take everything off the board once; nothing below asks it anything again.
     let mut sources = board.take_input().unwrap_or_default();
     let motion = board.take_motion();
-    let audio = board.take_audio(&CAPTURE);
+    let audio = board.take_audio(capture);
     let speaker = board.take_playback();
     let camera = board.take_camera();
     let motion_caps = board.motion_capabilities();
@@ -201,7 +220,7 @@ where
     if !matches!(&wifi, Wifi::Worker(_)) {
         // No worker means no radio to wait for: absent by wiring, or driven by the caller.
         // The boot can finish its network half here, and the first frame finishes the rest.
-        iot_core::boot::note_network_settled();
+        readiness.note_network();
     }
     let configurator = Configurator::new(board.motion_configurations());
     sources.extend(motion);
@@ -247,9 +266,12 @@ where
     let drivers = Io {
         sources,
         configurator,
-        demand,
+        input: Input::new(demand, capture),
         speaker: shared,
+        playback,
         feed,
+        bus,
+        feed_wake,
         second_core_peak,
     };
     match io {
@@ -267,15 +289,24 @@ where
 
     let state = manager.state_ref();
     let mut schedule = Schedule::new();
-    schedule.register(CaptureSystem::new(&CAPTURE));
-    schedule.register(NetworkSystem::new(state, NETWORK));
-    schedule.register(PlaybackSystem::new(state.playback, PLAYBACK));
+    schedule.register(CaptureSystem::new(capture));
+    schedule.register(NetworkSystem::new(state, network));
+    schedule.register(PlaybackSystem::new(state.playback, playback));
     schedule.register(NoticeSystem);
-    schedule.register(DemandSystem::new(Input::new(demand)));
+    schedule.register(DemandSystem::new(Input::new(demand, capture)));
     schedule.register(GovernorSystem::new(&mut clock));
     if let Some(system) = extra {
         schedule.register_boxed(system);
     }
 
-    run_loop(&INTENT_BUS, renderers, &mut manager, &mut schedule).await
+    run_loop(
+        bus,
+        capture,
+        scan,
+        readiness,
+        renderers,
+        &mut manager,
+        &mut schedule,
+    )
+    .await
 }

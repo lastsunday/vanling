@@ -21,12 +21,12 @@ pub struct Input<'a> {
     /// Coordinator → worker: what each source is asked to do this pass.
     pub to: &'a SharedDemand,
     /// Worker → coordinator: the newest microphone window, published by the driver's poll.
-    pub from: &'static CaptureWindow,
+    pub from: &'a CaptureWindow,
 }
 
 impl<'a> Input<'a> {
-    pub fn new(to: &'a SharedDemand) -> Self {
-        Self { to, from: &CAPTURE }
+    pub fn new(to: &'a SharedDemand, from: &'a CaptureWindow) -> Self {
+        Self { to, from }
     }
 }
 
@@ -47,19 +47,22 @@ impl Input<'_> {
 pub struct CaptureWindow(Channel<CriticalSectionRawMutex, AudioSample, 1>);
 
 impl CaptureWindow {
+    pub(crate) const fn new() -> Self {
+        Self(Channel::new())
+    }
+
     pub fn take(&self) -> Option<AudioSample> {
         self.0.try_receive().ok()
     }
 
+    /// What the parked frame waits on: a window the driver folded is a reason to draw again.
     pub fn ready(&self) -> impl Future<Output = ()> {
         self.0.ready_to_receive()
     }
 
     /// The driver's half: the newest window replaces the one nobody took.
     pub(crate) fn push(&self, sample: AudioSample) {
-        if self.0.try_send(sample).is_ok() {
-            super::WAKE.signal(());
-        }
+        let _ = self.0.try_send(sample);
     }
 }
 
@@ -68,5 +71,3 @@ impl CaptureSink for CaptureWindow {
         self.push(sample);
     }
 }
-
-pub(crate) static CAPTURE: CaptureWindow = CaptureWindow(Channel::new());

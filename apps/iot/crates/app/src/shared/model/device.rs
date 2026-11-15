@@ -40,6 +40,9 @@ pub struct DeviceState {
     /// What the Network page is drafting. Reads the link; the link never reads or writes it.
     pub network_page: NetworkDraft,
     pub touch: TouchState,
+    /// Input intents the coordinator's ring had no room for, since boot. Folded in once per
+    /// frame from the handle the input worker notes into.
+    pub dropped_intents: u32,
 }
 
 impl DeviceState {

@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "01df1e3fda9642ac2540fde434573648dae140ff"
-translated_at = "2026-11-14T15:52:49Z"
+source_file_hash = "ed5338584d6e80f33acb4bacc02255ade03ae68c"
+translated_at = "2026-11-15T09:23:50Z"
 +++
 
 # Architecture
@@ -106,7 +106,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
 | `runtime/system.rs` | the `System` contract: `tick` takes the manager and the clock, `intent` reads the state its intent already wrote; a worker handle is held by the system |
 | `runtime/coordinator/{mod,pacing}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `pacing.rs` holds the frame clock and the next deadline |
-| `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports and the parked-frame line `WAKE`; the network command vocabulary lives in `shared/model/network.rs` |
+| `runtime/workers/{mod,inbox,input,playback,network}.rs` | the whole coordinator ↔ worker vocabulary; `mod.rs` holds only the re-exports, and every handle's one home is `Runtime` in `runtime/mod.rs`; the network command vocabulary lives in `shared/model/network.rs` |
 | `runtime/feature/{mod,input}.rs` | the feature workers; `mod.rs` is the one `wifi` gate. Input worker: polling, demand scheduling, gesture recognition |
 | `runtime/feature/playback/{mod,sounds/}` | playback worker and sound catalogue; state→command lives in `coordinator/systems/playback.rs` |
 | `runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs` | `#[cfg(feature = "wifi")]`: the network worker — stack, link, panel-side setup, AP services, scan, credentials |
@@ -265,7 +265,13 @@ Which form a crossing takes follows the meaning — two forms per direction:
 
 **A worker is started by the composition point that owns its drivers.** The driver half is spawned by `run` through `Wiring.spawner` (`IoPlacement::Inline`) or handed to the second core (`Elsewhere`). The network worker's driver types are only known to the entry point, so the entry point takes the station and store off the board and builds `Wifi::Worker(NetworkWorker)` right there — a closure that takes only a `Spawner`; `run` runs it before `run_loop`, knowing neither what the radio is nor any worker list. Adding a worker is still one closure at the composition point, not another shape handed to `run`. `main` therefore joins no worker at all, and `run_loop` is the only future it awaits. `feed_task` and `panel_service` stay with `start_executors` — that is the only place that knows the interrupt executor and the second core. `network::serve` is spawned with the local `Spawner`, so its future need not be `Send`: it stays on core 0's executor, and the only thing that crosses a core is the `Io` bundle.
 
-Each system holds the handle for its own boundary, and the composition root hands it over at `register`: one worker, one system, so a second protocol adds a file and one `register` line rather than a field on a shared struct. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct. A parked frame waits on a single `WAKE` line that an asynchronously publishing worker pokes, so the loop names no worker.
+Each system holds the handle for its own boundary, and the composition root hands it over at `register`: one worker, one system, so a second protocol adds a file and one `register` line rather than a field on a shared struct. Directions are named by role (`to` for the worker, `from` for the coordinator); the peer's name stays in the peer struct. A parked frame waits on three ready lines (the intent ring, the capture window, the scan list), so whoever publishes wakes the loop and the loop names no worker.
+
+**Handles flow down from the entry; nothing reaches back up a module path.** The composition root holds one `static RUNTIME: Runtime` (`runtime/mod.rs`) with every piece of storage more than one layer needs: intent ring, capture window, the network and playback queues, the feed wake and `Readiness`. What travels down is always a specific handle or one coherent companion value — never the whole `Runtime`: `Io` is the bundle the driver half carries across cores, and the network worker gets `NetCtx { bus, network, readiness, heap_free }` (only the composition point knows the readiness flag and the heap reading). The intent ring counts what it refused (`IntentBus::dropped_count()`), so that number has no second handle. A signature is therefore its own list of inputs, and a test can build its own instead of competing for a global singleton.
+
+A companion value is produced only at a boundary: the composition root (`Wiring`, `NetCtx`), the board layer (`PanelContext`), the start of a task or session (`BootFacts`). The coordinator, the renderers, the pages and the state never assemble one on the spot — that is the shape of the deleted `Frame`. The criterion and its two fences are in `records/iot/layering.md`.
+
+`Playback`, `Network` and `CaptureWindow` own their channels (`const fn new()`), rather than being "a static channel plus a handle pointing at it": a cross-core lock appears only where it is genuinely needed, so `LinkWatch`'s last report and unsent MAC live on the task's own stack in a plain `Cell`.
 
 The shape follows the semantics, not convenience:
 
@@ -299,7 +305,7 @@ The shared slot's shape follows from that constraint: embassy-sync's blocking mu
 
 The capture window is a third shape: a **window**, not an event (only the newest one means anything), and not shared state either (nobody writes a common slot — the board hands over the frame the driver just folded, during its own poll). It therefore rides a single-slot channel: `HasAudio::take_audio(&'static dyn CaptureSink)` gives the board the destination, `input_task`'s poll publishes into it, and `run_loop` takes from it after the intents.
 
-The second reason is width: every slot of a `Channel<T, N>` is allocated at `size_of::<T>()`, so the slot width is set by the widest event variant — a capture event carrying an envelope (1.76 KB) would price the eight-slot `INTENT_BUS` at 14,184 B of internal DRAM for the one frame the panel reads. Without that variant `INTENT_BUS` is 896 B and the window itself 1,824 B (recorded in the [Wi-Fi record](@/records/iot/wifi.md)).
+The second reason is width: every slot of a `Channel<T, N>` is allocated at `size_of::<T>()`, so the slot width is set by the widest event variant — a capture event carrying an envelope (1.76 KB) would price the eight-slot intent ring (`Runtime.bus`) at 14,184 B of internal DRAM for the one frame the panel reads. Without that variant the ring is 896 B and the window itself 1,824 B (recorded in the [Wi-Fi record](@/records/iot/wifi.md)).
 
 The ordering falls out of it: `input_task` polls in wiring order with the capture last, so a tap on the record control in the same tick latches the frame the previous pass drew.
 

@@ -2,7 +2,6 @@
 
 use alloc::boxed::Box;
 
-use crate::shared::intent::{BusinessIntent, Intent, NetworkPageIntent};
 use crate::state::{NetworkCommand, Page};
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
@@ -17,11 +16,7 @@ use iot_core::drivers::network::{
 use super::link::{Origin, Outcome, hold};
 use super::scan::{Rest, scan};
 use super::store::{any, forget};
-use super::{
-    NETWORK, SETUP_SOCKETS, discard_setup, heap_free, mac_of, park, provision, publish_link,
-    seed_from,
-};
-use crate::runtime::feature::input::INTENT_BUS;
+use super::{LinkWatch, SETUP_SOCKETS, discard_setup, mac_of, park, provision, seed_from};
 
 /// Everything setup mode needs to run: one value, because a session on the panel and one on the
 /// access point are the same session on two hosts.
@@ -57,6 +52,7 @@ pub(super) async fn await_network<S, R>(
     first: Option<(Credentials, Origin)>,
     cancellable: bool,
     setup: &mut SetupMode<'_>,
+    watch: &LinkWatch,
 ) where
     S: Station,
     S::Device: Driver,
@@ -67,10 +63,12 @@ pub(super) async fn await_network<S, R>(
     loop {
         let (credentials, origin) = match pending.take() {
             Some(chosen) => chosen,
-            None => match setup_session(station, &mut history, saved, cancellable, setup).await {
-                Some(chosen) => chosen,
-                None => return,
-            },
+            None => {
+                match setup_session(station, &mut history, saved, cancellable, setup, watch).await {
+                    Some(chosen) => chosen,
+                    None => return,
+                }
+            }
         };
         log::info!(
             "[WIFI] joining the network setup named: \"{}\"",
@@ -80,6 +78,7 @@ pub(super) async fn await_network<S, R>(
                 .unwrap_or("<unprintable>"),
         );
         match hold(
+            watch,
             station,
             stack,
             &credentials,
@@ -101,13 +100,14 @@ async fn setup_session<S, R>(
     saved: &mut Option<Box<Store<R>>>,
     cancellable: bool,
     setup: &mut SetupMode<'_>,
+    watch: &LinkWatch,
 ) -> Option<(Credentials, Origin)>
 where
     S: Station,
     S::Device: Driver,
     R: FlashRegion,
 {
-    discard_setup(NETWORK.commands);
+    discard_setup(watch.commands());
     loop {
         match setup.host {
             SetupHost::Panel => {
@@ -115,8 +115,8 @@ where
                     host: SetupHost::Panel,
                     cancellable,
                 };
-                publish_link(station.status().with_mode(mode), any(saved.as_deref()));
-                match pick(station, history, saved, mode).await {
+                watch.deliver(station.status().with_mode(mode), any(saved.as_deref()));
+                match pick(watch, station, history, saved, mode).await {
                     Choice::Network(credentials, origin) => return Some((credentials, origin)),
                     Choice::SwitchHost => setup.host = SetupHost::AccessPoint,
                     Choice::Cancel => {
@@ -156,19 +156,29 @@ where
                     host: SetupHost::AccessPoint,
                     cancellable,
                 };
-                publish_link(station.status().with_mode(mode), any(saved.as_deref()));
+                watch.deliver(station.status().with_mode(mode), any(saved.as_deref()));
 
                 // Boxed, not inline: four server loops with their socket buffers inside the
                 // product's one task, whose static pool is the scarce resource on the S3
                 // (`@/records/iot/wifi.md`). One allocation for a loop that ends on drop is
                 // the cheapest thing on offer.
-                let mut page_serve = Box::pin(provision::serve(stack, runner, setup.mac));
-                log::info!("[HEAP] {} B free with setup mode's future up", heap_free());
+                let page_read = provision::PageRead::new();
+                let mut page_serve = Box::pin(provision::serve(
+                    stack,
+                    runner,
+                    setup.mac,
+                    watch.network(),
+                    &page_read,
+                ));
+                log::info!(
+                    "[HEAP] {} B free with setup mode's future up",
+                    watch.heap_free()
+                );
                 loop {
                     let ending = select3(
-                        pick(station, history, saved, mode),
+                        pick(watch, station, history, saved, mode),
                         &mut page_serve,
-                        page_idle(),
+                        page_idle(&page_read),
                     )
                     .await;
                     match ending {
@@ -198,7 +208,7 @@ where
                                             "open"
                                         }
                                     );
-                                    publish_link(
+                                    watch.deliver(
                                         station.status().with_mode(mode),
                                         any(saved.as_deref()),
                                     );
@@ -208,7 +218,7 @@ where
                                         "[WIFI] the setup access point would not change its \
                                          passphrase: {error:?}"
                                     );
-                                    publish_link(
+                                    watch.deliver(
                                         LinkStatus {
                                             phase: LinkPhase::Failed(error),
                                             ..station.status().with_mode(mode)
@@ -242,7 +252,7 @@ where
                                 SETUP_IDLE_MS / 1_000
                             );
                             lower_setup(station);
-                            publish_link(station.status(), any(saved.as_deref()));
+                            watch.deliver(station.status(), any(saved.as_deref()));
                             return None;
                         }
                     }
@@ -260,11 +270,11 @@ fn lower_setup<S: Station>(station: &mut S) {
     }
 }
 
-async fn page_idle() {
+async fn page_idle(page_read: &provision::PageRead) {
     loop {
         match select(
             Timer::after(Duration::from_millis(SETUP_IDLE_MS)),
-            provision::page_read(),
+            page_read.wait(),
         )
         .await
         {
@@ -277,6 +287,7 @@ async fn page_idle() {
 /// One round of the list, until the panel names something, leaves, or asks setup mode to
 /// change. Every command taken here is either acted on or known to be stale.
 pub(super) async fn pick<S, R>(
+    watch: &LinkWatch,
     station: &mut S,
     history: &mut ScanHistory,
     saved: &mut Option<Box<Store<R>>>,
@@ -290,7 +301,7 @@ where
     let mut idle_rounds: u8 = 0;
     let mut panel_was_showing = false;
     loop {
-        let showing = NETWORK.page.shows(Page::Network);
+        let showing = watch.page().shows(Page::Network);
         // Browsing ends when the panel leaves; setup keeps the scan up for the phone.
         if mode.is_browsing() && !showing {
             return Choice::Hidden;
@@ -302,6 +313,7 @@ where
         }
         panel_was_showing = showing;
         match scan(
+            watch,
             station,
             history,
             saved.as_deref().map(|store| store.networks()),
@@ -315,13 +327,14 @@ where
             Rest::Left if mode.is_browsing() => return Choice::Hidden,
             Rest::Left => {}
             Rest::Command(command) => match command {
-                NetworkCommand::Join(asked) => {
-                    if let Some((credentials, origin)) = resolve_join(asked, saved.as_deref()) {
+                NetworkCommand::Join(asked) => match resolve_join(asked, saved.as_deref()) {
+                    Join::Found(credentials, origin) => {
                         return Choice::Network(credentials, origin);
                     }
-                }
+                    Join::Missing(ssid) => watch.request_passphrase(ssid).await,
+                },
                 NetworkCommand::Forget(ssid) => {
-                    forget(saved.as_deref_mut(), Some(history), &ssid);
+                    forget(watch.scan(), saved.as_deref_mut(), Some(history), &ssid);
                 }
                 NetworkCommand::SwitchHost { from } if mode.host() == Some(from) => {
                     return Choice::SwitchHost;
@@ -344,24 +357,21 @@ where
     }
 }
 
-pub(super) fn resolve_join<R: FlashRegion>(
-    asked: JoinRequest,
-    saved: Option<&Store<R>>,
-) -> Option<(Credentials, Origin)> {
+/// What a join request came to. `#[must_use]`: a `Missing` that nobody answers is a panel that
+/// silently never asks for its passphrase.
+#[must_use]
+pub(super) enum Join {
+    Found(Credentials, Origin),
+    /// Nothing is kept for this name.
+    Missing(Ssid),
+}
+
+pub(super) fn resolve_join<R: FlashRegion>(asked: JoinRequest, saved: Option<&Store<R>>) -> Join {
     match asked {
-        JoinRequest::Typed(credentials) => Some((credentials, Origin::Typed)),
-        JoinRequest::Held(ssid) => {
-            let copy = saved.and_then(|store| store.networks().copy_of(&ssid));
-            if copy.is_none() {
-                log::info!(
-                    "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
-                    ssid.as_display_text().unwrap_or("<unprintable>"),
-                );
-                let _ = INTENT_BUS.try_send(Intent::Business(BusinessIntent::NetworkPage(
-                    NetworkPageIntent::NoCopy(ssid),
-                )));
-            }
-            copy.map(|credentials| (credentials, Origin::Stored))
-        }
+        JoinRequest::Typed(credentials) => Join::Found(credentials, Origin::Typed),
+        JoinRequest::Held(ssid) => match saved.and_then(|store| store.networks().copy_of(&ssid)) {
+            Some(credentials) => Join::Found(credentials, Origin::Stored),
+            None => Join::Missing(ssid),
+        },
     }
 }

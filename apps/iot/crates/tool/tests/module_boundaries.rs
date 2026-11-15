@@ -22,6 +22,19 @@ fn core_src() -> PathBuf {
     repo_root().join("apps/iot/crates/core/src")
 }
 
+/// Every crate in the firmware workspace: a bundle or a context declared in one nobody
+/// scanned would otherwise be invisible to the fences below.
+fn crates_src() -> PathBuf {
+    repo_root().join("apps/iot/crates")
+}
+
+fn repo_relative(path: &Path) -> String {
+    path.strip_prefix(repo_root())
+        .expect("every scanned source lives under the repository root")
+        .display()
+        .to_string()
+}
+
 fn ui_src() -> PathBuf {
     repo_root().join("apps/iot/crates/core/src/ui")
 }
@@ -470,6 +483,163 @@ fn the_worker_handles_never_reach_a_worker() {
             "crate::render",
             "crate::runtime::coordinator",
         ],
+    );
+}
+
+/// The whole point of the entry's `Runtime` is that nothing below can name it: a handle that
+/// arrives through a module path is the implicit input this crate spent a refactor removing.
+#[test]
+fn nothing_below_the_entry_names_the_runtime() {
+    let root = app_src();
+    let mut files = Vec::new();
+    for dir in [
+        "runtime/coordinator",
+        "runtime/feature",
+        "runtime/workers",
+        "render",
+        "pages",
+        "state",
+        "shared",
+    ] {
+        files.extend(shipping_sources(&root.join(dir)));
+    }
+    assert_no_reference(files, &["runtime::Runtime"]);
+}
+
+/// The name a line declares, when it declares a struct.
+fn declared_struct_name(line: &str) -> Option<&str> {
+    let mut words = line.split_whitespace();
+    while let Some(word) = words.next() {
+        if word == "struct" {
+            let name = words.next()?;
+            return Some(name.trim_end_matches('{').split('<').next()?);
+        }
+    }
+    None
+}
+
+/// A name ending in `Ctx`/`Context` claims its fields belong together because one boundary
+/// fixes them, not because a call site needed them. Every such type is listed, so the next one
+/// has to argue for itself rather than collect a signature's leftovers.
+#[test]
+fn context_types_live_only_at_boundaries() {
+    let mut found = Vec::new();
+    for (path, text) in shipping_sources(&crates_src()) {
+        for line in text.lines() {
+            let Some(name) = declared_struct_name(line) else {
+                continue;
+            };
+            if name.ends_with("Ctx") || name.ends_with("Context") {
+                found.push(format!("{}: {name}", repo_relative(&path)));
+            }
+        }
+    }
+    assert_eq!(
+        found,
+        [
+            "apps/iot/crates/app/src/runtime/feature/network/mod.rs: NetCtx",
+            "apps/iot/crates/core/src/drivers/surface.rs: PanelContext",
+        ],
+        "a context's fields are fixed by the boundary it crosses, not by its caller"
+    );
+}
+
+/// A bundle earns its name where its values are gathered: the file that declares it and the
+/// entry that knows all of them. A third site is how `Frame` returned — a signature's
+/// arguments repackaged mid-chain, as opaque there as the parameters it replaced.
+#[test]
+fn a_bundle_is_built_where_it_is_owned() {
+    let owned: &[(&str, &[&str])] = &[
+        (
+            "BootFacts",
+            &["apps/iot/crates/app/src/runtime/feature/network/safe.rs"],
+        ),
+        ("Io", &["apps/iot/crates/app/src/lib.rs"]),
+        ("NetCtx", &["apps/iot/crates/app/src/main.rs"]),
+        (
+            "PanelContext",
+            &["apps/iot/crates/bsp-esp/src/virtual_components/screen/paint.rs"],
+        ),
+        (
+            "Wiring",
+            &[
+                "apps/iot/crates/app/src/bin/host-smoke/main.rs",
+                "apps/iot/crates/app/src/lib.rs",
+                "apps/iot/crates/app/src/main.rs",
+            ],
+        ),
+    ];
+    for (name, allowed) in owned {
+        let literal = format!("{name} {{");
+        let mut sites = Vec::new();
+        for (path, text) in shipping_sources(&crates_src()) {
+            if text.lines().any(|line| {
+                line.contains(&literal) && !line.contains("struct ") && !line.contains("impl ")
+            }) {
+                sites.push(repo_relative(&path));
+            }
+        }
+        sites.sort();
+        sites.dedup();
+        assert_eq!(
+            sites, *allowed,
+            "{name} is built away from the files that own it"
+        );
+    }
+}
+
+/// One global per entry is the budget: a `static` here is how a handle becomes implicit again.
+#[test]
+fn the_runtime_holds_no_module_level_state() {
+    fn declares_a_static(line: &str) -> bool {
+        for word in line.split_whitespace() {
+            match word {
+                "pub" | "pub(crate)" | "pub(super)" => {}
+                other => return other == "static",
+            }
+        }
+        false
+    }
+
+    for (path, text) in shipping_sources(&app_src().join("runtime")) {
+        if let Some((index, _)) = text
+            .lines()
+            .enumerate()
+            .find(|(_, line)| declares_a_static(line))
+        {
+            panic!(
+                "{}:{} declares module-level state; the entry builds it and passes it down",
+                path.display(),
+                index + 1
+            );
+        }
+    }
+}
+
+/// The ring counts what it refused and a frame reads that once, at the drain; a second reader
+/// would give the number a second meaning.
+#[test]
+fn the_refusal_count_is_read_where_the_ring_is_drained() {
+    let root = app_src();
+    let mut readers = Vec::new();
+    for (path, text) in shipping_sources(&root) {
+        if text.contains("dropped_count") {
+            readers.push(
+                path.strip_prefix(&root)
+                    .expect("every scanned source is under the app root")
+                    .display()
+                    .to_string(),
+            );
+        }
+    }
+    assert_eq!(
+        readers,
+        vec![
+            "bin/host-smoke/scenario.rs".to_string(),
+            "runtime/coordinator/systems/mod.rs".to_string(),
+            "runtime/feature/input.rs".to_string(),
+        ],
+        "the refusal count belongs to the ring and is folded once per frame"
     );
 }
 

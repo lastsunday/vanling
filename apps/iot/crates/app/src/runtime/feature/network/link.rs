@@ -14,9 +14,9 @@ use iot_core::drivers::network::{
     ScanHistory, SetupHost, Station, same_network, setup_ap_starts_secured,
 };
 
-use super::setup::{Choice, SetupMode, await_network, pick, resolve_join};
+use super::setup::{Choice, Join, SetupMode, await_network, pick, resolve_join};
 use super::store::{any, first_saved, forget, remark_and_publish, save};
-use super::{NETWORK, discard_setup, park, publish_link};
+use super::{LinkWatch, discard_setup, park};
 use crate::runtime::workers::NetworkInbox;
 use crate::state::env::build_credentials;
 
@@ -53,6 +53,7 @@ pub(super) async fn link<S, R>(
     stack: &Stack<'_>,
     saved: Option<Box<Store<R>>>,
     mut setup: SetupMode<'_>,
+    watch: &LinkWatch,
 ) -> !
 where
     S: Station,
@@ -62,7 +63,7 @@ where
     let mut saved = saved;
     let entry_host = setup.host;
 
-    let setup_asked = splash_setup(NETWORK.commands).await;
+    let setup_asked = splash_setup(watch.commands()).await;
     setup.secure_on_entry = setup_ap_starts_secured(setup.has_pages);
     if setup_asked {
         log::info!(
@@ -70,7 +71,16 @@ where
         );
         setup.host = SetupHost::AccessPoint;
         let cancellable = any(saved.as_deref());
-        await_network(station, stack, &mut saved, None, cancellable, &mut setup).await;
+        await_network(
+            station,
+            stack,
+            &mut saved,
+            None,
+            cancellable,
+            &mut setup,
+            watch,
+        )
+        .await;
         log::info!("[WIFI] setup mode is over; this device goes back to its own page");
     }
 
@@ -103,7 +113,7 @@ where
                         "[WIFI] this build was given no network and this device has saved none; it \
                          runs offline, and the panel's page names one"
                     );
-                    match Box::pin(browse(station, &mut saved)).await {
+                    match Box::pin(browse(watch, station, &mut saved)).await {
                         Some(chosen) => chosen,
                         None => {
                             log::info!(
@@ -118,6 +128,7 @@ where
                                 None,
                                 cancellable,
                                 &mut setup,
+                                watch,
                             )
                             .await;
                             log::info!(
@@ -143,6 +154,7 @@ where
                 );
             }
             match hold(
+                watch,
                 station,
                 stack,
                 credentials.as_ref(),
@@ -174,7 +186,16 @@ where
             ),
         }
         let cancellable = any(saved.as_deref());
-        await_network(station, stack, &mut saved, None, cancellable, &mut setup).await;
+        await_network(
+            station,
+            stack,
+            &mut saved,
+            None,
+            cancellable,
+            &mut setup,
+            watch,
+        )
+        .await;
         log::info!("[WIFI] setup mode is over; this device goes back to the network it keeps");
     }
 }
@@ -186,6 +207,7 @@ enum Stopped {
 }
 
 async fn browse<S, R>(
+    watch: &LinkWatch,
     station: &mut S,
     saved: &mut Option<Box<Store<R>>>,
 ) -> Option<(Credentials, Origin)>
@@ -193,11 +215,11 @@ where
     S: Station,
     R: FlashRegion,
 {
-    discard_setup(NETWORK.commands);
+    discard_setup(watch.commands());
     let mut history = Box::new(ScanHistory::new());
     loop {
-        NETWORK.page.wait_for(Page::Network).await;
-        match pick(station, &mut history, saved, NetworkMode::Browsing).await {
+        watch.page().wait_for(Page::Network).await;
+        match pick(watch, station, &mut history, saved, NetworkMode::Browsing).await {
             Choice::Network(credentials, origin) => return Some((credentials, origin)),
             Choice::SwitchHost => {
                 log::info!("[WIFI] the panel asked for the access point from the list");
@@ -225,6 +247,7 @@ pub(super) enum Outcome {
 /// A hinted association is tried first — the channel it was last seen on — and a hint that
 /// fails is dropped rather than retried, so the next attempt walks every channel.
 pub(super) async fn hold<S, R>(
+    watch: &LinkWatch,
     station: &mut S,
     stack: &Stack<'_>,
     credentials: &Credentials,
@@ -255,14 +278,14 @@ where
                 continue;
             }
             log::error!("[WIFI] the radio would not take that credential: {error:?}");
-            report(station, saved.as_deref());
+            report(watch, station, saved.as_deref());
             if origin != Origin::Build {
                 return Outcome::Refused;
             }
             Timer::after(Duration::from_millis(RETRY_MS)).await;
             continue;
         }
-        report(station, saved.as_deref());
+        report(watch, station, saved.as_deref());
         if let Err(error) = station.await_connected().await {
             if hint.take().is_some() {
                 log::warn!(
@@ -272,7 +295,7 @@ where
                 continue;
             }
             log::error!("[WIFI] the radio would not associate: {error:?}");
-            report(station, saved.as_deref());
+            report(watch, station, saved.as_deref());
             if origin != Origin::Build {
                 return Outcome::Refused;
             }
@@ -307,7 +330,7 @@ where
             }
         }
         if saved_now {
-            remark_and_publish(history.as_deref_mut(), saved.as_deref());
+            remark_and_publish(watch.scan(), history.as_deref_mut(), saved.as_deref());
         }
 
         let address = match select(
@@ -320,7 +343,7 @@ where
             Either::Second(()) => None,
         };
         station.note_address(address);
-        report(station, saved.as_deref());
+        report(watch, station, saved.as_deref());
         if address.is_none() {
             log::error!("[WIFI] no address within {ADDRESS_BUDGET_MS} ms");
         }
@@ -330,29 +353,39 @@ where
         loop {
             match select(
                 Timer::after(Duration::from_millis(WINDOW_MS)),
-                NETWORK.commands.receive(),
+                watch.commands().receive(),
             )
             .await
             {
                 Either::Second(NetworkCommand::Join(asked)) => {
-                    if let Some((next, origin)) = resolve_join(asked, saved.as_deref()) {
-                        if same_network(&next, credentials) {
-                            log::debug!("[WIFI] a join for the network already held was ignored");
-                            continue;
+                    match resolve_join(asked, saved.as_deref()) {
+                        Join::Found(next, origin) => {
+                            if same_network(&next, credentials) {
+                                log::debug!(
+                                    "[WIFI] a join for the network already held was ignored"
+                                );
+                                continue;
+                            }
+                            log::info!("[WIFI] the panel named another network; leaving this one");
+                            let _ = station.disconnect().await;
+                            return Outcome::Next(Box::new(next), origin);
                         }
-                        log::info!("[WIFI] the panel named another network; leaving this one");
-                        let _ = station.disconnect().await;
-                        return Outcome::Next(Box::new(next), origin);
+                        Join::Missing(ssid) => watch.request_passphrase(ssid).await,
                     }
                 }
                 Either::Second(NetworkCommand::Leave) => {
                     log::info!("[WIFI] the panel asked to leave this network; the link is down");
                     let _ = station.disconnect().await;
-                    report(station, saved.as_deref());
+                    report(watch, station, saved.as_deref());
                     return Outcome::Left;
                 }
                 Either::Second(NetworkCommand::Forget(ssid)) => {
-                    forget(saved.as_deref_mut(), history.as_deref_mut(), &ssid);
+                    forget(
+                        watch.scan(),
+                        saved.as_deref_mut(),
+                        history.as_deref_mut(),
+                        &ssid,
+                    );
                     continue;
                 }
                 // A connected link has no setup to change and nothing to scan: those requests
@@ -363,7 +396,7 @@ where
             let address = stack_address(stack);
             station.note_address(address);
             let status = station.status();
-            report(station, saved.as_deref());
+            report(watch, station, saved.as_deref());
             let seen = (status.phase, address);
             let level = if last_seen == Some(seen) {
                 log::Level::Debug
@@ -398,8 +431,8 @@ where
     }
 }
 
-fn report<S: Station, R: FlashRegion>(station: &S, saved: Option<&Store<R>>) {
-    publish_link(station.status(), any(saved));
+fn report<S: Station, R: FlashRegion>(watch: &LinkWatch, station: &S, saved: Option<&Store<R>>) {
+    watch.deliver(station.status(), any(saved));
 }
 
 fn stack_address(stack: &Stack<'_>) -> Option<Ipv4> {

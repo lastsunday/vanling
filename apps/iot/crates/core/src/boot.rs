@@ -113,55 +113,48 @@ pub const fn record_boot(previous: ResetRecord, crashed: bool) -> (ResetRecord, 
 /// Time alone is not evidence: a boot that hangs after a minute of feeding is exactly the boot
 /// safe mode exists for. Both halves are reported by the code that can actually answer them,
 /// and the watchdog clears the crash record only once both have been seen.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+///
+/// A value rather than a module-level static: the entry owns one, the frame loop and the
+/// network worker note into it, and the watchdog feeder reads it through the same hand.
 pub struct Readiness {
-    bits: u8,
+    bits: core::sync::atomic::AtomicU8,
 }
 
 const FRAME_BIT: u8 = 1 << 0;
 const NETWORK_BIT: u8 = 1 << 1;
 
 impl Readiness {
-    const fn from_bits(bits: u8) -> Self {
-        Self { bits }
-    }
-
     pub const fn new() -> Self {
-        Self::from_bits(0)
+        Self {
+            bits: core::sync::atomic::AtomicU8::new(0),
+        }
     }
 
-    pub fn note_frame(&mut self) {
-        self.bits |= FRAME_BIT;
+    /// The first frame has been presented on every wired surface.
+    pub fn note_frame(&self) {
+        self.bits
+            .fetch_or(FRAME_BIT, core::sync::atomic::Ordering::Release);
     }
 
-    pub fn note_network(&mut self) {
-        self.bits |= NETWORK_BIT;
+    /// The network worker owns the radio and the IP stack, or this build deliberately has no
+    /// radio. Connectivity is not the same question: an access point that cannot be reached is
+    /// a live device, not a crash.
+    pub fn note_network(&self) {
+        self.bits
+            .fetch_or(NETWORK_BIT, core::sync::atomic::Ordering::Release);
     }
 
-    pub const fn is_ready(self) -> bool {
-        self.bits & (FRAME_BIT | NETWORK_BIT) == FRAME_BIT | NETWORK_BIT
+    /// Whether both halves have reported since reset.
+    pub fn is_ready(&self) -> bool {
+        let bits = self.bits.load(core::sync::atomic::Ordering::Acquire);
+        bits & (FRAME_BIT | NETWORK_BIT) == FRAME_BIT | NETWORK_BIT
     }
 }
 
-/// The boot's readiness, written by the app's frame loop and network worker and read by the
-/// watchdog feeder. One byte, because the two reports are independent and idempotent.
-static READINESS: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
-
-/// The first frame has been presented on every wired surface.
-pub fn note_first_frame() {
-    READINESS.fetch_or(FRAME_BIT, core::sync::atomic::Ordering::Release);
-}
-
-/// The network worker owns the radio and the IP stack, or this build deliberately has no
-/// radio. Connectivity is not the same question: an access point that cannot be reached is a
-/// live device, not a crash.
-pub fn note_network_settled() {
-    READINESS.fetch_or(NETWORK_BIT, core::sync::atomic::Ordering::Release);
-}
-
-/// Whether both halves have reported since reset.
-pub fn boot_ready() -> bool {
-    Readiness::from_bits(READINESS.load(core::sync::atomic::Ordering::Acquire)).is_ready()
+impl Default for Readiness {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -232,7 +225,7 @@ mod tests {
 
     #[test]
     fn readiness_needs_both_halves() {
-        let mut readiness = Readiness::new();
+        let readiness = Readiness::new();
         assert!(!readiness.is_ready());
 
         readiness.note_frame();
@@ -251,7 +244,7 @@ mod tests {
 
     #[test]
     fn a_network_report_alone_is_not_a_finished_boot() {
-        let mut readiness = Readiness::new();
+        let readiness = Readiness::new();
         readiness.note_network();
         assert!(!readiness.is_ready());
     }

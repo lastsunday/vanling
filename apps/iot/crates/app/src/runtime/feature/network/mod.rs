@@ -4,21 +4,20 @@
 use alloc::boxed::Box;
 use core::cell::Cell;
 
-use crate::shared::intent::{BusinessIntent, Intent, LinkIntent};
+use crate::shared::intent::{BusinessIntent, Intent, LinkIntent, NetworkPageIntent};
 use embassy_futures::join::join;
 use embassy_net::driver::{Driver, HardwareAddress};
 use embassy_net::{Config, StackResources};
-use embassy_sync::blocking_mutex::Mutex;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_time::Instant;
 use iot_bsp_esp::components::credentials::CredentialStore;
 use iot_bsp_esp::components::wifi::EspStation;
+use iot_core::boot::Readiness;
 use iot_core::drivers::credentials::{FlashRegion, Store};
-use iot_core::drivers::network::{LinkStatus, SetupHost, Station};
+use iot_core::drivers::network::{LinkStatus, SetupHost, Ssid, Station};
 
 use crate::NetworkWorker;
-use crate::runtime::feature::input::INTENT_BUS;
-use crate::runtime::workers::NETWORK;
+use crate::runtime::feature::input::IntentBus;
+use crate::runtime::workers::{Network, NetworkInbox, PageWatch, Scan};
 
 mod link;
 mod provision;
@@ -34,20 +33,14 @@ const SOCKETS: usize = 1;
 
 const SETUP_SOCKETS: usize = 2 + provision::PAGE_SOCKETS;
 
-static HEAP_FREE: HeapReport = Mutex::new(Cell::new(unreported));
-
-type HeapReport = Mutex<CriticalSectionRawMutex, Cell<fn() -> usize>>;
-
-const fn unreported() -> usize {
-    0
-}
-
-pub fn report_heap_free(report: fn() -> usize) {
-    HEAP_FREE.lock(|slot| slot.set(report));
-}
-
-fn heap_free() -> usize {
-    HEAP_FREE.lock(|slot| slot.get())()
+/// What the entry hands the network worker: its own handles, plus the two facts only the
+/// composition root knows — where readiness is reported, and how to read the heap.
+#[derive(Clone, Copy)]
+pub struct NetCtx {
+    pub bus: &'static IntentBus,
+    pub network: &'static Network,
+    pub readiness: &'static Readiness,
+    pub heap_free: fn() -> usize,
 }
 
 /// The worker as a task: `serve` is generic over the driver and a task may not be, so this is
@@ -59,8 +52,9 @@ pub async fn task(
     saved: Option<Box<CredentialStore>>,
     host: SetupHost,
     has_pages: bool,
+    ctx: NetCtx,
 ) -> ! {
-    serve(station, saved, host, has_pages).await
+    serve(station, saved, host, has_pages, ctx).await
 }
 
 /// The handle the composition root hands `run`: it starts the worker without naming the radio.
@@ -69,11 +63,13 @@ pub fn worker(
     saved: Option<Box<CredentialStore>>,
     host: SetupHost,
     has_pages: bool,
+    ctx: NetCtx,
 ) -> NetworkWorker {
     NetworkWorker::new(move |spawner| {
         log::info!("[WIFI] starting the network worker");
-        spawner
-            .spawn(task(station, saved, host, has_pages).expect("the network task fits its slot"));
+        spawner.spawn(
+            task(station, saved, host, has_pages, ctx).expect("the network task fits its slot"),
+        );
     })
 }
 
@@ -82,6 +78,7 @@ pub async fn serve<S, R>(
     saved: Option<Box<Store<R>>>,
     host: SetupHost,
     has_pages: bool,
+    ctx: NetCtx,
 ) -> !
 where
     S: Station,
@@ -93,7 +90,8 @@ where
         .expect("the station hands its interface over on the first ask");
     let mac = mac_of(&device);
     let seed = seed_from(mac);
-    LINK.note_mac(mac);
+    let watch = LinkWatch::new(ctx);
+    watch.note_mac(mac);
     let name = iot_core::provision::setup_ap_ssid(crate::assets::AP_PREFIX, mac);
     let setup = setup::SetupMode {
         name: &name,
@@ -105,23 +103,23 @@ where
         // without one leaves it open. Publishing happens after that decision lands.
         secure_on_entry: false,
     };
-    publish_link(station.status(), store::any(saved.as_deref()));
+    watch.deliver(station.status(), store::any(saved.as_deref()));
     let resources = Box::leak(Box::new(StackResources::<SOCKETS>::new()));
     let (stack, mut runner) =
         embassy_net::new(device, Config::dhcpv4(Default::default()), resources, seed);
     log::info!("[WIFI] network stack up, DHCP requested");
     // The radio and the IP stack are what the network half of a boot can prove. Association
     // and DHCP are policy on top: an AP that will not answer is a live device, not a crash.
-    iot_core::boot::note_network_settled();
+    ctx.readiness.note_network();
 
     match join(
         runner.run(),
-        link::link(&mut *station, &stack, saved, setup),
+        link::link(&mut *station, &stack, saved, setup, &watch),
     )
     .await {}
 }
 
-fn mac_of<D: Driver>(device: &D) -> [u8; 6] {
+pub(super) fn mac_of<D: Driver>(device: &D) -> [u8; 6] {
     match device.hardware_address() {
         HardwareAddress::Ethernet(octets) => octets,
         _ => [0; 6],
@@ -133,33 +131,57 @@ fn mac_of<D: Driver>(device: &D) -> [u8; 6] {
 /// A reading that repeats is not a report: the panel's state only moves on a difference, and
 /// the intent bus also carries every command the other way. The address is separate because it
 /// is news once, and a full bus must cost a retry rather than the address.
-struct LinkWatch {
-    last: Mutex<CriticalSectionRawMutex, Cell<Option<LinkStatus>>>,
-    mac: Mutex<CriticalSectionRawMutex, Cell<Option<[u8; 6]>>>,
+pub(super) struct LinkWatch {
+    ctx: NetCtx,
+    last: Cell<Option<LinkStatus>>,
+    mac: Cell<Option<[u8; 6]>>,
 }
 
 impl LinkWatch {
-    const fn new() -> Self {
+    fn new(ctx: NetCtx) -> Self {
         Self {
-            last: Mutex::new(Cell::new(None)),
-            mac: Mutex::new(Cell::new(None)),
+            ctx,
+            last: Cell::new(None),
+            mac: Cell::new(None),
         }
     }
 
+    fn commands(&self) -> &'static NetworkInbox {
+        &self.ctx.network.commands
+    }
+
+    fn page(&self) -> &'static PageWatch {
+        &self.ctx.network.page
+    }
+
+    fn scan(&self) -> &'static Scan {
+        &self.ctx.network.scan
+    }
+
+    fn network(&self) -> &'static Network {
+        self.ctx.network
+    }
+
+    fn heap_free(&self) -> usize {
+        (self.ctx.heap_free)()
+    }
+
     fn note_mac(&self, mac: [u8; 6]) {
-        self.mac.lock(|slot| slot.set(Some(mac)));
+        self.mac.set(Some(mac));
         self.flush_mac();
     }
 
     fn flush_mac(&self) {
-        let Some(mac) = self.mac.lock(|slot| slot.get()) else {
+        let Some(mac) = self.mac.get() else {
             return;
         };
-        if INTENT_BUS
+        if self
+            .ctx
+            .bus
             .try_send(Intent::Business(BusinessIntent::Link(LinkIntent::Mac(mac))))
             .is_ok()
         {
-            self.mac.lock(|slot| slot.set(None));
+            self.mac.set(None);
         }
     }
 
@@ -169,29 +191,38 @@ impl LinkWatch {
     fn deliver(&self, status: LinkStatus, saved: bool) {
         self.flush_mac();
         let status = LinkStatus { saved, ..status };
-        if self.last.lock(|last| last.get()) == Some(status) {
+        if self.last.get() == Some(status) {
             return;
         }
-        if INTENT_BUS
+        if self
+            .ctx
+            .bus
             .try_send(Intent::Business(BusinessIntent::Link(LinkIntent::Status(
                 status,
             ))))
             .is_ok()
         {
-            self.last.lock(|last| last.set(Some(status)));
+            self.last.set(Some(status));
         }
+    }
+
+    /// Nothing is kept for `ssid`, so the panel must ask for a passphrase. Awaited rather than
+    /// tried: the question is asked once, and a full ring may delay it but not lose it.
+    async fn request_passphrase(&self, ssid: Ssid) {
+        log::info!(
+            "[WIFI] nothing is kept for {:?}; the panel is what asks for a passphrase",
+            ssid.as_display_text().unwrap_or("<unprintable>"),
+        );
+        self.ctx
+            .bus
+            .send(Intent::Business(BusinessIntent::NetworkPage(
+                NetworkPageIntent::NoCopy(ssid),
+            )))
+            .await;
     }
 }
 
-static LINK: LinkWatch = LinkWatch::new();
-
-/// Reports the link to the panel. The network worker's whole view of the intent bus is this
-/// call.
-pub(super) fn publish_link(status: LinkStatus, saved: bool) {
-    LINK.deliver(status, saved);
-}
-
-fn seed_from(mac: [u8; 6]) -> u64 {
+pub(super) fn seed_from(mac: [u8; 6]) -> u64 {
     let address = mac
         .iter()
         .fold(0u64, |seed, octet| (seed << 8) | u64::from(*octet));

@@ -3,7 +3,7 @@
 pub mod sounds;
 
 use crate::runtime::feature::input::IntentBus;
-use crate::runtime::workers;
+use crate::runtime::workers::{self, FeedWake};
 use crate::shared::intent::{BusinessIntent, Intent, PlaybackAction};
 use crate::state::PlaybackCommand;
 use alloc::boxed::Box;
@@ -13,13 +13,8 @@ use embassy_futures::join::join;
 use embassy_futures::select::select3;
 use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
 use embassy_time::{Duration, Instant, Timer};
 use iot_core::drivers::playback::{FEED_MS, Recovery, SampleSource, Sound, Speaker, SpeakerFault};
-
-/// Wakes the control side only when it has something to do: a sound ended, or the driver
-/// recorded a drain to repair. The feed loop signals it after releasing the speaker lock.
-static FEED_WAKE: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 
 const CADENCE_REPORT_MS: u64 = 2_000;
 
@@ -105,8 +100,9 @@ fn feed_edge(output: &Output, still: bool, needs_recovery: bool) -> bool {
     ended || needs_recovery
 }
 
-/// Drives the ring: one feed every `FEED_MS`, and nothing else.
-pub async fn feed_loop(shared: &'static Shared) -> ! {
+/// Drives the ring: one feed every `FEED_MS`, and nothing else. A wake is signalled after the
+/// speaker lock is released, so the control side never contends for it.
+pub async fn feed_loop(shared: &'static Shared, feed_wake: &'static FeedWake) -> ! {
     let mut next_feed: Instant = Instant::now();
     let mut now_ms: u64 = 0;
     let mut last_arrival = Instant::now();
@@ -135,7 +131,7 @@ pub async fn feed_loop(shared: &'static Shared) -> ! {
             );
         });
         if wake {
-            FEED_WAKE.signal(());
+            feed_wake.signal(());
         }
         next_feed += Duration::from_millis(FEED_MS.into());
         now_ms = now_ms.wrapping_add(FEED_MS.into());
@@ -145,8 +141,8 @@ pub async fn feed_loop(shared: &'static Shared) -> ! {
 
 /// The feed loop as a task: it must run on an executor that preempts the cooperative one.
 #[embassy_executor::task]
-pub async fn feed_task(shared: &'static Shared) {
-    feed_loop(shared).await
+pub async fn feed_task(shared: &'static Shared, feed_wake: &'static FeedWake) {
+    feed_loop(shared, feed_wake).await
 }
 
 /// No speaker: nothing to play or feed. A joined future that never resolves keeps the tasks
@@ -159,8 +155,9 @@ async fn silent() -> ! {
 pub async fn playback_tasks(
     shared: Option<&'static Shared>,
     feed: crate::Feed,
-    playback: workers::Playback,
+    playback: &'static workers::Playback,
     intent_bus: &'static IntentBus,
+    feed_wake: &'static FeedWake,
 ) -> ! {
     let Some(shared) = shared else { silent().await };
     match feed {
@@ -168,14 +165,15 @@ pub async fn playback_tasks(
             // Spawned, not joined: joining a future on the executor this one does not run
             // waits for ever.
             spawner.spawn(
-                feed_task(shared).expect("the feed executor has room for the one task on it"),
+                feed_task(shared, feed_wake)
+                    .expect("the feed executor has room for the one task on it"),
             );
-            control_loop(shared, playback, intent_bus).await
+            control_loop(shared, playback, intent_bus, feed_wake).await
         }
         crate::Feed::Inline => {
             match join(
-                control_loop(shared, playback, intent_bus),
-                feed_loop(shared),
+                control_loop(shared, playback, intent_bus, feed_wake),
+                feed_loop(shared, feed_wake),
             )
             .await {}
         }
@@ -184,8 +182,9 @@ pub async fn playback_tasks(
 
 pub async fn control_loop(
     shared: &'static Shared,
-    playback: workers::Playback,
+    playback: &'static workers::Playback,
     intent_bus: &'static IntentBus,
+    feed_wake: &'static FeedWake,
 ) -> ! {
     match shared.lock(|s| s.speaker.borrow().fault()) {
         Some(reason) => report(intent_bus, PlaybackAction::Refused(reason)).await,
@@ -248,7 +247,7 @@ pub async fn control_loop(
         let deadline = last_report + Duration::from_millis(CADENCE_REPORT_MS);
         select3(
             playback.to.ready_to_receive(),
-            FEED_WAKE.wait(),
+            feed_wake.wait(),
             Timer::at(deadline),
         )
         .await;

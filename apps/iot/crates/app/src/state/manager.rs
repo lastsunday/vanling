@@ -68,6 +68,12 @@ impl DeviceManager {
         &self.state
     }
 
+    /// Folds the intent ring's running drop count into the snapshot the panel draws. Read once
+    /// per frame, so the count moves with the frame it belongs to.
+    pub fn observe_dropped(&mut self, count: u32) {
+        self.state.dropped_intents = count;
+    }
+
     /// What the device is committed to: the page's proposal with the build override applied.
     pub fn demand(&self) -> &EffectiveDemand {
         self.demand.current()

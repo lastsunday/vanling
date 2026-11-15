@@ -9,8 +9,8 @@ use iot_core::drivers::network::{
     NetworkMode, SavedNetworks, ScanHistory, Station, scan_pause_after,
 };
 
+use super::LinkWatch;
 use super::store::any_marked;
-use super::{NETWORK, publish_link};
 
 #[derive(Clone, PartialEq, Eq)]
 pub(super) enum Rest {
@@ -23,6 +23,7 @@ pub(super) enum Rest {
 }
 
 pub(super) async fn scan<S>(
+    watch: &LinkWatch,
     station: &mut S,
     history: &mut ScanHistory,
     saved: Option<&SavedNetworks>,
@@ -36,19 +37,19 @@ where
     let empty = match station.scan().await {
         Ok(ranked) => {
             let empty = ranked.is_empty();
-            publish_link(station.status().with_mode(mode), any_marked(saved));
+            watch.deliver(station.status().with_mode(mode), any_marked(saved));
             if let Some(list) = history.observe(&ranked, saved) {
                 log::info!("[WIFI] {} access points, the page redraws", list.len());
-                NETWORK.scan.publish(&list);
+                watch.scan().publish(&list);
             } else {
                 log::debug!("[WIFI] {} access points, unchanged", ranked.len());
             }
-            NETWORK.scan.complete();
+            watch.scan().complete();
             empty
         }
         Err(error) => {
             log::error!("[WIFI] the radio would not scan: {error:?}");
-            publish_link(station.status().with_mode(mode), any_marked(saved));
+            watch.deliver(station.status().with_mode(mode), any_marked(saved));
             false
         }
     };
@@ -65,11 +66,11 @@ where
             None => pending().await,
         }
     };
-    match select3(clock, NETWORK.commands.receive(), async {
+    match select3(clock, watch.commands().receive(), async {
         if mode.is_setup() {
-            NETWORK.page.wait_for_return(Page::Network).await;
+            watch.page().wait_for_return(Page::Network).await;
         } else {
-            NETWORK.page.wait_until_away(Page::Network).await;
+            watch.page().wait_until_away(Page::Network).await;
         }
     })
     .await

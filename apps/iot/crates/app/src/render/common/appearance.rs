@@ -1,8 +1,6 @@
 //! What each light and the diagnostics overlay should look like, derived from state.
 
-use crate::shared::diagnostics::{
-    BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics, dropped_intents,
-};
+use crate::shared::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
 use crate::shared::model::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
 use iot_core::demand::EffectiveDemand;
 use iot_core::paint::{MODE_BREATH, MODE_OFF, MODE_SOLID, Rgb, rgb_hue, scale_brightness};
@@ -139,7 +137,7 @@ pub(crate) fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -
         motion_caps: state.backed.motion_caps(),
         audio: state.audio_diagnostics(),
         playback: state.playback_diagnostics(),
-        dropped_intents: dropped_intents(),
+        dropped_intents: state.dropped_intents,
     }
 }
 
@@ -237,6 +235,7 @@ mod tests {
                 network: _,
                 network_page: _,
                 touch: _,
+                dropped_intents: _,
             } = state;
         }
         project_every_field(DeviceState::default());

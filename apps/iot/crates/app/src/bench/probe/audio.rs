@@ -23,8 +23,9 @@ where
     };
 
     let shared = share(speaker as Box<dyn Speaker>);
+    static FEED_WAKE: crate::runtime::workers::FeedWake = embassy_sync::signal::Signal::new();
     // Both halves are `!`; parking keeps the signature honest without a panic the compiler sees is dead.
-    join(feed_loop(shared), walk_catalogue(shared)).await;
+    join(feed_loop(shared, &FEED_WAKE), walk_catalogue(shared)).await;
     loop {
         core::future::pending::<()>().await
     }

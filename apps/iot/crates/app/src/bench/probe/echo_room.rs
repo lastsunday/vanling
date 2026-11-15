@@ -78,7 +78,10 @@ where
              the microphone on its own with no echo present"
         );
     }
-    feed.spawn(feed_task(shared).expect("the feed executor has room for the one task on it"));
+    static FEED_WAKE: crate::runtime::workers::FeedWake = embassy_sync::signal::Signal::new();
+    feed.spawn(
+        feed_task(shared, &FEED_WAKE).expect("the feed executor has room for the one task on it"),
+    );
     if !PATH_RUN {
         capture.set_cancel_echo(true);
         log::info!(

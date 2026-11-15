@@ -7,7 +7,7 @@ use iot_core::drivers::credentials::{FlashRegion, Store};
 use iot_core::drivers::network::{Credentials, LinkHint, SavedNetworks, ScanHistory, Ssid};
 
 use super::link::Origin;
-use crate::runtime::workers::NETWORK;
+use crate::runtime::workers::Scan;
 
 /// Whether the part holds any network at all. No store — a board with no partition — is the
 /// same answer as an empty one.
@@ -49,6 +49,7 @@ pub(super) fn save<R: FlashRegion>(
 /// Forgets a network and hands the re-marked list back: the panel and the phone draw the same
 /// marks, so neither may be updated without the other.
 pub(super) fn forget<R: FlashRegion>(
+    scan: &'static Scan,
     mut saved: Option<&mut Store<R>>,
     history: Option<&mut ScanHistory>,
     ssid: &Ssid,
@@ -69,7 +70,7 @@ pub(super) fn forget<R: FlashRegion>(
         },
         None => log::warn!("[WIFI] the panel asked to forget a network, but this board keeps none"),
     }
-    remark_and_publish(history, saved.as_deref());
+    remark_and_publish(scan, history, saved.as_deref());
 }
 
 /// Hands the re-marked list to both consumers at once. A refresh that reached one and not the
@@ -80,6 +81,7 @@ pub(super) fn forget<R: FlashRegion>(
 /// network a moment before it was written — there is no history left, and the list the page is
 /// already drawing is the one to mark.
 pub(super) fn remark_and_publish<R: FlashRegion>(
+    scan: &'static Scan,
     history: Option<&mut ScanHistory>,
     saved: Option<&Store<R>>,
 ) {
@@ -87,9 +89,9 @@ pub(super) fn remark_and_publish<R: FlashRegion>(
     match history {
         Some(history) => {
             if let Some(list) = history.marked(marks) {
-                NETWORK.scan.publish(&list);
+                scan.publish(&list);
             }
         }
-        None => NETWORK.scan.remark(marks),
+        None => scan.remark(marks),
     }
 }

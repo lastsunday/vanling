@@ -22,6 +22,7 @@ use embassy_time::{Duration, Timer};
 use esp_hal::peripherals::RTC_TIMER;
 use esp_hal::rtc_cntl::{Rtc, Rwdt, RwdtStage, RwdtStageAction};
 use esp_hal::time::Duration as HalDuration;
+use iot_core::boot::Readiness;
 
 /// Long enough to cover the slowest legitimate blocking section on the product path, short
 /// enough that a hang is visible before a person gives up on the panel.
@@ -59,13 +60,13 @@ pub fn arm_boot_watchdog() {
 /// Tightens the timeout to the product's and spawns the task that feeds it.
 ///
 /// Call once, on the executor that runs the coordinator, after the timer driver is up.
-pub fn start_watchdog(spawner: Spawner) {
+pub fn start_watchdog(spawner: Spawner, readiness: &'static Readiness) {
     critical_section::with(|cs| {
         let mut slot = WATCHDOG.borrow_ref_mut(cs);
         let rwdt = slot.get_or_insert_with(take_rwdt);
         configure(rwdt, TIMEOUT_MS);
     });
-    spawner.spawn(feed_watchdog().expect("the watchdog task fits its slot"));
+    spawner.spawn(feed_watchdog(readiness).expect("the watchdog task fits its slot"));
     log::info!(
         "[WATCHDOG] armed for {TIMEOUT_MS} ms, fed every {FEED_INTERVAL_MS} ms from the coordinator"
     );
@@ -93,12 +94,12 @@ fn store(rwdt: Rwdt) {
 }
 
 #[embassy_executor::task]
-async fn feed_watchdog() -> ! {
+async fn feed_watchdog(readiness: &'static Readiness) -> ! {
     let mut health_reported = false;
     loop {
         Timer::after(Duration::from_millis(FEED_INTERVAL_MS)).await;
         feed();
-        if !health_reported && iot_core::boot::boot_ready() {
+        if !health_reported && readiness.is_ready() {
             health_reported = true;
             crate::boot::mark_healthy();
             log::info!(

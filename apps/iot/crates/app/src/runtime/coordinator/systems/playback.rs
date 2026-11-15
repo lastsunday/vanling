@@ -9,12 +9,12 @@ use crate::state::{DeviceManager, PlaybackCommand, PlaybackState};
 use crate::runtime::system::System;
 
 pub(crate) struct PlaybackSystem {
-    playback: Playback,
+    playback: &'static Playback,
     previous: PlaybackState,
 }
 
 impl PlaybackSystem {
-    pub(crate) fn new(state: PlaybackState, playback: Playback) -> Self {
+    pub(crate) fn new(state: PlaybackState, playback: &'static Playback) -> Self {
         Self {
             playback,
             previous: state,
@@ -25,12 +25,12 @@ impl PlaybackSystem {
     /// behind, so the next call offers the same edge again instead of losing it.
     fn dispatch(&mut self, after: PlaybackState) {
         if let Some(command) = after.mute_command(&self.previous)
-            && queue(self.playback.to, command)
+            && queue(&self.playback.to, command)
         {
             self.previous.muted = after.muted;
         }
         match after.play_command(&self.previous) {
-            Some(command) if !queue(self.playback.to, command) => {}
+            Some(command) if !queue(&self.playback.to, command) => {}
             _ => self.previous.phase = after.phase,
         }
     }

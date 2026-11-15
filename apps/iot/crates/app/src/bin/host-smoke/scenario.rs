@@ -3,7 +3,8 @@
 use std::sync::atomic::Ordering;
 
 use embassy_time::{Duration, Timer};
-use iot_app::runtime::workers::NETWORK;
+use iot_app::runtime::feature::input::IntentBus;
+use iot_app::runtime::workers::Network;
 use iot_app::shared::intent::Key;
 use iot_app::shared::intent::{BusinessIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
 use iot_app::shared::model::PALETTE;
@@ -49,15 +50,21 @@ async fn triple_click_to(page: Page) {
 
 /// Takes everything the coordinator handed the network worker. Nothing consumes these
 /// commands on the host, so this is where a command is read rather than acted on.
-fn take_commands() -> Vec<NetworkCommand> {
+fn take_commands(network: &Network) -> Vec<NetworkCommand> {
     let mut taken = Vec::new();
-    while let Some(command) = NETWORK.commands.try_receive() {
+    while let Some(command) = network.commands.try_receive() {
         taken.push(command);
     }
     taken
 }
 
-pub(super) async fn scenario() {
+/// Waits for room in the ring: the scenario is the finger, and a dropped keystroke would fail
+/// the assertion anyway.
+async fn send(bus: &'static IntentBus, intent: BusinessIntent) {
+    bus.send(Intent::Business(intent)).await;
+}
+
+pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network) {
     Timer::after(Duration::from_millis(200)).await;
     assert!(
         !PAINTED.lock().unwrap().is_empty(),
@@ -269,7 +276,7 @@ pub(super) async fn scenario() {
         rssi: -55,
         secured: true,
     }]);
-    NETWORK.scan.publish(&list);
+    network.scan.publish(&list);
 
     attempts = 0;
     while NETWORK_APS.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -282,13 +289,13 @@ pub(super) async fn scenario() {
         "a scan published through the link never reached the panel's snapshot"
     );
 
-    let send = |intent: BusinessIntent| {
-        let _ = iot_app::runtime::feature::input::INTENT_BUS.try_send(Intent::Business(intent));
-    };
-
-    send(BusinessIntent::NetworkPage(NetworkPageIntent::Choose(
-        list.get(0).expect("a row to pick"),
-    )));
+    send(
+        bus,
+        BusinessIntent::NetworkPage(NetworkPageIntent::Choose(
+            list.get(0).expect("a row to pick"),
+        )),
+    )
+    .await;
     Timer::after(Duration::from_millis(100)).await;
 
     let mut at_ms = 100;
@@ -299,10 +306,11 @@ pub(super) async fn scenario() {
         Key::Shift,
         Key::Char(b'8'),
     ] {
-        send(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
-            key,
-            at_ms,
-        }));
+        send(
+            bus,
+            BusinessIntent::NetworkPage(NetworkPageIntent::Key { key, at_ms }),
+        )
+        .await;
         at_ms += 100;
     }
     attempts = 0;
@@ -316,15 +324,19 @@ pub(super) async fn scenario() {
         "the keyboard's draft never reached the panel's snapshot"
     );
 
-    send(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
-        key: Key::Connect,
-        at_ms,
-    }));
+    send(
+        bus,
+        BusinessIntent::NetworkPage(NetworkPageIntent::Key {
+            key: Key::Connect,
+            at_ms,
+        }),
+    )
+    .await;
     attempts = 0;
     let mut handed = None;
     while handed.is_none() && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
-        for command in take_commands() {
+        for command in take_commands(network) {
             if let NetworkCommand::Join(asked) = command {
                 handed = Some(asked);
             }
@@ -347,10 +359,14 @@ pub(super) async fn scenario() {
     );
 
     // The radio's report on the attempt; without it the page stays busy and refuses the scan.
-    send(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
-        phase: LinkPhase::Failed(NetworkError::Credentials),
-        ..LinkStatus::default()
-    })));
+    send(
+        bus,
+        BusinessIntent::Link(LinkIntent::Status(LinkStatus {
+            phase: LinkPhase::Failed(NetworkError::Credentials),
+            ..LinkStatus::default()
+        })),
+    )
+    .await;
     Timer::after(Duration::from_millis(100)).await;
 
     let mut store = SavedNetworks::empty();
@@ -360,7 +376,7 @@ pub(super) async fn scenario() {
     let mut marked = list;
     let marks = store.mask(&marked);
     marked.mark_saved(marks);
-    NETWORK.scan.publish(&marked);
+    network.scan.publish(&marked);
     attempts = 0;
     while NETWORK_SAVED.load(Ordering::SeqCst) == 0 && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
@@ -372,12 +388,12 @@ pub(super) async fn scenario() {
         "a marked list published through the link never reached the panel's snapshot"
     );
 
-    send(BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow));
+    send(bus, BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)).await;
     attempts = 0;
     let mut scanned = false;
     while !scanned && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
-        for command in take_commands() {
+        for command in take_commands(network) {
             if matches!(command, NetworkCommand::ScanNow) {
                 scanned = true;
             }
@@ -389,18 +405,26 @@ pub(super) async fn scenario() {
         "the strip's request to look around never reached the network worker"
     );
 
-    send(BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(
-        list.get(0).expect("a row to ask about"),
-    )));
+    send(
+        bus,
+        BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(
+            list.get(0).expect("a row to ask about"),
+        )),
+    )
+    .await;
     Timer::after(Duration::from_millis(100)).await;
-    send(BusinessIntent::NetworkPage(NetworkPageIntent::Answer(
-        Confirm::Forget(list.get(0).expect("the row the question named")),
-    )));
+    send(
+        bus,
+        BusinessIntent::NetworkPage(NetworkPageIntent::Answer(Confirm::Forget(
+            list.get(0).expect("the row the question named"),
+        ))),
+    )
+    .await;
     attempts = 0;
     let mut forgotten = None;
     while forgotten.is_none() && attempts < 100 {
         Timer::after(Duration::from_millis(10)).await;
-        for command in take_commands() {
+        for command in take_commands(network) {
             if let NetworkCommand::Forget(ssid) = command {
                 forgotten = Some(ssid);
             }
@@ -417,7 +441,7 @@ pub(super) async fn scenario() {
     }
 
     assert_eq!(
-        iot_app::shared::diagnostics::dropped_intents(),
+        bus.dropped_count(),
         0,
         "the input ring dropped an intent rather than the gesture being slow"
     );

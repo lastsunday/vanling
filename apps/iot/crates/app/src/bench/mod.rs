@@ -22,12 +22,6 @@ where
     B: HasInput + HasMotion + HasAudio + HasPlayback + HasCamera,
     C: ClockSink,
 {
-    crate::run_with(
-        board,
-        wiring,
-        Some(Box::new(replay::Slot::new(
-            &crate::runtime::feature::input::INTENT_BUS,
-        ))),
-    )
-    .await
+    let bus = &wiring.runtime.bus;
+    crate::run_with(board, wiring, Some(Box::new(replay::Slot::new(bus)))).await
 }

@@ -4,17 +4,20 @@
 use crate::state::PlaybackCommand;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
+use embassy_sync::signal::Signal;
 
 pub type PlaybackQueue = Channel<CriticalSectionRawMutex, PlaybackCommand, 4>;
 
-static PLAYBACK_QUEUE: PlaybackQueue = PlaybackQueue::new();
+/// The feeder's poke to the control loop: a sound ended, so the next command may start one.
+pub type FeedWake = Signal<CriticalSectionRawMutex, ()>;
 
 /// The coordinator's handle on the playback worker.
-#[derive(Clone, Copy)]
 pub struct Playback {
-    pub to: &'static PlaybackQueue,
+    pub to: PlaybackQueue,
 }
 
-pub(crate) static PLAYBACK: Playback = Playback {
-    to: &PLAYBACK_QUEUE,
-};
+impl Playback {
+    pub(crate) const fn new() -> Self {
+        Self { to: Channel::new() }
+    }
+}

@@ -8,12 +8,13 @@ mod pacing;
 mod systems;
 
 use crate::state::DeviceManager;
-use embassy_futures::select::select;
+use embassy_futures::select::select3;
 use embassy_time::{Instant, Timer};
 
 use crate::render::Renderers;
 use crate::runtime::feature::input::IntentBus;
-use crate::runtime::workers::WAKE;
+use crate::runtime::workers::{CaptureWindow, Scan};
+use iot_core::boot::Readiness;
 
 use self::pacing::{FramePacer, Wait};
 pub(crate) use self::systems::{
@@ -23,6 +24,9 @@ pub(crate) use self::systems::{
 
 pub async fn run_loop(
     bus: &'static IntentBus,
+    capture: &'static CaptureWindow,
+    scan: &'static Scan,
+    readiness: &'static Readiness,
     mut renderers: Renderers,
     manager: &mut DeviceManager,
     schedule: &mut Schedule<'_>,
@@ -38,12 +42,12 @@ pub async fn run_loop(
         renderers.flush().await;
         if !first_frame_reported {
             first_frame_reported = true;
-            iot_core::boot::note_first_frame();
+            readiness.note_frame();
         }
         match pacing.end_frame(active, Instant::now()) {
             Wait::Until(deadline) => Timer::at(deadline).await,
             Wait::Park => {
-                select(bus.ready_to_receive(), WAKE.wait()).await;
+                select3(bus.ready_to_receive(), capture.ready(), scan.ready()).await;
                 pacing.reanchor(Instant::now());
             }
         }

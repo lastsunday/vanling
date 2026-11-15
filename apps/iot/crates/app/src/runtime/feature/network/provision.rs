@@ -23,7 +23,7 @@ use iot_core::provision::{
     Response, SEED_AT, SEED_SLOT, ScanJson, Status, mac_text, route, scan_json_row,
 };
 
-use crate::runtime::workers::NETWORK;
+use crate::runtime::workers::Network;
 
 const HTTP_PORT: u16 = 80;
 const DNS_PORT: u16 = 53;
@@ -39,10 +39,30 @@ pub const PAGE_SOCKETS: usize = 6;
 const PAGE_RX_BYTES: usize = 1_460;
 const PAGE_TX_BYTES: usize = 1_460;
 
-static PAGE_READ: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+/// The page's read signal: a signal rather than a counter, because a read is only interesting
+/// until the caller acts on it. Created per mount, so a read from an earlier access point does
+/// not make the idle timeout fire the moment a new one comes up.
+pub struct PageRead(Signal<CriticalSectionRawMutex, ()>);
 
-pub async fn page_read() {
-    PAGE_READ.wait().await;
+impl PageRead {
+    pub const fn new() -> Self {
+        Self(Signal::new())
+    }
+
+    /// Resolves when the page was read.
+    pub async fn wait(&self) {
+        self.0.wait().await;
+    }
+
+    fn signal(&self) {
+        self.0.signal(());
+    }
+}
+
+impl Default for PageRead {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 pub fn setup_config() -> Config {
@@ -55,7 +75,13 @@ pub fn setup_config() -> Config {
 }
 
 /// Serve setup mode on `stack` until the caller drops the future.
-pub async fn serve<'d, D>(stack: Stack<'d>, mut runner: Runner<'d, D>, mac: [u8; 6]) -> Infallible
+pub async fn serve<'d, D>(
+    stack: Stack<'d>,
+    mut runner: Runner<'d, D>,
+    mac: [u8; 6],
+    network: &'static Network,
+    page_read: &PageRead,
+) -> Infallible
 where
     D: Driver,
 {
@@ -63,7 +89,13 @@ where
         "[WIFI] setup mode: an access point, a lease for whoever joins it, and the page at \
          {BASE_URL}"
     );
-    match join4(runner.run(), leases(stack), names(stack), page(stack, mac)).await {}
+    match join4(
+        runner.run(),
+        leases(stack),
+        names(stack),
+        page(stack, mac, network, page_read),
+    )
+    .await {}
 }
 
 pub(super) async fn leases(stack: Stack<'_>) {
@@ -132,7 +164,7 @@ pub(super) async fn names(stack: Stack<'_>) {
     }
 }
 
-async fn page(stack: Stack<'_>, mac: [u8; 6]) {
+async fn page(stack: Stack<'_>, mac: [u8; 6], network: &'static Network, page_read: &PageRead) {
     let mut first_rx = [0u8; PAGE_RX_BYTES];
     let mut first_tx = [0u8; PAGE_TX_BYTES];
     let mut second_rx = [0u8; PAGE_RX_BYTES];
@@ -196,7 +228,7 @@ async fn page(stack: Stack<'_>, mac: [u8; 6]) {
                 }
             }
         };
-        let joining = answer(socket, mac).await;
+        let joining = answer(socket, mac, network, page_read).await;
         socket.close();
         if let Err(error) = socket.flush().await {
             log::warn!("[WIFI] an answer did not finish: {error:?}");
@@ -221,7 +253,7 @@ async fn page(stack: Stack<'_>, mac: [u8; 6]) {
         if let Some(credentials) = joining {
             log::info!("[WIFI] the page named a network, so the link is joining it");
             Timer::after(LEAVE_GRACE).await;
-            NETWORK
+            network
                 .commands
                 .send(NetworkCommand::Join(JoinRequest::Typed(credentials)))
                 .await;
@@ -234,7 +266,12 @@ fn armable(state: State) -> bool {
     matches!(state, State::Closed | State::TimeWait)
 }
 
-async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials> {
+async fn answer(
+    socket: &mut TcpSocket<'_>,
+    mac: [u8; 6],
+    network: &'static Network,
+    page_read: &PageRead,
+) -> Option<Credentials> {
     let mut bytes = [0u8; REQUEST_BYTES];
     let mut piece = [0u8; PIECE_BYTES];
     let mut wait = PENDING_TIMEOUT;
@@ -273,7 +310,7 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
                 Err(ParseError::Malformed) => {
                     log::warn!("[WIFI] a request line did not parse, so it was refused");
                     let refused = Response::text(Status::BadRequest, "malformed request");
-                    let aps = NETWORK.scan.peek().unwrap_or_default();
+                    let aps = network.scan.peek().unwrap_or_default();
                     send_answer(socket, &refused, &mut piece, mac, &aps, true).await;
                     return None;
                 }
@@ -282,15 +319,15 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
 
         // The generation is read before the list: `complete()` happens after `publish()`, so a
         // generation of N promises a list from round N or later, never an older one.
-        let generation = NETWORK.scan.generation();
-        let scanned = NETWORK.scan.peek();
+        let generation = network.scan.generation();
+        let scanned = network.scan.peek();
         let aps = scanned.unwrap_or_default();
         let mut keep = !request.close;
         match route(&request, scanned.as_ref(), &crate::assets::SITE) {
             Action::Respond(response) => {
                 let sent =
                     send_answer(socket, &response, &mut piece, mac, &aps, request.close).await;
-                log_answer(&request, &response, picked.elapsed());
+                log_answer(page_read, &request, &response, picked.elapsed());
                 keep = sent && keep;
             }
             Action::Scan(response) => {
@@ -302,7 +339,7 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
                 if sent {
                     send_scan(socket, &aps, &mut piece).await;
                 }
-                log_answer(&request, &response, picked.elapsed());
+                log_answer(page_read, &request, &response, picked.elapsed());
                 keep = sent && keep;
             }
             Action::Rescan(response) => {
@@ -311,16 +348,16 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
                     ..response
                 };
                 let sent = send_head(socket, &response, &mut piece, request.close).await;
-                log_answer(&request, &response, picked.elapsed());
+                log_answer(page_read, &request, &response, picked.elapsed());
                 keep = sent && keep;
-                NETWORK.commands.send(NetworkCommand::ScanNow).await;
+                network.commands.send(NetworkCommand::ScanNow).await;
             }
             Action::Join {
                 credentials,
                 response,
             } => {
                 send_answer(socket, &response, &mut piece, mac, &aps, true).await;
-                log_answer(&request, &response, picked.elapsed());
+                log_answer(page_read, &request, &response, picked.elapsed());
                 return Some(credentials);
             }
         }
@@ -331,8 +368,8 @@ async fn answer(socket: &mut TcpSocket<'_>, mac: [u8; 6]) -> Option<Credentials>
     }
 }
 
-fn log_answer(request: &Request<'_>, response: &Response, took: Duration) {
-    PAGE_READ.signal(());
+fn log_answer(page_read: &PageRead, request: &Request<'_>, response: &Response, took: Duration) {
+    page_read.signal();
     log::info!(
         "[WIFI] {:?} {} answered {:?}, {} B of body, in {} ms",
         request.method,

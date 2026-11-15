@@ -8,10 +8,13 @@ mod scenario;
 
 use embassy_executor::Spawner;
 use embassy_futures::select::{Either, select};
+use iot_app::runtime::Runtime;
 use iot_app::{Feed, IoPlacement, Wiring, run};
 use iot_core::drivers::board::HasSurface;
 
 use self::board::{HostBoard, HostClock};
+
+static RUNTIME: Runtime = Runtime::new();
 
 #[embassy_executor::main]
 async fn main(_spawner: Spawner) {
@@ -24,6 +27,7 @@ async fn main(_spawner: Spawner) {
             board,
             Wiring {
                 clock: HostClock,
+                runtime: &RUNTIME,
                 feed: Feed::Inline,
                 io: IoPlacement::Inline,
                 spawner: _spawner,
@@ -32,7 +36,7 @@ async fn main(_spawner: Spawner) {
                 second_core_peak: || None,
             },
         ),
-        scenario::scenario(),
+        scenario::scenario(&RUNTIME.bus, &RUNTIME.network),
     )
     .await
     {

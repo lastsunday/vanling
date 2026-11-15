@@ -15,14 +15,14 @@ use crate::runtime::system::System;
 /// What the coordinator observes about the network boundary, and the handle it drives it
 /// through, in the order a frame sees them.
 pub(crate) struct NetworkSystem {
-    network: Network,
+    network: &'static Network,
     page: Page,
     front: Option<SetupHost>,
     lamp: Option<LightState>,
 }
 
 impl NetworkSystem {
-    pub(crate) fn new(state: &DeviceState, network: Network) -> Self {
+    pub(crate) fn new(state: &DeviceState, network: &'static Network) -> Self {
         Self {
             network,
             page: state.page(),

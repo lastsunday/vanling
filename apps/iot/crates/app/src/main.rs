@@ -15,6 +15,8 @@ use iot_app::IoQueue;
 use iot_app::bench::run;
 #[cfg(not(feature = "panel-bench"))]
 use iot_app::run;
+use iot_app::runtime::Runtime;
+use iot_app::runtime::feature::network::NetCtx;
 use iot_app::{Feed, Wifi, Wiring};
 use iot_core::drivers::board::{HasSurface, HasWifi};
 use iot_core::drivers::surface::SurfaceRole;
@@ -25,6 +27,9 @@ type Board = iot_bsp_esp::Board<'static>;
 /// bundle, so the two sides meet here rather than at a call.
 #[cfg(feature = "esp32s3")]
 static IO_QUEUE: IoQueue = IoQueue::new();
+
+/// The one place every cross-tier handle is built. Nothing below reaches it by name.
+static RUNTIME: Runtime = Runtime::new();
 
 #[global_allocator]
 static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
@@ -42,7 +47,7 @@ fn second_core_peak() -> Option<(usize, usize)> {
 #[esp_rtos::main]
 async fn main(spawner: Spawner) -> ! {
     let (mut board, feed, io) = boot_board().await;
-    iot_chip_esp::start_watchdog(spawner);
+    iot_chip_esp::start_watchdog(spawner, &RUNTIME.readiness);
     let wiring = build_wiring(&mut board, spawner, feed, io);
     run(board, wiring).await
 }
@@ -58,7 +63,7 @@ async fn boot_board() -> (Board, Feed, IoPlacement) {
         iot_chip_esp::enter_safe_mode();
         iot_chip_esp::init_radio_heap();
         match iot_chip_esp::try_init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES) {
-            Ok(()) => iot_app::runtime::feature::network::report_heap_free(iot_chip_esp::heap_free),
+            Ok(()) => {}
             Err(error) => {
                 log::error!("[SAFE] no general heap ({error:?}); the console is all that is left");
                 iot_chip_esp::park_safe_mode(&boot);
@@ -79,8 +84,13 @@ async fn boot_board() -> (Board, Feed, IoPlacement) {
         let station = iot_bsp_esp::components::wifi::start(WIFI);
         let saved = iot_bsp_esp::components::credentials::load_from_peripherals(FLASH)
             .map(alloc::boxed::Box::new);
-        iot_app::runtime::feature::network::safe::run(station, saved, boot.record.crashed_boots())
-            .await
+        iot_app::runtime::feature::network::safe::run(
+            station,
+            saved,
+            boot.record.crashed_boots(),
+            iot_chip_esp::heap_free,
+        )
+        .await
     }
 
     // Armed before the first driver timeout and before board bring-up: a hang from here on is a
@@ -89,7 +99,6 @@ async fn boot_board() -> (Board, Feed, IoPlacement) {
 
     iot_chip_esp::init_radio_heap();
     iot_chip_esp::init_heap(&HEAP, iot_chip_esp::PRODUCT_HEAP_BYTES);
-    iot_app::runtime::feature::network::report_heap_free(iot_chip_esp::heap_free);
     log::info!("[IOT] boot complete");
 
     // Bound before the call rather than matched at `start_executors`: the arm form measured
@@ -125,6 +134,12 @@ fn build_wiring(
             board.take_credentials(),
             iot_bsp_esp::SETUP_HOST,
             has_pages,
+            NetCtx {
+                bus: &RUNTIME.bus,
+                network: &RUNTIME.network,
+                readiness: &RUNTIME.readiness,
+                heap_free: iot_chip_esp::heap_free,
+            },
         )),
         None => {
             log::info!("[WIFI] this build wired no radio, so the link stays off");
@@ -134,6 +149,7 @@ fn build_wiring(
 
     Wiring {
         clock: iot_chip_esp::Clock,
+        runtime: &RUNTIME,
         feed,
         wifi,
         surfaces,

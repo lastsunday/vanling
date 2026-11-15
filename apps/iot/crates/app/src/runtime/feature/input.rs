@@ -4,8 +4,9 @@ use alloc::vec::Vec;
 
 use crate::shared::intent::{BusinessIntent, Intent, NavigationIntent, recognize};
 use crate::state::Page;
+use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::channel::Channel;
+use embassy_sync::channel::{Channel, ReceiveReadyFuture, TryReceiveError, TrySendError};
 use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
 use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
@@ -14,29 +15,66 @@ use iot_core::config::{Configuration, Configurator, Unreachable};
 
 pub const INTENT_SLOTS: usize = 8;
 
-/// Intent channel between the input task and the render loop.
-pub type IntentBus = Channel<CriticalSectionRawMutex, Intent, INTENT_SLOTS>;
+/// The ring between the workers and the coordinator, and the count of what it refused.
+///
+/// The count lives here because the ring is what turns an intent away: a full ring cannot
+/// refuse silently, and a test sees only the drops it caused.
+pub struct IntentBus {
+    ring: Channel<CriticalSectionRawMutex, Intent, INTENT_SLOTS>,
+    /// Refused intents since boot, saturating at [`u32::MAX`].
+    dropped: AtomicU32,
+}
 
-pub static INTENT_BUS: IntentBus = IntentBus::new();
+impl IntentBus {
+    pub const fn new() -> Self {
+        Self {
+            ring: Channel::new(),
+            dropped: AtomicU32::new(0),
+        }
+    }
+
+    /// Queues one intent, waiting for room: the one copy a retry cannot replace.
+    pub async fn send(&self, intent: Intent) {
+        self.ring.send(intent).await;
+    }
+
+    /// Queues one intent if there is room, counting the refusal when there is not.
+    pub fn try_send(&self, intent: Intent) -> Result<(), TrySendError<Intent>> {
+        let queued = self.ring.try_send(intent);
+        if queued.is_err() {
+            let _ = self
+                .dropped
+                .try_update(Ordering::Relaxed, Ordering::Relaxed, |count| {
+                    (count < u32::MAX).then(|| count + 1)
+                });
+        }
+        queued
+    }
+
+    pub fn try_receive(&self) -> Result<Intent, TryReceiveError> {
+        self.ring.try_receive()
+    }
+
+    /// Resolves when an intent is waiting.
+    pub fn ready_to_receive(
+        &self,
+    ) -> ReceiveReadyFuture<'_, CriticalSectionRawMutex, Intent, INTENT_SLOTS> {
+        self.ring.ready_to_receive()
+    }
+
+    /// How many intents this ring refused since boot.
+    pub fn dropped_count(&self) -> u32 {
+        self.dropped.load(Ordering::Relaxed)
+    }
+}
+
+impl Default for IntentBus {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 const HOLD_REPORT_MS: u64 = 5_000;
-
-/// Hands one intent to the coordinator, counting it when the ring is full.
-///
-/// The return value is what the splash needs: a verdict that never made it has to be tried
-/// again next tick, not treated as delivered.
-fn forward<const N: usize>(
-    bus: &Channel<CriticalSectionRawMutex, Intent, N>,
-    intent: Intent,
-    dropped: &mut u32,
-) -> bool {
-    if bus.try_send(intent).is_ok() {
-        return true;
-    }
-    *dropped = dropped.saturating_add(1);
-    crate::shared::diagnostics::note_dropped_intent();
-    false
-}
 
 /// How long the boot transient stays up, read from its route so the timer and the page cannot
 /// disagree. A splash that stops being transient fails the build here rather than hanging.
@@ -148,7 +186,7 @@ pub async fn input_task(
     let mut window_hold_us: u64 = 0;
     let mut window_worst_hold_ms: u64 = 0;
     let mut window_ticks: u32 = 0;
-    let mut window_dropped: u32 = 0;
+    let mut window_base_dropped = intent_bus.dropped_count();
     let mut last_report = Instant::now();
     let mut stack_peak = 0usize;
     let mut splash_open = true;
@@ -168,7 +206,7 @@ pub async fn input_task(
             let poll_start = Instant::now();
             if let Some(event) = entry.poll(now_ms) {
                 let intent = Intent::Input(recognize(event, entry.source_id()));
-                forward(intent_bus, intent, &mut window_dropped);
+                let _ = intent_bus.try_send(intent);
             }
             entry.advance_past(now_ms);
             let took_us = poll_start.elapsed().as_micros();
@@ -182,11 +220,11 @@ pub async fn input_task(
         if splash_open
             && now_ms >= SPLASH_TIMEOUT_MS
             && !sources.iter().any(|entry| entry.held())
-            && forward(
-                intent_bus,
-                Intent::Business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
-                &mut window_dropped,
-            )
+            && intent_bus
+                .try_send(Intent::Business(BusinessIntent::Navigation(
+                    NavigationIntent::SplashOver,
+                )))
+                .is_ok()
         {
             splash_open = false;
         }
@@ -213,6 +251,7 @@ pub async fn input_task(
                 );
             }
             let over_bound = window_worst_hold_ms >= u64::from(MAX_SINGLE_HOLD_MS);
+            let window_dropped = intent_bus.dropped_count() - window_base_dropped;
             log::log!(
                 if over_bound {
                     log::Level::Warn
@@ -231,7 +270,7 @@ pub async fn input_task(
             window_hold_us = 0;
             window_worst_hold_ms = 0;
             window_ticks = 0;
-            window_dropped = 0;
+            window_base_dropped = intent_bus.dropped_count();
             worst_us.fill(0);
             polled.fill(false);
             last_report = now;
@@ -520,38 +559,74 @@ mod tests {
     }
 
     #[test]
-    fn a_full_intent_ring_counts_what_it_refuses_and_the_count_saturates() {
-        let bus: Channel<CriticalSectionRawMutex, Intent, 1> = Channel::new();
-        let mut dropped = 0u32;
+    fn a_full_ring_counts_what_it_refuses_and_the_count_saturates() {
+        let bus = IntentBus::new();
+        for _ in 0..INTENT_SLOTS {
+            assert!(
+                bus.try_send(Intent::Business(BusinessIntent::Invalid))
+                    .is_ok(),
+                "the empty ring takes a full pass"
+            );
+        }
 
         assert!(
-            forward(
-                &bus,
-                Intent::Business(BusinessIntent::Invalid),
-                &mut dropped
-            ),
-            "the empty ring takes the first intent"
-        );
-        assert!(
-            !forward(
-                &bus,
-                Intent::Business(BusinessIntent::Invalid),
-                &mut dropped
-            ),
+            bus.try_send(Intent::Business(BusinessIntent::Invalid))
+                .is_err(),
             "the full ring refuses the next one"
         );
-        assert_eq!(dropped, 1, "a refused intent is counted, not lost silently");
-
-        let mut saturated = u32::MAX;
-        let _ = forward(
-            &bus,
-            Intent::Business(BusinessIntent::Invalid),
-            &mut saturated,
+        assert_eq!(
+            bus.dropped_count(),
+            1,
+            "a refused intent is counted, not lost silently"
         );
-        assert_eq!(saturated, u32::MAX, "the window count never wraps");
+
+        bus.dropped.store(u32::MAX, Ordering::Relaxed);
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
+        assert_eq!(
+            bus.dropped_count(),
+            u32::MAX,
+            "a count that reached the ceiling stays there instead of wrapping to zero"
+        );
     }
 
     const MOTION_CADENCE_MS: u64 = iot_core::drivers::motion::MOTION_SCAN_MS;
 
     const CAPTURE_CADENCE_MS: u64 = iot_core::drivers::audio::CAPTURE_MS;
+
+    /// A full ring delays the hand-over rather than refusing it: a panel question is asked once,
+    /// and a refusal would leave it unanswered.
+    #[test]
+    fn a_full_ring_delays_a_send_instead_of_losing_it() {
+        let bus = IntentBus::new();
+        for _ in 0..INTENT_SLOTS {
+            assert!(
+                bus.try_send(Intent::Business(BusinessIntent::Invalid))
+                    .is_ok(),
+                "the ring takes a full pass"
+            );
+        }
+
+        let mut waiting = Box::pin(bus.send(Intent::Business(BusinessIntent::Invalid)));
+        assert!(
+            poll_once(waiting.as_mut()).is_pending(),
+            "a full ring must wait, not refuse"
+        );
+
+        assert!(bus.try_receive().is_ok(), "the ring is still full");
+        assert!(
+            poll_once(waiting.as_mut()).is_ready(),
+            "the freed slot takes the waiting intent"
+        );
+        assert!(
+            bus.try_receive().is_ok(),
+            "and the intent is the one that was waiting"
+        );
+    }
+
+    fn poll_once<F: core::future::Future + ?Sized>(
+        future: core::pin::Pin<&mut F>,
+    ) -> core::task::Poll<F::Output> {
+        let waker = core::task::Waker::noop();
+        future.poll(&mut core::task::Context::from_waker(waker))
+    }
 }

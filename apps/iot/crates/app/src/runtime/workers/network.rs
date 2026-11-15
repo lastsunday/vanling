@@ -25,28 +25,26 @@ pub type NetworkInbox = Inbox<NetworkCommand, COMMAND_SLOTS>;
 
 /// The coordinator's handle on the network worker.
 ///
-/// `Copy`: every field is a handle to a static, so either side can take it by value.
-#[derive(Clone, Copy)]
+/// Owned by the entry's [`crate::runtime::Runtime`], so the channels live in exactly one place
+/// and both halves reach them through this value.
 pub struct Network {
     /// Coordinator → worker: what the panel asked the link to do.
-    pub commands: &'static NetworkInbox,
+    pub commands: NetworkInbox,
     /// Coordinator → worker: the page the panel is showing, as a retained value.
-    pub page: &'static PageWatch,
+    pub page: PageWatch,
     /// Worker → coordinator: the newest scan list, and which round produced it.
-    pub scan: &'static Scan,
+    pub scan: Scan,
 }
 
-static NETWORK_INBOX: NetworkInbox = NetworkInbox::new();
-
-static PAGE: PageWatch = PageWatch::new();
-
-static SCAN: Scan = Scan::new();
-
-pub static NETWORK: Network = Network {
-    commands: &NETWORK_INBOX,
-    page: &PAGE,
-    scan: &SCAN,
-};
+impl Network {
+    pub(crate) const fn new() -> Self {
+        Self {
+            commands: NetworkInbox::new(),
+            page: PageWatch::new(),
+            scan: Scan::new(),
+        }
+    }
+}
 
 /// The scan worker's published snapshot: the newest list, plus a counter that advances once
 /// per completed round even when the list did not change. The page asks `/rescan`, reads the
@@ -79,7 +77,6 @@ impl Scan {
 
     pub fn publish(&self, list: &ApList) {
         self.list.publish(list);
-        super::WAKE.signal(());
     }
 
     /// Re-marks the list the page is already showing against the store, without waiting for the

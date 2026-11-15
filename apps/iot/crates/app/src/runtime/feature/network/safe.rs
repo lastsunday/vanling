@@ -20,7 +20,8 @@ use iot_core::provision::{ParseError, Request, Response, Status, setup_ap_ssid};
 use iot_core::safe::{Facts, STATUS_BYTES, write_status};
 
 use super::link::wait_for_address;
-use super::{heap_free, provision};
+use super::provision;
+use super::{mac_of, seed_from};
 
 /// Socket resources for the access point: one HTTP listener plus DHCP and DNS.
 const SAFE_SOCKETS: usize = 3;
@@ -38,6 +39,17 @@ const HEAD_BYTES: usize = 512;
 const SOCKET_RX_BYTES: usize = 1_024;
 const SOCKET_TX_BYTES: usize = 1_024;
 
+/// What this boot knows about itself before it serves anything: the half of the page's facts
+/// that cannot change while it runs. Built once in [`run`] because both sessions report it.
+#[derive(Clone, Copy)]
+struct BootFacts {
+    mac: [u8; 6],
+    crashed_boots: u16,
+    saved_networks: usize,
+    /// Reads the heap this boot got, or nothing when the general heap never came up.
+    heap_free: fn() -> usize,
+}
+
 /// Run the safe-mode surface until the part is reset, power-cycled or reflashed.
 ///
 /// The access point is open: the normal setup passphrase is shown on a panel this boot does
@@ -46,6 +58,7 @@ pub async fn run<S, R>(
     station: Option<Box<S>>,
     saved: Option<Box<Store<R>>>,
     crashed_boots: u16,
+    heap_free: fn() -> usize,
 ) -> !
 where
     S: Station,
@@ -62,22 +75,19 @@ where
     // station attempt is about to fail. Dropping it releases the singleton so setup can claim
     // the access-point interface.
     let device = station.take_device();
-    let mac = device.as_ref().map(mac_of).unwrap_or([0; 6]);
+    let boot = BootFacts {
+        mac: device.as_ref().map(mac_of).unwrap_or([0; 6]),
+        crashed_boots,
+        saved_networks,
+        heap_free,
+    };
     if let Some(device) = device
         && let Some(credentials) = credentials
     {
-        station_session(
-            &mut *station,
-            device,
-            &credentials,
-            mac,
-            crashed_boots,
-            saved_networks,
-        )
-        .await;
+        station_session(&mut *station, device, &credentials, boot).await;
     }
 
-    access_point(*station, mac, crashed_boots, saved_networks).await
+    access_point(*station, boot).await
 }
 
 fn credentials_for<R: FlashRegion>(saved: &Option<Box<Store<R>>>) -> Option<Credentials> {
@@ -96,21 +106,17 @@ async fn station_session<S>(
     station: &mut S,
     device: S::Device,
     credentials: &Credentials,
-    mac: [u8; 6],
-    crashed_boots: u16,
-    saved_networks: usize,
+    boot: BootFacts,
 ) where
     S: Station,
     S::Device: Driver,
 {
     let resources = Box::leak(Box::new(StackResources::<SAFE_SOCKETS>::new()));
-    let seed = seed_from(mac);
+    let seed = seed_from(boot.mac);
     let (stack, mut runner) =
         embassy_net::new(device, Config::dhcpv4(Default::default()), resources, seed);
     let report = Report {
-        mac,
-        crashed_boots,
-        saved_networks,
+        boot,
         started: Instant::now(),
         phase: Cell::new(LinkPhase::Connecting),
         address: Cell::new(None),
@@ -171,17 +177,12 @@ where
     address.is_some()
 }
 
-async fn access_point<S>(
-    mut station: S,
-    mac: [u8; 6],
-    crashed_boots: u16,
-    saved_networks: usize,
-) -> !
+async fn access_point<S>(mut station: S, boot: BootFacts) -> !
 where
     S: Station,
     S::Device: Driver,
 {
-    let name = setup_ap_ssid(crate::assets::SAFE_AP_PREFIX, mac);
+    let name = setup_ap_ssid(crate::assets::SAFE_AP_PREFIX, boot.mac);
     let device = match station.begin_setup(&name, false) {
         Ok(device) => device,
         Err(error) => {
@@ -190,13 +191,11 @@ where
         }
     };
     let resources = Box::leak(Box::new(StackResources::<SAFE_SOCKETS>::new()));
-    let seed = seed_from(mac);
+    let seed = seed_from(boot.mac);
     let (stack, mut runner) = embassy_net::new(device, provision::setup_config(), resources, seed);
 
     let report = Report {
-        mac,
-        crashed_boots,
-        saved_networks,
+        boot,
         started: Instant::now(),
         phase: Cell::new(station.status().phase),
         address: Cell::new(None),
@@ -216,10 +215,9 @@ where
     .await {}
 }
 
+/// What moved since the boot, answered beside the boot half every answer repeats.
 struct Report {
-    mac: [u8; 6],
-    crashed_boots: u16,
-    saved_networks: usize,
+    boot: BootFacts,
     started: Instant,
     phase: Cell<LinkPhase>,
     address: Cell<Option<Ipv4>>,
@@ -229,10 +227,10 @@ struct Report {
 impl Report {
     fn facts(&self) -> Facts {
         Facts {
-            mac: self.mac,
-            crashed_boots: self.crashed_boots,
-            saved_networks: self.saved_networks,
-            heap_free: heap_free(),
+            mac: self.boot.mac,
+            crashed_boots: self.boot.crashed_boots,
+            saved_networks: self.boot.saved_networks,
+            heap_free: (self.boot.heap_free)(),
             uptime_ms: self.started.elapsed().as_millis().min(u32::MAX as u64) as u32,
             phase: self.phase.get(),
             address: self.address.get(),
@@ -381,20 +379,6 @@ async fn serial_park(reason: &str) -> ! {
         Timer::after(Duration::from_secs(10)).await;
         log::error!("[SAFE] still parked; press reset, reflash over USB, or power-cycle");
     }
-}
-
-fn mac_of<D: Driver>(device: &D) -> [u8; 6] {
-    match device.hardware_address() {
-        embassy_net::driver::HardwareAddress::Ethernet(octets) => octets,
-        _ => [0; 6],
-    }
-}
-
-fn seed_from(mac: [u8; 6]) -> u64 {
-    let address = mac
-        .iter()
-        .fold(0u64, |seed, octet| (seed << 8) | u64::from(*octet));
-    (address << 16) ^ Instant::now().as_micros()
 }
 
 fn display(credentials: &Credentials) -> &str {
