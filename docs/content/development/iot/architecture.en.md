@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "ed5338584d6e80f33acb4bacc02255ade03ae68c"
-translated_at = "2026-11-15T09:23:50Z"
+source_file_hash = "1f34fdfffe44666ce954901d29ddb826f3a4760b"
+translated_at = "2026-11-16T09:49:47Z"
 +++
 
 # Architecture
@@ -84,7 +84,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
-| `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` is the one page→view dispatch `paint`, `tests.rs` guards the golden pixels |
+| `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` is the one page→view dispatch `paint`, `<page>/tests.rs` is that page's input contract, and the cross-page golden table lives in `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,splash}.rs` | single-file pages with one canvas: the `stamp_*` methods on the page shell draw directly |
 | `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `pages/network/{controller,layout,view}/` | the Network page's gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing; the draft itself lives in `shared/model/draft/` |
@@ -139,6 +139,7 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState` and the Network draft live there so pages, the snapshot and rendering all look downward
 - `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `diagnostics` (the snapshot); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
 - `shared/model` holds the records more than one place reads or writes; `DeviceState` is their aggregate, `draft/` is the Network page draft (edited by the page, copied by the snapshot, never read by the link)
+- **A test lives with the item it asserts**: in that module's own file, or in the module's own `tests.rs`; `state/tests/` is the only test tree split by topic, and the fixtures exist once, in `state/test_support.rs`. Tests are not edges of the module graph, so `module_boundaries.rs` skips `tests/`, `tests.rs` and `test_support.rs`
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
 - `runtime::feature::network` does not reach `pages`/`render`/`runtime::coordinator`: the network worker reads the page and commands from `workers`, not device state

@@ -176,60 +176,33 @@ pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::route::test_support::{long_press, op, state_on};
-    use crate::state::translate::translate;
-    use crate::state::{DeviceState, LightState, NetworkState, Page};
-    use iot_core::drivers::input::{ButtonEvent, GestureEvent, SwipeDirection};
+    use iot_core::drivers::input::{ButtonEvent, GestureEvent};
 
-    mod recognize {
-        use super::*;
-
-        #[test]
-        fn wraps_event_and_source() {
-            let event = InputEvent::Button(ButtonEvent::Click);
-            let intent = recognize(event, 3);
-            assert_eq!(intent.source, 3);
-            assert_eq!(intent.event, event);
-        }
-
-        #[test]
-        fn carries_swipe_fields_verbatim() {
-            let event = InputEvent::Gesture(GestureEvent::Swipe {
-                id: 0,
-                direction: SwipeDirection::Up,
-                x: 10,
-                y: 20,
-                end_x: 10,
-                end_y: 5,
-                held_ms: 75,
-                distance_px: 99,
-            });
-            let intent = recognize(event, 0);
-            assert_eq!(intent.source, 0);
-            assert_eq!(
-                intent.event, event,
-                "recognition keeps the gesture's tracking fields byte-for-byte"
-            );
-        }
-    }
     #[test]
-    fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
-        let setup = DeviceState {
-            network: NetworkState {
-                link: LinkStatus {
-                    mode: iot_core::drivers::network::NetworkMode::Setup {
-                        host: iot_core::drivers::network::SetupHost::Panel,
-                        cancellable: false,
-                    },
-                    ..LinkStatus::default()
-                },
-                ..NetworkState::default()
-            },
-            ..state_on(Page::Ambient, LightState::Off)
-        };
+    fn wraps_event_and_source() {
+        let event = InputEvent::Button(ButtonEvent::Click);
+        let intent = recognize(event, 3);
+        assert_eq!(intent.source, 3);
+        assert_eq!(intent.event, event);
+    }
+
+    #[test]
+    fn carries_swipe_fields_verbatim() {
+        let event = InputEvent::Gesture(GestureEvent::Swipe {
+            id: 0,
+            direction: SwipeDirection::Up,
+            x: 10,
+            y: 20,
+            end_x: 10,
+            end_y: 5,
+            held_ms: 75,
+            distance_px: 99,
+        });
+        let intent = recognize(event, 0);
+        assert_eq!(intent.source, 0);
         assert_eq!(
-            translate(&op(long_press()), &setup),
-            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+            intent.event, event,
+            "recognition keeps the gesture's tracking fields byte-for-byte"
         );
     }
 }

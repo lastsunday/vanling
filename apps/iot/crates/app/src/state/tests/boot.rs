@@ -78,3 +78,70 @@ fn an_absent_device_never_enters_the_demand() {
         "only the panel is claimed when the board declared nothing else"
     );
 }
+
+#[test]
+fn the_boot_page_joins_the_cycle_it_was_asked_for() {
+    let mut manager = landed(DeviceManager::boot(Boot {
+        backed: Backed {
+            motion: Some(MotionCapabilities::EMPTY),
+            audio: true,
+            playback: true,
+            camera: true,
+            ..Backed::NONE
+        },
+        boot_page: Page::Camera,
+        ..Default::default()
+    }));
+    assert_eq!(manager.state().page(), Page::Camera);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), Page::Ambient);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), Page::Attitude);
+}
+
+#[test]
+fn the_boot_page_falls_back_for_every_capability_not_wired() {
+    let bare = landed(DeviceManager::new());
+    let default_page = bare.state().page();
+    for page in CYCLE {
+        let boot_page = landed(DeviceManager::boot(Boot {
+            boot_page: page,
+            ..Default::default()
+        }))
+        .state()
+        .page();
+        assert_eq!(
+            boot_page, default_page,
+            "{page:?} needs no capability, so a board with nothing wired still lands on the \
+             same page either way"
+        );
+    }
+    assert_eq!(
+        landed(DeviceManager::boot(Boot {
+            backed: Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                ..Backed::NONE
+            },
+            boot_page: Page::Attitude,
+            ..Default::default()
+        }))
+        .state()
+        .page(),
+        Page::Attitude,
+        "the one capability it does have"
+    );
+    assert_eq!(
+        landed(DeviceManager::boot(Boot {
+            backed: Backed {
+                motion: Some(MotionCapabilities::EMPTY),
+                ..Backed::NONE
+            },
+            boot_page: Page::Camera,
+            ..Default::default()
+        }))
+        .state()
+        .page(),
+        Page::Ambient,
+        "and the one it does not"
+    );
+}

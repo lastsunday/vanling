@@ -114,7 +114,7 @@ impl PlaybackState {
 }
 
 #[cfg(test)]
-mod speaker_page {
+mod tests {
     use super::*;
     use crate::shared::intent::*;
     use crate::state::test_support::*;
@@ -169,63 +169,6 @@ mod speaker_page {
             before,
             "the latch flips whichever way it stood"
         );
-    }
-
-    #[test]
-    fn the_speaker_page_only_appears_on_a_board_that_has_one() {
-        assert_eq!(
-            Page::Ambient.next_page(Backed {
-                motion: Some(MotionCapabilities::EMPTY),
-                playback: true,
-                ..Backed::NONE
-            }),
-            Page::Attitude
-        );
-        assert_eq!(
-            Page::Audio.next_page(Backed {
-                motion: Some(MotionCapabilities::EMPTY),
-                audio: true,
-                playback: true,
-                ..Backed::NONE
-            }),
-            Page::Speaker
-        );
-        assert_eq!(
-            Page::Audio.next_page(Backed {
-                motion: Some(MotionCapabilities::EMPTY),
-                audio: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient,
-            "a board without a speaker skips the page"
-        );
-        assert_eq!(
-            Page::Ambient.next_page(Backed {
-                playback: true,
-                ..Backed::NONE
-            }),
-            Page::Speaker
-        );
-        assert_eq!(
-            Page::Speaker.next_page(Backed {
-                motion: Some(MotionCapabilities::EMPTY),
-                audio: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient
-        );
-    }
-
-    #[test]
-    fn a_full_lap_walks_every_page_and_returns_home() {
-        let mut manager = on_speaker();
-        let pages = [Page::Ambient, Page::Attitude, Page::Audio];
-        for expected in pages {
-            manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-            assert_eq!(manager.state().page(), expected);
-        }
-        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-        assert_eq!(manager.state().page(), Page::Speaker, "and back round");
     }
 
     #[test]

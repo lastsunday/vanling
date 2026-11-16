@@ -18,9 +18,6 @@ mod network;
 mod speaker;
 mod splash;
 
-#[cfg(test)]
-pub(crate) mod test_support;
-
 pub use self::nav::{MAX_DEPTH, Navigator};
 
 pub use self::splash::SPLASH_MS;
@@ -264,6 +261,10 @@ const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use alloc::vec::Vec;
+    use iot_core::drivers::motion::MotionCapabilities;
+
+    const MOTION: Option<MotionCapabilities> = Some(MotionCapabilities::EMPTY);
 
     #[test]
     fn the_table_is_in_code_order_and_the_cycle_is_its_prefix() {
@@ -324,6 +325,227 @@ mod tests {
                 "{page:?} is neither somewhere the device may come up nor a transient with a \
                  lifetime"
             );
+        }
+    }
+
+    #[test]
+    fn the_audio_page_only_appears_on_a_board_that_has_one() {
+        let sound_only = Backed {
+            audio: true,
+            ..Backed::NONE
+        };
+        assert_eq!(
+            Page::Ambient.next_page(Backed {
+                motion: MOTION,
+                ..Backed::NONE
+            }),
+            Page::Attitude
+        );
+        assert_eq!(
+            Page::Attitude.next_page(Backed {
+                motion: MOTION,
+                ..Backed::NONE
+            }),
+            Page::Ambient,
+            "a board without audio skips the page"
+        );
+        assert_eq!(Page::Ambient.next_page(sound_only), Page::Audio);
+        assert_eq!(
+            Page::Attitude.next_page(Backed {
+                motion: MOTION,
+                audio: true,
+                ..Backed::NONE
+            }),
+            Page::Audio
+        );
+    }
+
+    #[test]
+    fn the_speaker_page_only_appears_on_a_board_that_has_one() {
+        assert_eq!(
+            Page::Ambient.next_page(Backed {
+                motion: MOTION,
+                playback: true,
+                ..Backed::NONE
+            }),
+            Page::Attitude
+        );
+        assert_eq!(
+            Page::Audio.next_page(Backed {
+                motion: MOTION,
+                audio: true,
+                playback: true,
+                ..Backed::NONE
+            }),
+            Page::Speaker
+        );
+        assert_eq!(
+            Page::Audio.next_page(Backed {
+                motion: MOTION,
+                audio: true,
+                ..Backed::NONE
+            }),
+            Page::Ambient,
+            "a board without a speaker skips the page"
+        );
+        assert_eq!(
+            Page::Ambient.next_page(Backed {
+                playback: true,
+                ..Backed::NONE
+            }),
+            Page::Speaker
+        );
+        assert_eq!(
+            Page::Speaker.next_page(Backed {
+                motion: MOTION,
+                audio: true,
+                ..Backed::NONE
+            }),
+            Page::Ambient
+        );
+    }
+
+    #[test]
+    fn the_camera_page_only_appears_on_a_board_that_has_one() {
+        let camera_only = Backed {
+            camera: true,
+            ..Backed::NONE
+        };
+        assert_eq!(Page::Ambient.next_page(camera_only), Page::Camera);
+        assert_eq!(
+            Page::Ambient.next_page(Backed::NONE),
+            Page::Ambient,
+            "a board without a camera never reaches the page"
+        );
+        assert_eq!(
+            Page::Audio.next_page(camera_only),
+            Page::Camera,
+            "the camera follows the pages that need a wired source"
+        );
+        assert_eq!(
+            Page::Audio.next_page(Backed::NONE),
+            Page::Ambient,
+            "and is skipped when there is none"
+        );
+    }
+
+    #[test]
+    fn leaving_the_last_page_wraps_to_the_start_of_the_cycle() {
+        assert_eq!(
+            Page::Network.next_page(Backed {
+                motion: MOTION,
+                network: true,
+                ..Backed::NONE
+            }),
+            Page::Ambient,
+            "a board that lost the link mid-cycle wraps rather than jumping ahead"
+        );
+        assert_eq!(
+            Page::Network.next_page(Backed {
+                network: true,
+                ..Backed::NONE
+            }),
+            Page::Ambient,
+            "and a link is the only capability, so back to Ambient"
+        );
+        assert_eq!(
+            Page::Camera.next_page(Backed {
+                camera: true,
+                network: true,
+                ..Backed::NONE
+            }),
+            Page::Network
+        );
+        assert_eq!(
+            Page::Camera.next_page(Backed {
+                motion: MOTION,
+                ..Backed::NONE
+            }),
+            Page::Ambient,
+            "a board that lost the camera mid-cycle wraps rather than jumping ahead"
+        );
+        assert_eq!(
+            Page::Camera.next_page(Backed {
+                audio: true,
+                ..Backed::NONE
+            }),
+            Page::Ambient
+        );
+        assert_eq!(
+            Page::Camera.next_page(Backed::NONE),
+            Page::Ambient,
+            "and a camera is the only capability, so back to Ambient"
+        );
+    }
+
+    #[test]
+    fn every_page_the_board_can_back_is_shown_on_the_way_round() {
+        for (motion, audio, playback, camera, network) in [
+            (false, false, false, false, false),
+            (true, false, false, false, false),
+            (false, true, false, false, false),
+            (false, false, true, false, false),
+            (false, false, false, true, false),
+            (false, false, false, false, true),
+            (true, true, true, true, true),
+            (false, true, true, true, true),
+            (true, false, false, true, true),
+            (true, true, true, true, false),
+        ] {
+            let wired = Backed {
+                motion: motion.then_some(MotionCapabilities::EMPTY),
+                audio,
+                playback,
+                camera,
+                network,
+            };
+            let backed: Vec<Page> = CYCLE
+                .iter()
+                .copied()
+                .filter(|page| page.is_backed(wired))
+                .collect();
+            assert!(
+                !backed.is_empty(),
+                "Ambient needs no capability, so there is always somewhere to go"
+            );
+            for start in CYCLE {
+                let start_is_backed = backed.contains(&start);
+                let mut seen = Vec::new();
+                let mut page = start;
+                for _ in 0..backed.len() {
+                    page = page.next_page(wired);
+                    seen.push(page);
+                }
+                let mut expected = backed.clone();
+                let mut walked = seen.clone();
+                expected.sort_by_key(|page| page.code());
+                walked.sort_by_key(|page| page.code());
+                assert_eq!(
+                    walked, expected,
+                    "a full turn from {start:?} did not visit each backed page once \
+                     (motion={motion} audio={audio} playback={playback} camera={camera} \
+                     network={network})"
+                );
+                if start_is_backed {
+                    assert_eq!(
+                        page, start,
+                        "and a full turn from a page the board backs comes back to it, so \
+                         the toggle is a cycle rather than a drift"
+                    );
+                } else {
+                    assert!(
+                        backed.contains(&seen[0]),
+                        "one tap off {start:?} enters the cycle rather than staying put"
+                    );
+                }
+            }
+            if backed.len() == 1 {
+                assert_eq!(
+                    backed[0].next_page(wired),
+                    backed[0],
+                    "a board that backs one page has nowhere to go and stays"
+                );
+            }
         }
     }
 }

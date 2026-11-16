@@ -2,3 +2,6 @@
 
 pub mod controller;
 mod view;
+
+#[cfg(test)]
+mod tests;

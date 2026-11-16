@@ -1,5 +1,7 @@
 pub(crate) use super::*;
-pub(crate) use crate::shared::intent::{BusinessIntent, InputIntent, Intent, NavigationIntent};
+pub(crate) use crate::shared::intent::{
+    BusinessIntent, InputIntent, Intent, LightAction, NavigationIntent,
+};
 pub(crate) use crate::shared::route::CYCLE;
 pub(crate) use crate::state::translate::translate;
 pub(crate) use iot_core::demand::EffectiveDemand;
@@ -7,7 +9,9 @@ pub(crate) use iot_core::drivers::input::{
     ButtonEvent, GestureEvent, InputEvent, MAX_TOUCH_POINTS, SwipeDirection, TouchEvent,
     TouchPoint, TouchStatus,
 };
-pub(crate) use iot_core::drivers::motion::{MotionCounts, MotionSample, MotionScale};
+pub(crate) use iot_core::drivers::motion::{
+    MotionCapabilities, MotionCounts, MotionSample, MotionScale,
+};
 pub(crate) use iot_core::drivers::network::{Ipv4, SavedNetworks};
 
 impl DeviceManager {
@@ -134,4 +138,81 @@ pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
     manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     assert_ne!(manager.state().page(), Page::Splash);
     manager
+}
+
+/// A state with every capability wired, on `page`, with every light at `light`.
+pub(crate) fn state_on(page: Page, light: LightState) -> DeviceState {
+    DeviceState {
+        lights: [light; MAX_LIGHTS],
+        surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
+        nav: Navigator::new(page),
+        backed: Backed {
+            motion: Some(MotionCapabilities::EMPTY),
+            audio: true,
+            playback: true,
+            camera: true,
+            network: true,
+        },
+        ..DeviceState::default()
+    }
+}
+
+pub(crate) fn state(light: LightState) -> DeviceState {
+    state_on(Page::Ambient, light)
+}
+
+/// The base state with one network fact changed.
+pub(crate) fn with_network(
+    mut state: DeviceState,
+    change: impl FnOnce(&mut NetworkState),
+) -> DeviceState {
+    change(&mut state.network);
+    state
+}
+
+/// The same for the Network page's own record, which the link never writes.
+pub(crate) fn with_network_page(
+    mut state: DeviceState,
+    change: impl FnOnce(&mut NetworkDraft),
+) -> DeviceState {
+    change(&mut state.network_page);
+    state
+}
+
+pub(crate) fn target(event: InputEvent, current: LightState) -> Option<LightAction> {
+    target_in(event, &state(current))
+}
+
+pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightAction> {
+    match translate(&op(event), current) {
+        BusinessIntent::Light { action, .. } => Some(action),
+        _ => None,
+    }
+}
+
+pub(crate) fn tap_gesture(held_ms: u16) -> InputEvent {
+    InputEvent::Gesture(GestureEvent::Tap {
+        id: 0,
+        x: 0,
+        y: 0,
+        held_ms,
+        at_ms: 0,
+    })
+}
+
+pub(crate) fn swipe_event(direction: SwipeDirection) -> InputEvent {
+    InputEvent::Gesture(GestureEvent::Swipe {
+        id: 0,
+        direction,
+        x: 0,
+        y: 0,
+        end_x: 0,
+        end_y: 0,
+        held_ms: 0,
+        distance_px: 80,
+    })
+}
+
+pub(crate) fn long_press_event() -> InputEvent {
+    InputEvent::Button(ButtonEvent::LongPress)
 }

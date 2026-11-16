@@ -80,7 +80,7 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`tests.rs` 守黄金像素 |
+| `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`<page>/tests.rs` 是这一页的输入契约，跨页的黄金像素表在 `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
 | `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `pages/network/{controller,layout,view}/` | Network 页的手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制；草稿本身在 `shared/model/draft/` |
@@ -133,6 +133,7 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 - `shared` 是叶子：不依赖 `state`/`pages`/`render`/`runtime`。`DeviceState` 与 Network 草稿放在这里，就是为了让页面、快照和渲染都只朝下看
 - `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`diagnostics`（快照）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
 - `shared/model` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`draft/` 是 Network 页草稿（页面编辑、快照复制、链路不读）
+- **测试跟着断言对象走**：一个测试放在它断言的模块的文件里，或该模块自己的 `tests.rs`；`state/tests/` 是唯一按主题分文件的测试树，夹具只有一份，在 `state/test_support.rs`。测试不算模块图的一条边，`module_boundaries.rs` 因此不扫 `tests/`、`tests.rs` 与 `test_support.rs`
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
 - `runtime::feature::network` 不依赖 `pages`/`render`/`runtime::coordinator`：网络工作者读 `workers` 的页面与命令，不读设备状态

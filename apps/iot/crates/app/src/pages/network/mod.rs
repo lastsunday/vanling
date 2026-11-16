@@ -5,3 +5,6 @@
 pub mod controller;
 pub mod layout;
 mod view;
+
+#[cfg(test)]
+mod tests;

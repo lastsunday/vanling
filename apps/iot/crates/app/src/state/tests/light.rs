@@ -3,7 +3,6 @@
 use super::*;
 use crate::shared::intent::{LightAction, recognize};
 use crate::shared::model::PALETTE;
-use crate::shared::route::test_support::{DEFAULT_BREATH, state, swipe_event, tap_gesture};
 
 fn two_lights() -> DeviceState {
     DeviceState {
@@ -14,7 +13,7 @@ fn two_lights() -> DeviceState {
                 brightness: 140,
             },
         ],
-        ..state(DEFAULT_BREATH)
+        ..state(BREATH)
     }
 }
 
@@ -24,7 +23,7 @@ fn lamp_intent(event: InputEvent, current: &DeviceState) -> BusinessIntent {
 
 #[test]
 fn a_button_asks_for_one_verb_per_click() {
-    let ambient = state(DEFAULT_BREATH);
+    let ambient = state(BREATH);
     for (event, action) in [
         (
             InputEvent::Button(ButtonEvent::Click),
@@ -52,7 +51,7 @@ fn a_button_asks_for_one_verb_per_click() {
 
 #[test]
 fn a_touch_asks_the_panel_surface() {
-    let ambient = state(DEFAULT_BREATH);
+    let ambient = state(BREATH);
     assert_eq!(
         lamp_intent(tap_gesture(0), &ambient),
         BusinessIntent::Light {
@@ -99,7 +98,7 @@ fn a_diagonal_swipe_asks_for_nothing() {
         SwipeDirection::DownRight,
     ] {
         assert_eq!(
-            lamp_intent(swipe_event(direction), &state(DEFAULT_BREATH)),
+            lamp_intent(swipe_event(direction), &state(BREATH)),
             BusinessIntent::Invalid,
             "{direction:?} has no axis"
         );
