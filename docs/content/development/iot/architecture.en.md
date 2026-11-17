@@ -76,7 +76,7 @@ Names follow the work: a one-shot report is `*_reported` (`first_frame_reported`
 
 ## Inside `iot-app`
 
-`app/src/` is organised by vertical slice: each page is its own directory, cross-page truth and vocabulary live in `shared/`, the composition root and the presentation layer stand apart, and wiring happens only in the composition root.
+`app/src/` is organised by vertical slice: each page is its own slice (a file for a small page, a directory for a large one), cross-page truth and vocabulary live in `shared/`, the composition root and the presentation layer stand apart, and wiring happens only in the composition root.
 
 A page is where the device is, not a picture on a screen: `Route.needs` asks only what the board wired, and whether a panel exists is answered separately by `SurfaceRole::Pages`; a board with no panel still has a current page, and the lamp, demand and network setup are simply its other readers.
 
@@ -84,10 +84,10 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
-| `pages/` | the product's pages, one vertical slice each: every page directory holds the `model` / `controller` / `layout` / `view` it needs, and the directory is the unit of cohesion; `mod.rs` defines the shared `Page` (`apply`/`publish`) and the screen-side `LocalPage` (`bind`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the `PageId`-dispatched paint / ground / frames / repaint functions; `<page>/tests.rs` is that page's input contract, and the cross-page golden table lives in `pages/tests.rs` |
+| `pages/` | the product's pages, one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `layout` / `view` as needed); `mod.rs` defines the shared `Page` (`apply`/`publish`) and the screen-side `LocalPage` (`bind`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the `PageId`-dispatched paint / ground / frames / repaint functions; a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,env,splash}.rs` | single-file pages with one canvas: the `paint_*` methods on the page shell draw directly |
-| `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
-| `pages/network/{controller,layout,view}/` | the Network page's gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing; the page view is `NetworkPage`'s own field, and its type `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
+| `pages/audio/{mod,tests}.rs`, `pages/speaker/{mod,tests}.rs` | translation and drawing both in `mod.rs`; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
+| `pages/network/` | gestures and controls in `controller/`: `mod.rs` is the gesture translation and the strip, `bands.rs` decides which bands are on the glass; `layout/` holds one hit geometry per band (`content.rs` list and key grid, `toolbar.rs` action strip, `dialog.rs` confirmation box); `view/` mirrors them (`header` / `content` / `overlay`, with the words in `text.rs`); `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
 | `shared/` | cross-page truth and vocabulary: only what more than one page reads, and the leaf of the module graph |
 | `shared/model/` | records the workers write and the render loop reads, one file per domain; `device.rs` is the aggregate `DeviceState`, `page.rs` is the `PageSnapshot` the pages publish, and `network_view/` is the Network page's view (owned by the page, copied by the snapshot, never read by the link) |
 | `shared/route/{mod,nav}.rs` | the route table and `Navigator`: `PageId` is the destination, `route()` is the exhaustive match, `ALL` is the only order (the button walks it too) |
@@ -134,7 +134,7 @@ runtime::workers           → { shared::model }
 bench             → { lib::run_with, pages::network::{controller, layout}, shared::{intent, model}, state, runtime::{feature::{input, playback}, system} }
 ```
 
-- **pages never import each other**: a page directory reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
+- **pages never import each other**: a page reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
 - **`pages` is the only module that knows every page**: every page is a concrete type (`AmbientPage`…`NetworkPage`), and `PageSet` dispatches on `PageId` exhaustively; `state` asks only through `PageSet::apply`/`snapshot`/`enter`/`leave`, and `render` only through `pages::paint`/`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`; a page reads `shared` (including `DeviceState` and `Diagnostics`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
 - **`shared/kit` names no page**: `Surface` offers the `draw_*` marks; `pages::paint` decides which page draws what
 - `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState`, `PageSnapshot` and `NetworkView` live there so pages, the snapshot and rendering all look downward

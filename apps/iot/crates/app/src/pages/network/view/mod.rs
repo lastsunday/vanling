@@ -1,19 +1,16 @@
-//! The Network page's setup UI: one file per band, and the page's own strip.
+//! The Network page's bands, and the strip under them.
 
-mod dialog;
-mod dialog_box;
+mod content;
 mod header;
-mod keyboard;
-mod list;
+mod overlay;
 mod text;
 
 use crate::pages::network::controller::{self as page_controls, Band, each_band};
 use crate::pages::network::layout;
-use crate::shared::model::NetworkView;
-use iot_core::drivers::network::{ApList, LinkStatus};
-
 use crate::pages::network::view::text::control_label;
 use crate::shared::kit::surface::Surface;
+use crate::shared::model::NetworkView;
+use iot_core::drivers::network::LinkStatus;
 
 impl Surface<'_> {
     pub(crate) fn paint_network(&mut self) {
@@ -41,16 +38,6 @@ impl Surface<'_> {
             Band::Controls => self.draw_strip(setup, link),
             Band::Overlay => self.draw_box(setup, link, shown_ap, self.diagnostics.mac),
         });
-    }
-
-    fn draw_content(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
-        if draft.keyboard {
-            if let Some(entry) = draft.entry {
-                self.draw_keyboard(entry, draft.revealed);
-            }
-            return;
-        }
-        self.draw_list(draft, link, aps);
     }
 
     fn draw_strip(&mut self, draft: NetworkView, link: LinkStatus) {

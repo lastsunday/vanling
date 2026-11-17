@@ -72,7 +72,7 @@ weight = 10
 
 ## iot-app 内部分区
 
-`app/src/` 按垂直切片组织：页面各自成目录，跨页真相与词汇收在 `shared/`，组合根与表示层各自独立，接线只发生在组合根。
+`app/src/` 按垂直切片组织：页面各自成片（小页一个文件，大页一个目录），跨页真相与词汇收在 `shared/`，组合根与表示层各自独立，接线只发生在组合根。
 
 页面是设备当前的目的地，不是屏幕上的画面：`Route.needs` 只看板子接了什么能力，屏的存在由 `SurfaceRole::Pages` 单独回答；无面板的板子照样有当前页，灯带、demand 与网络 setup 都只是这个目的地的其他消费者。
 
@@ -80,10 +80,10 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `pages/` | 产品页面，一页一个垂直切片：每页目录自带它需要的 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 定义应用侧 `Page`（`apply`/`publish`）与屏幕侧 `LocalPage`（`bind`/`on_show`/`on_hide`），持有全部实例的 `PageSet`，以及按 `PageId` 穷尽分派的绘制/底色/出帧/重绘函数；`<page>/tests.rs` 是这一页的输入契约，跨页的黄金像素表在 `pages/tests.rs` |
+| `pages/` | 产品页面，一页一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `layout` / `view` 按需拆）；`mod.rs` 定义应用侧 `Page`（`apply`/`publish`）与屏幕侧 `LocalPage`（`bind`/`on_show`/`on_hide`），持有全部实例的 `PageSet`，以及按 `PageId` 穷尽分派的绘制/底色/出帧/重绘函数；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,env,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `paint_*` 直接画 |
-| `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
-| `pages/network/{controller,layout,view}/` | Network 页的手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制；页视图是 `NetworkPage` 自己的字段，类型 `NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
+| `pages/audio/{mod,tests}.rs`、`pages/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
+| `pages/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译与动作条，`bands.rs` 决定哪几条带在屏上；`layout/` 一条带一份命中几何（`content.rs` 列表与键格、`toolbar.rs` 动作条、`dialog.rs` 确认框）；`view/` 一一对应（`header` / `content` / `overlay`，词在 `text.rs`）；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`page.rs` 是页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读） |
 | `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`PageId` 是目的地，`route()` 是穷尽 `match`，`ALL` 是唯一次序（按钮也照它走） |
@@ -128,7 +128,7 @@ runtime::workers           → { shared::model }
 bench             → { lib::run_with, pages::network::{controller, layout}, shared::{intent, model}, state, runtime::{feature::{input, playback}, system} }
 ```
 
-- **页面之间不互相 import**：页面目录只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
+- **页面之间不互相 import**：页面只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
 - **`pages` 是唯一认识所有页面的模块**：每页一个具体类型（`AmbientPage`…`NetworkPage`），`PageSet` 按 `PageId` 穷尽分派；`state` 只经 `PageSet::apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `pages::paint`/`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on` 取答案；页面只读 `shared`（含 `DeviceState`、`Diagnostics`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
 - **`shared/kit` 不认页面**：`Surface` 提供 `draw_*` 记号，哪个页面画什么由 `pages::paint` 决定
 - `shared` 是叶子：不依赖 `state`/`pages`/`render`/`runtime`。`DeviceState`、`PageSnapshot` 与 `NetworkView` 放在这里，就是为了让页面、快照和渲染都只朝下看

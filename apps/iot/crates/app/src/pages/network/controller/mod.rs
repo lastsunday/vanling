@@ -1,20 +1,16 @@
-//! What one gesture means on the Network page: the keyboard, the list, and the two dialogs.
-//!
-//! The bands and the strip are read by the view but are not state the model owns.
+//! What one gesture means on the Network page, and what each control it offers does.
 
 pub mod bands;
-pub mod verbs;
 
 pub use self::bands::{Band, each_band, joining};
-pub use self::verbs::{Answers, Control, ControlKind, Strip, answers, confirm_verb, strip};
 
-use self::verbs as page_controls;
 use crate::pages::network::layout;
+use crate::pages::network::layout::ToolbarCell;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{BusinessIntent, InputIntent, NetworkPageIntent};
 use crate::shared::model::{DeviceState, NetworkView};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
-use iot_core::drivers::network::AccessPoint;
+use iot_core::drivers::network::{AccessPoint, LinkStatus, NetworkMode, SetupHost};
 
 pub(crate) fn bind(op: &InputIntent, current: &DeviceState, draft: NetworkView) -> BusinessIntent {
     match op.event {
@@ -40,7 +36,7 @@ pub(crate) fn bind(op: &InputIntent, current: &DeviceState, draft: NetworkView) 
             }
         }
         InputEvent::Button(ButtonEvent::Click) => {
-            page_controls::strip(draft, current.network.link).command(layout::ToolbarCell::Right)
+            strip(draft, current.network.link).command(layout::ToolbarCell::Right)
         }
         _ => BusinessIntent::Invalid,
     }
@@ -59,7 +55,7 @@ fn tap(current: &DeviceState, draft: NetworkView, x: u16, y: u16, at_ms: u32) ->
         return answer;
     }
     if let Some(cell) = layout::toolbar_cell_at(x, y) {
-        return page_controls::strip(draft, current.network.link).command(cell);
+        return strip(draft, current.network.link).command(cell);
     }
     if !Band::Content.showing(draft, current.network.link) {
         return BusinessIntent::Invalid;
@@ -92,7 +88,7 @@ fn hold(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> BusinessIn
 
 fn answer_at(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> Option<BusinessIntent> {
     if current.network.link.shows_setup_box() {
-        let answers = page_controls::answers(current.network.link);
+        let answers = answers(current.network.link);
         return match layout::dialog_choice_at(x, y) {
             Some(layout::DialogChoice::Keep) => Some(answers.keep.command),
             Some(layout::DialogChoice::Act) => Some(answers.act.command),
@@ -113,4 +109,383 @@ fn answer_at(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> Optio
 fn ap_at(current: &DeviceState, draft: NetworkView, band: usize) -> Option<AccessPoint> {
     let index = usize::from(draft.list_top) + band;
     current.network.aps.and_then(|list| list.get(index))
+}
+
+/// What a box does, which is also what the view has to call it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ControlKind {
+    Cancel,
+    Scan,
+    Wait,
+    Leave,
+    Forget,
+    Keep,
+    AccessPoint,
+    Panel,
+    Pass,
+    NoPass,
+}
+
+/// One box: the outcome it asks for and the command a tap sends.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Control {
+    pub kind: ControlKind,
+    pub command: BusinessIntent,
+}
+
+/// The action strip: one box, or two while setup mode has two verbs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Strip {
+    left: Option<Control>,
+    right: Control,
+}
+
+impl Strip {
+    /// The command a tap on `cell` sends.
+    pub fn command(self, cell: ToolbarCell) -> BusinessIntent {
+        match (cell, self.left) {
+            (ToolbarCell::Left, Some(left)) => left.command,
+            _ => self.right.command,
+        }
+    }
+
+    /// What `cell` does.
+    pub fn kind(self, cell: ToolbarCell) -> ControlKind {
+        match (cell, self.left) {
+            (ToolbarCell::Left, Some(left)) => left.kind,
+            _ => self.right.kind,
+        }
+    }
+
+    /// Whether the strip is split, which is also whether the left box is drawn.
+    pub fn is_split(self) -> bool {
+        self.left.is_some()
+    }
+}
+
+/// The strip the page is offering right now.
+pub fn strip(draft: NetworkView, link: LinkStatus) -> Strip {
+    let asked = draft.join_wait || draft.setup_wait.is_some();
+    if let NetworkMode::Setup { host, cancellable } = link.mode {
+        let right = Control {
+            kind: if asked {
+                ControlKind::Wait
+            } else {
+                match host {
+                    SetupHost::Panel => ControlKind::AccessPoint,
+                    SetupHost::AccessPoint => ControlKind::Panel,
+                }
+            },
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
+        };
+        let left = match (host, cancellable) {
+            (_, true) => Some(Control {
+                kind: if draft.setup_wait.is_some() {
+                    ControlKind::Wait
+                } else {
+                    ControlKind::Cancel
+                },
+                command: BusinessIntent::NetworkPage(NetworkPageIntent::CloseSetup),
+            }),
+            (SetupHost::Panel, false) => Some(Control {
+                kind: if draft.busy() {
+                    ControlKind::Wait
+                } else {
+                    ControlKind::Scan
+                },
+                command: BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
+            }),
+            (SetupHost::AccessPoint, false) => None,
+        };
+        return Strip { left, right };
+    }
+    if link.mode.is_browsing() {
+        let left = Control {
+            kind: if draft.busy() {
+                ControlKind::Wait
+            } else {
+                ControlKind::Scan
+            },
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
+        };
+        let right = Control {
+            kind: if asked {
+                ControlKind::Wait
+            } else {
+                ControlKind::AccessPoint
+            },
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
+        };
+        return Strip {
+            left: Some(left),
+            right,
+        };
+    }
+    let right = if link.is_leavable() {
+        Control {
+            kind: ControlKind::Leave,
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::Leave),
+        }
+    } else {
+        Control {
+            kind: if draft.busy() {
+                ControlKind::Wait
+            } else {
+                ControlKind::Scan
+            },
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow),
+        }
+    };
+    Strip { left: None, right }
+}
+
+/// The setup box's two answers: what each does, and what each asks for.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Answers {
+    pub keep: Control,
+    pub act: Control,
+}
+
+/// The answers to the box a phone's setup is read in.
+pub fn answers(link: LinkStatus) -> Answers {
+    let keep = if link.setup_password.is_some() {
+        Control {
+            kind: ControlKind::NoPass,
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true)),
+        }
+    } else {
+        Control {
+            kind: ControlKind::Pass,
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(false)),
+        }
+    };
+    Answers {
+        keep,
+        act: Control {
+            kind: ControlKind::Panel,
+            command: BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
+        },
+    }
+}
+
+/// What a confirmation's action button does: the thing itself, not the button it is.
+pub fn confirm_verb(confirm: Confirm) -> ControlKind {
+    match confirm {
+        Confirm::Leave => ControlKind::Leave,
+        Confirm::Forget(_) => ControlKind::Forget,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::shared::model::SetupWait;
+    use iot_core::drivers::network::{LinkPhase, SetupPass};
+
+    fn in_setup(host: SetupHost, cancellable: bool) -> LinkStatus {
+        LinkStatus {
+            mode: NetworkMode::Setup { host, cancellable },
+            ..LinkStatus::default()
+        }
+    }
+
+    #[test]
+    fn a_link_offers_leave_and_an_idle_one_offers_the_next_round() {
+        let linked = LinkStatus {
+            phase: LinkPhase::Connected,
+            ..LinkStatus::default()
+        };
+        let linked = strip(NetworkView::default(), linked);
+        assert!(!linked.is_split());
+        assert_eq!(linked.kind(ToolbarCell::Left), ControlKind::Leave);
+        assert_eq!(
+            linked.command(ToolbarCell::Left),
+            BusinessIntent::NetworkPage(NetworkPageIntent::Leave)
+        );
+        assert_eq!(
+            linked.command(ToolbarCell::Right),
+            BusinessIntent::NetworkPage(NetworkPageIntent::Leave)
+        );
+
+        let idle = strip(NetworkView::default(), LinkStatus::default());
+        assert_eq!(idle.kind(ToolbarCell::Right), ControlKind::Scan);
+        assert_eq!(
+            idle.command(ToolbarCell::Right),
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
+        );
+
+        let waiting = NetworkView {
+            rescan_wait: true,
+            ..NetworkView::default()
+        };
+        let waiting = strip(waiting, LinkStatus::default());
+        assert_eq!(waiting.kind(ToolbarCell::Right), ControlKind::Wait);
+        assert_eq!(
+            waiting.command(ToolbarCell::Right),
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
+        );
+    }
+
+    #[test]
+    fn setup_offers_the_way_back_beside_the_front_switch() {
+        let split = strip(NetworkView::default(), in_setup(SetupHost::Panel, true));
+        assert!(split.is_split());
+        assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Cancel);
+        assert_eq!(
+            split.command(ToolbarCell::Left),
+            BusinessIntent::NetworkPage(NetworkPageIntent::CloseSetup)
+        );
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
+        assert_eq!(
+            split.command(ToolbarCell::Right),
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+        );
+    }
+
+    #[test]
+    fn the_offline_list_keeps_both_cells() {
+        let browsing = LinkStatus {
+            mode: NetworkMode::Browsing,
+            ..LinkStatus::default()
+        };
+        let split = strip(NetworkView::default(), browsing);
+        assert!(split.is_split());
+        assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
+        assert_eq!(
+            split.command(ToolbarCell::Left),
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
+        );
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
+        assert_eq!(
+            split.command(ToolbarCell::Right),
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+        );
+    }
+
+    #[test]
+    fn a_panel_with_nothing_to_go_back_to_still_has_the_next_round() {
+        let split = strip(NetworkView::default(), in_setup(SetupHost::Panel, false));
+        assert!(split.is_split());
+        assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
+        assert_eq!(
+            split.command(ToolbarCell::Left),
+            BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
+        );
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
+
+        let waiting = NetworkView {
+            rescan_wait: true,
+            ..NetworkView::default()
+        };
+        let waiting = strip(waiting, in_setup(SetupHost::Panel, false));
+        assert_eq!(waiting.kind(ToolbarCell::Left), ControlKind::Wait);
+    }
+
+    #[test]
+    fn the_phones_one_box_switches_on_either_half() {
+        let one = strip(
+            NetworkView::default(),
+            in_setup(SetupHost::AccessPoint, false),
+        );
+        assert!(!one.is_split());
+        for cell in [ToolbarCell::Left, ToolbarCell::Right] {
+            assert_eq!(one.kind(cell), ControlKind::Panel);
+            assert_eq!(
+                one.command(cell),
+                BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+            );
+        }
+    }
+
+    #[test]
+    fn the_passphrase_answer_names_the_state_it_moves_to() {
+        let secured = LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
+            setup_password: Some(SetupPass::from_array(*b"k3mq9t7w2x")),
+            ..LinkStatus::default()
+        };
+        let secured = answers(secured);
+        assert_eq!(secured.keep.kind, ControlKind::NoPass);
+        assert_eq!(
+            secured.keep.command,
+            BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(true))
+        );
+        assert_eq!(secured.act.kind, ControlKind::Panel);
+        assert_eq!(
+            secured.act.command,
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+        );
+
+        let open = LinkStatus {
+            mode: NetworkMode::Setup {
+                host: SetupHost::AccessPoint,
+                cancellable: false,
+            },
+            ..LinkStatus::default()
+        };
+        let open = answers(open);
+        assert_eq!(open.keep.kind, ControlKind::Pass);
+        assert_eq!(
+            open.keep.command,
+            BusinessIntent::NetworkPage(NetworkPageIntent::SetOpenAccessPoint(false))
+        );
+    }
+
+    #[test]
+    fn a_confirmation_is_named_by_what_it_does() {
+        assert_eq!(confirm_verb(Confirm::Leave), ControlKind::Leave);
+        assert_eq!(
+            confirm_verb(Confirm::Forget(
+                iot_core::drivers::network::AccessPoint::default()
+            )),
+            ControlKind::Forget
+        );
+    }
+
+    #[test]
+    fn a_pending_join_turns_the_front_switch_into_a_wait() {
+        let draft = NetworkView {
+            join_wait: true,
+            ..NetworkView::default()
+        };
+        let browsing = LinkStatus {
+            mode: NetworkMode::Browsing,
+            ..LinkStatus::default()
+        };
+        let split = strip(draft, browsing);
+        assert_eq!(split.kind(ToolbarCell::Right), ControlKind::Wait);
+        assert_eq!(
+            split.command(ToolbarCell::Right),
+            BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
+            "the cell still names the tap it would take, once the join is answered"
+        );
+    }
+
+    #[test]
+    fn a_pending_setup_change_turns_both_cells_into_waits() {
+        let asked = NetworkView {
+            setup_wait: Some(SetupWait::Host(SetupHost::AccessPoint)),
+            ..NetworkView::default()
+        };
+        let panel = strip(asked, in_setup(SetupHost::Panel, false));
+        assert_eq!(panel.kind(ToolbarCell::Left), ControlKind::Wait);
+        assert_eq!(panel.kind(ToolbarCell::Right), ControlKind::Wait);
+
+        let closable = strip(asked, in_setup(SetupHost::Panel, true));
+        assert_eq!(
+            closable.kind(ToolbarCell::Left),
+            ControlKind::Wait,
+            "closing is not offered while the switch is on its way either"
+        );
+
+        let open = NetworkView {
+            setup_wait: Some(SetupWait::Open(true)),
+            ..NetworkView::default()
+        };
+        let one = strip(open, in_setup(SetupHost::AccessPoint, false));
+        assert_eq!(one.kind(ToolbarCell::Right), ControlKind::Wait);
+    }
 }

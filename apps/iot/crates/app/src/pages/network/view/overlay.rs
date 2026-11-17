@@ -1,16 +1,76 @@
 //! The overlay band: the confirmation, the setup announcement, and the join box.
 
-use crate::pages::network::controller::{self as page_controls, ControlKind, confirm_verb};
-use crate::pages::network::layout::DIALOG_GLYPHS;
-use crate::shared::model::{NetworkView, SetupWait};
-use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
-
-use super::dialog_box::Dialog;
+use crate::pages::network::controller::{ControlKind, answers, confirm_verb};
+use crate::pages::network::layout::{
+    DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP, DIALOG_TOP, DIALOG_W,
+    DIALOG_X, DialogChoice, dialog_answer_box,
+};
 use crate::pages::network::view::text::{
     SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
     format_question, format_setup_notice_body, format_setup_pass, joining_body,
 };
 use crate::shared::kit::surface::Surface;
+use crate::shared::model::{NetworkView, SetupWait};
+use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
+use iot_core::geometry::ControlRect;
+use iot_core::overlay::ROW_PITCH;
+
+/// A box over the list: a title, up to two lines under it, and optionally two answers along
+/// its bottom edge. It owns where each part sits, so a caller hands it words only.
+struct Dialog<'a> {
+    title: &'a [u8],
+    lines: [&'a [u8]; 2],
+    line_count: usize,
+    answers: Option<(&'a [u8], &'a [u8])>,
+}
+
+impl<'a> Dialog<'a> {
+    fn new(title: &'a [u8]) -> Self {
+        Self {
+            title,
+            lines: [b"", b""],
+            line_count: 0,
+            answers: None,
+        }
+    }
+
+    /// One line under the title, in the order the box stacks them.
+    fn line(mut self, line: &'a [u8]) -> Self {
+        debug_assert!(
+            self.line_count < self.lines.len(),
+            "a dialog holds two lines"
+        );
+        self.lines[self.line_count] = line;
+        self.line_count += 1;
+        self
+    }
+
+    /// The two answers along the bottom edge: what keeps things as they are, and what acts.
+    fn answers(mut self, keep: &'a [u8], act: &'a [u8]) -> Self {
+        self.answers = Some((keep, act));
+        self
+    }
+
+    fn draw(self, surface: &mut Surface<'_>) {
+        surface.fill(ControlRect {
+            x: DIALOG_X,
+            y: DIALOG_TOP,
+            w: DIALOG_W,
+            h: DIALOG_H,
+        });
+        let left = DIALOG_X + DIALOG_INSET;
+        surface.draw_text(self.title, left, DIALOG_TITLE_TOP);
+        for (index, line) in self.lines[..self.line_count].iter().enumerate() {
+            surface.draw_text(line, left, DIALOG_BODY_TOP + index * ROW_PITCH);
+        }
+        let Some((keep, act)) = self.answers else {
+            return;
+        };
+        for (choice, label) in [(DialogChoice::Keep, keep), (DialogChoice::Act, act)] {
+            surface.draw_cell(dialog_answer_box(choice), label);
+        }
+    }
+}
 
 impl Surface<'_> {
     pub(super) fn draw_box(
@@ -42,7 +102,7 @@ impl Surface<'_> {
     }
 
     fn draw_notice(&mut self, draft: NetworkView, link: LinkStatus, mac: Option<[u8; 6]>) {
-        let answers = page_controls::answers(link);
+        let answers = answers(link);
         let mut name = [0u8; SSID_BYTES];
         let mut pass = [0u8; SSID_BYTES];
         let asked = match draft.setup_wait {

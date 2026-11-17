@@ -1,5 +1,5 @@
-//! The product's pages, one vertical slice each: a page's model, controller, layout and view
-//! live together, and the directory is the unit of cohesion.
+//! The product's pages, one vertical slice each: a page and what it owns live in one file or
+//! one directory, and that is the unit of cohesion.
 //!
 //! [`Page`] is what every client shares; [`LocalPage`] is what the client showing the page
 //! answers. A new page names itself here and the compiler lists the rest.

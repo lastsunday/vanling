@@ -4,7 +4,7 @@ use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS, ROW_PITCH};
 
 use super::TOUCH_MIN;
-use super::list::LIST_TOP;
+use super::content::LIST_TOP;
 use super::toolbar::TOOLBAR_TOP;
 
 /// Which of a confirmation's two answers a tap landed on.

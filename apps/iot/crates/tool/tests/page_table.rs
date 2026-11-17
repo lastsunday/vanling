@@ -215,6 +215,7 @@ fn every_page_has_a_view() {
         );
         let candidates = [
             page_root.join(format!("{}.rs", row.path)),
+            page_root.join(&row.path).join("mod.rs"),
             page_root.join(&row.path).join("view.rs"),
             page_root.join(&row.path).join("view/mod.rs"),
         ];
