@@ -215,7 +215,7 @@ fn two_finger_runs_saturates_at_255() {
 }
 
 #[test]
-fn gestures_stamp_their_own_slot_and_free_the_point() {
+fn gestures_record_their_own_slot_and_free_the_point() {
     let mut manager = DeviceManager::new();
     manager.apply_input(press(0, 40, 50));
     manager.apply_input(press(1, 120, 30));
@@ -322,7 +322,7 @@ fn last_gesture_points_follow_resolved_gestures() {
     assert_eq!(
         manager.state().touch.view.last_gesture_origin,
         Some((11, 12)),
-        "a tap stamps its own point as the origin"
+        "a tap records its own point as the origin"
     );
     assert_eq!(
         manager.state().touch.view.last_gesture_end,

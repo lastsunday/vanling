@@ -1,10 +1,8 @@
-//! The product's pages, one vertical slice each: the page's model, controller, layout and
-//! view live together, and the directory is the unit of cohesion.
+//! The product's pages, one vertical slice each: a page's model, controller, layout and view
+//! live together, and the directory is the unit of cohesion.
 //!
-//! [`Page`] is what every client shares: the device asks it to apply an intent and to publish
-//! its view. [`LocalPage`] is what only the screen showing the page answers: what a gesture
-//! means, and when the page becomes or stops being current. Every answer is an arm here, so
-//! adding a page names it in this one file and the compiler lists the rest.
+//! [`Page`] is what every client shares; [`LocalPage`] is what the client showing the page
+//! answers. A new page names itself here and the compiler lists the rest.
 
 pub mod ambient;
 pub mod attitude;
@@ -32,8 +30,8 @@ use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 
-/// What every client of a page shares: the intent it applies, and the view it publishes. Both
-/// default to nothing, so a page answers only what it has.
+/// What every client of a page shares: the intent it applies, the view it publishes. Both
+/// default to nothing, so a page implements only what it owns.
 pub trait Page {
     fn apply(&mut self, _intent: &BusinessIntent, _state: &DeviceState) -> Option<Command> {
         None
@@ -42,8 +40,8 @@ pub trait Page {
     fn publish(&self, _out: &mut PageSnapshot) {}
 }
 
-/// What only the screen showing the page answers. The hooks run on the device's navigation, in
-/// both directions, and read or write nothing but the page's own state.
+/// What a page answers for the client showing it: what one gesture means, and when it becomes
+/// or stops being current. The hooks run on every board, display or not.
 pub trait LocalPage: Page {
     /// What one gesture means on this page.
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
@@ -129,22 +127,47 @@ impl PageSet {
 /// The least wall time between diagnostics-driven repaints, before a page raises it: a repaint
 /// ships the whole frame down one blocking transfer (~15 ms), and the live pages would
 /// otherwise repaint every snapshot.
-pub const DIAG_REPAINT_STEP_MS: u64 = 40;
+pub const REPAINT_FLOOR_MS: u64 = 40;
 
-/// Draws the page, and the debug badge every page but the camera carries.
-pub fn stamp(page: PageId, surface: &mut Surface<'_>) {
+/// When a diagnostics drift earns a repaint, as each page declares it.
+#[derive(Debug, Clone, Copy)]
+pub(super) enum Repaint {
+    /// The page's changes arrive outside diagnostics.
+    Never,
+    /// Every step, snapshot or not.
+    Always,
+    /// Only while the debug overlay is up, which is the page's only drawing.
+    Overlay,
+    /// When the page's own snapshot fields moved.
+    When(fn(&Diagnostics, &Diagnostics) -> bool),
+}
+
+impl Repaint {
+    fn due(self, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
+        match self {
+            Self::Never => false,
+            Self::Always => true,
+            Self::Overlay => overlay,
+            Self::When(moved) => moved(prev, next),
+        }
+    }
+}
+
+/// Paints the page, plus the debug badge every page but the camera carries: camera frames
+/// arrive outside this dispatch, so that page paints its own badge.
+pub fn paint(page: PageId, surface: &mut Surface<'_>) {
     match page {
-        PageId::Splash => splash::stamp(surface),
-        PageId::Attitude => attitude::stamp(surface),
-        PageId::Audio => audio::stamp(surface),
-        PageId::Speaker => speaker::stamp(surface),
-        PageId::Camera => camera::stamp(surface),
-        PageId::Network => network::stamp(surface),
-        PageId::Env => env::stamp(surface),
-        PageId::Ambient => ambient::stamp(surface),
+        PageId::Splash => surface.paint_splash(),
+        PageId::Attitude => surface.paint_attitude(),
+        PageId::Audio => surface.paint_audio(),
+        PageId::Speaker => surface.paint_speaker(),
+        PageId::Camera => camera::paint(surface),
+        PageId::Network => surface.paint_network(),
+        PageId::Env => surface.paint_env(),
+        PageId::Ambient => surface.paint_ambient(),
     }
     if surface.debug && page != PageId::Camera {
-        surface.stamp_fps();
+        surface.draw_fps();
     }
 }
 
@@ -163,17 +186,17 @@ pub fn ground(page: PageId) -> Option<Rgb> {
     }
 }
 
-/// Whether this page's frames arrive from the camera instead of being drawn.
-pub fn draws_frames(page: PageId) -> bool {
+/// Whether this page's picture is the camera's frames rather than its own drawing.
+pub fn camera_frames(page: PageId) -> bool {
     match page {
-        PageId::Splash => splash::DRAWS_FRAMES,
-        PageId::Attitude => attitude::DRAWS_FRAMES,
-        PageId::Audio => audio::DRAWS_FRAMES,
-        PageId::Speaker => speaker::DRAWS_FRAMES,
-        PageId::Camera => camera::DRAWS_FRAMES,
-        PageId::Network => network::DRAWS_FRAMES,
-        PageId::Env => env::DRAWS_FRAMES,
-        PageId::Ambient => ambient::DRAWS_FRAMES,
+        PageId::Splash => splash::CAMERA_FRAMES,
+        PageId::Attitude => attitude::CAMERA_FRAMES,
+        PageId::Audio => audio::CAMERA_FRAMES,
+        PageId::Speaker => speaker::CAMERA_FRAMES,
+        PageId::Camera => camera::CAMERA_FRAMES,
+        PageId::Network => network::CAMERA_FRAMES,
+        PageId::Env => env::CAMERA_FRAMES,
+        PageId::Ambient => ambient::CAMERA_FRAMES,
     }
 }
 
@@ -193,16 +216,17 @@ pub fn repaint_step_ms(page: PageId) -> u64 {
 
 /// Whether this pair of diagnostics snapshots earns a repaint.
 pub fn repaints_on(page: PageId, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
-    match page {
-        PageId::Splash => splash::repaints_on(prev, next, overlay),
-        PageId::Attitude => attitude::repaints_on(prev, next, overlay),
-        PageId::Audio => audio::repaints_on(prev, next, overlay),
-        PageId::Speaker => speaker::repaints_on(prev, next, overlay),
-        PageId::Camera => camera::repaints_on(prev, next, overlay),
-        PageId::Network => network::repaints_on(prev, next, overlay),
-        PageId::Env => env::repaints_on(prev, next, overlay),
-        PageId::Ambient => ambient::repaints_on(prev, next, overlay),
-    }
+    let repaint = match page {
+        PageId::Splash => splash::REPAINTS,
+        PageId::Attitude => attitude::REPAINTS,
+        PageId::Audio => audio::REPAINTS,
+        PageId::Speaker => speaker::REPAINTS,
+        PageId::Camera => camera::REPAINTS,
+        PageId::Network => network::REPAINTS,
+        PageId::Env => env::REPAINTS,
+        PageId::Ambient => ambient::REPAINTS,
+    };
+    repaint.due(prev, next, overlay)
 }
 
 /// The lamp's table, for the pages whose only verb is the light.

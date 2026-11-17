@@ -6,7 +6,7 @@ use crate::shared::route::PageId;
 use iot_core::demand::{DemandKey, Mode};
 
 #[cfg(test)]
-use crate::pages::DIAG_REPAINT_STEP_MS;
+use crate::pages::REPAINT_FLOOR_MS;
 
 pub fn diag_repaint_due(
     page: PageId,
@@ -143,14 +143,14 @@ mod tests {
             PageId::Attitude,
             &base,
             &ticked,
-            DIAG_REPAINT_STEP_MS - 1,
+            REPAINT_FLOOR_MS - 1,
             false
         ));
         assert!(diag_repaint_due(
             PageId::Attitude,
             &base,
             &ticked,
-            DIAG_REPAINT_STEP_MS,
+            REPAINT_FLOOR_MS,
             false
         ));
     }
@@ -164,20 +164,20 @@ mod tests {
             PageId::Ambient,
             &base,
             &ticked,
-            DIAG_REPAINT_STEP_MS,
+            REPAINT_FLOOR_MS,
             false
         ));
         assert!(diag_repaint_due(
             PageId::Ambient,
             &base,
             &ticked,
-            DIAG_REPAINT_STEP_MS,
+            REPAINT_FLOOR_MS,
             true
         ));
     }
 
     #[test]
-    fn diag_repaint_speaker_tracks_the_row_it_stamps() {
+    fn diag_repaint_speaker_tracks_the_row_it_draws() {
         let base = Diagnostics::default();
         let mut playing = base;
         playing.playback.phase = PlaybackPhase::Playing;
@@ -191,8 +191,8 @@ mod tests {
         dropped.playback.dropped = 2;
         for next in [playing, source, muted, played, dropped] {
             assert!(
-                diag_repaint_due(PageId::Speaker, &base, &next, DIAG_REPAINT_STEP_MS, false),
-                "a playback drift the Speaker page stamps must repaint even with the overlay off"
+                diag_repaint_due(PageId::Speaker, &base, &next, REPAINT_FLOOR_MS, false),
+                "a playback drift the Speaker page draws must repaint even with the overlay off"
             );
         }
     }
@@ -204,14 +204,8 @@ mod tests {
         drifting.audio.envelope = live_envelope();
         for overlay in [false, true] {
             assert!(
-                !diag_repaint_due(
-                    PageId::Speaker,
-                    &base,
-                    &drifting,
-                    DIAG_REPAINT_STEP_MS,
-                    overlay
-                ),
-                "the Speaker page stamps no envelope, so the overlay flag must not re-open it"
+                !diag_repaint_due(PageId::Speaker, &base, &drifting, REPAINT_FLOOR_MS, overlay),
+                "the Speaker page draws no envelope, so the overlay flag must not re-open it"
             );
         }
     }
@@ -234,7 +228,7 @@ mod tests {
         scanned.aps = Some(ApList::from_ranked(&[AccessPoint::default()]));
         for next in [associated, addressed, scanned] {
             assert!(
-                diag_repaint_due(PageId::Network, &base, &next, DIAG_REPAINT_STEP_MS, false),
+                diag_repaint_due(PageId::Network, &base, &next, REPAINT_FLOOR_MS, false),
                 "a link or list drift the Network page draws must repaint even with the \
                  overlay off"
             );
@@ -250,7 +244,7 @@ mod tests {
             PageId::Network,
             &base,
             &addressed,
-            DIAG_REPAINT_STEP_MS,
+            REPAINT_FLOOR_MS,
             false
         ));
     }
@@ -263,14 +257,8 @@ mod tests {
         drifting.touch.taps = 12;
         for overlay in [false, true] {
             assert!(
-                !diag_repaint_due(
-                    PageId::Network,
-                    &base,
-                    &drifting,
-                    DIAG_REPAINT_STEP_MS,
-                    overlay
-                ),
-                "the Network page stamps no envelope and no counter"
+                !diag_repaint_due(PageId::Network, &base, &drifting, REPAINT_FLOOR_MS, overlay),
+                "the Network page draws no envelope and no counter"
             );
         }
     }
@@ -302,13 +290,7 @@ mod tests {
         wobble.audio.phase = AudioPhase::Recording;
 
         assert!(
-            !diag_repaint_due(
-                PageId::Audio,
-                &unlit,
-                &wobble,
-                10 * DIAG_REPAINT_STEP_MS,
-                true
-            ),
+            !diag_repaint_due(PageId::Audio, &unlit, &wobble, 10 * REPAINT_FLOOR_MS, true),
             "a panel nobody is looking at does not get frames no matter what drifts"
         );
 
@@ -318,7 +300,7 @@ mod tests {
             iot_core::demand::Claim::new(Mode::OnChange, 0, iot_core::demand::Priority::Primary),
         );
         assert!(
-            !diag_repaint_due(PageId::Audio, &dim, &dim, 10 * DIAG_REPAINT_STEP_MS, false),
+            !diag_repaint_due(PageId::Audio, &dim, &dim, 10 * REPAINT_FLOOR_MS, false),
             "nothing changed, so there is nothing to redraw"
         );
 
@@ -342,11 +324,11 @@ mod tests {
 fn only_the_audio_page_raises_the_step() {
     for page in PageId::ALL {
         assert!(
-            repaint_step_ms(page) >= DIAG_REPAINT_STEP_MS,
+            repaint_step_ms(page) >= REPAINT_FLOOR_MS,
             "{page:?} cannot repaint faster than the floor"
         );
         assert_eq!(
-            repaint_step_ms(page) > DIAG_REPAINT_STEP_MS,
+            repaint_step_ms(page) > REPAINT_FLOOR_MS,
             page == PageId::Audio,
             "{page:?} step"
         );

@@ -1,5 +1,5 @@
 //! The pixel primitives every page draws with: the surface, its widgets, and the bands that
-//! more than one page stamps.
+//! more than one page draws.
 
 pub mod bands;
 pub mod overlay;

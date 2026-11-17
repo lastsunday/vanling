@@ -64,7 +64,7 @@ pub struct WindowGeometry {
     pub crop_enabled: bool,
 }
 
-/// The camera's readings at the instant its page is stamped.
+/// The camera's readings at the instant its page is painted.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CameraSnapshot {
     pub counters: CameraCounters,

@@ -16,10 +16,10 @@ use crate::pages::network::view::text::control_label;
 use crate::shared::kit::surface::Surface;
 
 impl Surface<'_> {
-    pub(crate) fn stamp_network(&mut self) {
+    pub(crate) fn paint_network(&mut self) {
         let link = self.diagnostics.link;
         // Copied rather than borrowed: the borrow would be of `self.diagnostics`, and every
-        // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
+        // paint below takes `self` mutably. The audio sweep makes the same trade for the same
         // reason, and a list is 350 B against the envelope's kilobyte and a half.
         let aps = self.diagnostics.aps;
         let setup = self.diagnostics.pages.network;
@@ -30,42 +30,42 @@ impl Surface<'_> {
         };
 
         each_band(setup, link, |band| match band {
-            Band::Header => self.stamp_header(
+            Band::Header => self.draw_header(
                 setup,
                 link,
                 shown_ap,
                 self.diagnostics.mac,
                 aps.filter(|list| !list.is_empty()).map(|list| list.len()),
             ),
-            Band::Content => self.stamp_content(setup, link, aps),
-            Band::Controls => self.stamp_strip(setup, link),
-            Band::Overlay => self.stamp_box(setup, link, shown_ap, self.diagnostics.mac),
+            Band::Content => self.draw_content(setup, link, aps),
+            Band::Controls => self.draw_strip(setup, link),
+            Band::Overlay => self.draw_box(setup, link, shown_ap, self.diagnostics.mac),
         });
     }
 
-    fn stamp_content(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
+    fn draw_content(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
         if draft.keyboard {
             if let Some(entry) = draft.entry {
-                self.stamp_keyboard(entry, draft.revealed);
+                self.draw_keyboard(entry, draft.revealed);
             }
             return;
         }
-        self.stamp_list(draft, link, aps);
+        self.draw_list(draft, link, aps);
     }
 
-    fn stamp_strip(&mut self, draft: NetworkView, link: LinkStatus) {
+    fn draw_strip(&mut self, draft: NetworkView, link: LinkStatus) {
         let strip = page_controls::strip(draft, link);
         if strip.is_split() {
-            self.stamp_cell(
+            self.draw_cell(
                 layout::toolbar_cell(layout::ToolbarCell::Left),
                 control_label(strip.kind(layout::ToolbarCell::Left)),
             );
-            self.stamp_cell(
+            self.draw_cell(
                 layout::toolbar_cell(layout::ToolbarCell::Right),
                 control_label(strip.kind(layout::ToolbarCell::Right)),
             );
         } else {
-            self.stamp_cell(
+            self.draw_cell(
                 layout::toolbar_box(),
                 control_label(strip.kind(layout::ToolbarCell::Right)),
             );

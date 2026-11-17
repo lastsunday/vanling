@@ -2,7 +2,6 @@ use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::overlay::{Block, block_x, overlay_row_top};
 use iot_core::paint::Rgb;
 
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::placement::LAST_BLOCK_ROW;
 use crate::shared::kit::surface::Surface;
@@ -15,8 +14,9 @@ use crate::shared::model::DeviceState;
 pub struct AttitudePage;
 
 pub(super) const GROUND: Option<Rgb> = None;
-pub(super) const DRAWS_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::DIAG_REPAINT_STEP_MS;
+pub(super) const CAMERA_FRAMES: bool = false;
+pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
+pub(super) const REPAINTS: super::Repaint = super::Repaint::Always;
 
 impl super::Page for AttitudePage {}
 
@@ -24,14 +24,6 @@ impl super::LocalPage for AttitudePage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
-}
-
-pub(super) fn stamp(surface: &mut Surface<'_>) {
-    surface.stamp_attitude();
-}
-
-pub(super) fn repaints_on(_prev: &Diagnostics, _next: &Diagnostics, _overlay: bool) -> bool {
-    true
 }
 
 const ESTIMATOR_ROWS: usize = 4;
@@ -48,17 +40,17 @@ const _: () = assert!(
 );
 
 impl Surface<'_> {
-    pub(crate) fn stamp_attitude(&mut self) {
-        self.stamp_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
+    pub(crate) fn paint_attitude(&mut self) {
+        self.draw_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
         let Some(sample) = self.diagnostics.motion else {
-            self.stamp_left(b"ERR", b"WAIT", Block::First, 1);
+            self.draw_left(b"ERR", b"WAIT", Block::First, 1);
             return;
         };
         if !sample.valid {
-            self.stamp_left(b"ERR", b"READ", Block::First, 1);
+            self.draw_left(b"ERR", b"READ", Block::First, 1);
             return;
         }
-        self.stamp_horizon(&sample);
+        self.draw_horizon(&sample);
 
         const BLOCKS: [(u8, usize); 5] = [(b'A', 1), (b'M', 4), (b'G', 7), (b'D', 10), (b'R', 13)];
         for &(prefix, first_row) in &BLOCKS {
@@ -71,7 +63,7 @@ impl Surface<'_> {
                     b'D' => format_tenths(sample.gyro_dps_x10[axis], &mut buf),
                     _ => format_tenths(i32::from(sample.tilt_deg_x10[axis]), &mut buf),
                 };
-                self.stamp_left(
+                self.draw_left(
                     &[prefix, b'0' + axis as u8],
                     value,
                     Block::First,
@@ -79,25 +71,25 @@ impl Surface<'_> {
                 );
             }
         }
-        self.stamp_left(
+        self.draw_left(
             b"ST",
             format_u16(u16::from(sample.status), &mut [0; 6]),
             Block::Second,
             0,
         );
-        self.stamp_left(
+        self.draw_left(
             b"LR",
             format_i32(sample.gravity_deviation_mg, &mut [0; 12]),
             Block::Second,
             1,
         );
-        self.stamp_left(
+        self.draw_left(
             b"SR",
             format_i32(sample.shake_residual_mg, &mut [0; 12]),
             Block::Second,
             2,
         );
-        self.stamp_left(
+        self.draw_left(
             b"TR",
             format_i32(sample.tap_residual_mg, &mut [0; 12]),
             Block::Second,
@@ -164,7 +156,7 @@ impl Surface<'_> {
             } else {
                 NOT_AVAILABLE
             };
-            self.stamp_left(label, value, Block::Second, ESTIMATOR_ROWS + index);
+            self.draw_left(label, value, Block::Second, ESTIMATOR_ROWS + index);
         }
     }
 }

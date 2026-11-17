@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn the_audio_page_stamps_the_capture_the_phase_points_at() {
+    fn the_audio_page_draws_the_capture_the_phase_points_at() {
         let mut manager = DeviceManager::boot(crate::state::Boot {
             backed: Backed {
                 audio: true,

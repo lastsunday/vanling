@@ -44,10 +44,10 @@ const _: () = assert!(
 );
 
 impl Surface<'_> {
-    pub(super) fn stamp_list(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
+    pub(super) fn draw_list(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
         match aps {
-            None => self.stamp_band(b"NOT SCANNED"),
-            Some(list) if list.is_empty() => self.stamp_band(b"NO NETWORKS"),
+            None => self.draw_band(b"NOT SCANNED"),
+            Some(list) if list.is_empty() => self.draw_band(b"NO NETWORKS"),
             Some(list) => {
                 for band in 0..LIST_ROWS {
                     let index = usize::from(draft.list_top) + band;
@@ -59,34 +59,34 @@ impl Surface<'_> {
                         .and_then(|confirm| confirm.network(link))
                         .or(draft.selected);
                     if marked.is_some_and(|marked| marked.is_same_network(&ap)) {
-                        self.stamp_band_fill(band);
+                        self.draw_band_fill(band);
                     }
                     let top = band_lines_top(band);
-                    self.stamp_text(
+                    self.draw_text(
                         format_network_name(ap, NETWORK_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
                         block_x(Block::First),
                         top,
                     );
                     if ap.ssid.as_display_text().is_some() {
-                        self.stamp_text(
+                        self.draw_text(
                             mac_text(ap.bssid, &mut [0u8; MAC_TEXT_BYTES]),
                             block_x(Block::First),
                             top + ROW_PITCH,
                         );
                     }
                     if !ap.secured {
-                        self.stamp_text_right(OPEN_MARKER, OPEN_MARKER_RIGHT, top);
+                        self.draw_text_right(OPEN_MARKER, OPEN_MARKER_RIGHT, top);
                     }
                     if list.is_saved(index) {
-                        self.stamp_text_right(SAVED_MARKER, SAVED_MARKER_RIGHT, top);
+                        self.draw_text_right(SAVED_MARKER, SAVED_MARKER_RIGHT, top);
                     }
-                    self.stamp_text_right(format_bars(ap.bars(), &mut [0u8; 4]), PANEL_RIGHT, top);
+                    self.draw_text_right(format_bars(ap.bars(), &mut [0u8; 4]), PANEL_RIGHT, top);
                 }
             }
         }
     }
 
-    fn stamp_band_fill(&mut self, band: usize) {
+    fn draw_band_fill(&mut self, band: usize) {
         self.fill(ControlRect {
             x: 0,
             y: LIST_TOP + band * LIST_ROW_H,
@@ -95,8 +95,8 @@ impl Surface<'_> {
         });
     }
 
-    fn stamp_band(&mut self, text: &[u8]) {
-        self.stamp_text(text, block_x(Block::First), band_top(0));
+    fn draw_band(&mut self, text: &[u8]) {
+        self.draw_text(text, block_x(Block::First), band_top(0));
     }
 }
 

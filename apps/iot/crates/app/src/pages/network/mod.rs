@@ -12,7 +12,6 @@ use iot_core::paint::Rgb;
 
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent};
-use crate::shared::kit::surface::Surface;
 use crate::shared::model::{Command, DeviceState, NetworkView, PageSnapshot};
 
 /// The page owns the one edit session the link never writes.
@@ -22,8 +21,9 @@ pub struct NetworkPage {
 }
 
 pub(super) const GROUND: Option<Rgb> = Some(Rgb(0, 0, 0));
-pub(super) const DRAWS_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::DIAG_REPAINT_STEP_MS;
+pub(super) const CAMERA_FRAMES: bool = false;
+pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
+pub(super) const REPAINTS: super::Repaint = super::Repaint::When(network_moved);
 
 impl super::Page for NetworkPage {
     fn apply(&mut self, intent: &BusinessIntent, state: &DeviceState) -> Option<Command> {
@@ -59,11 +59,7 @@ impl super::LocalPage for NetworkPage {
     }
 }
 
-pub(super) fn stamp(surface: &mut Surface<'_>) {
-    surface.stamp_network();
-}
-
-pub(super) fn repaints_on(prev: &Diagnostics, next: &Diagnostics, _overlay: bool) -> bool {
+fn network_moved(prev: &Diagnostics, next: &Diagnostics) -> bool {
     prev.link != next.link
         || prev.aps != next.aps
         || prev.pages != next.pages

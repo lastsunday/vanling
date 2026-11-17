@@ -1,4 +1,4 @@
-//! The diagnostics overlay: the touch path's counters and the light's parameters, stamped
+//! The diagnostics overlay: the touch path's counters and the light's parameters, drawn
 //! over whichever page is showing when the build asks for them.
 
 use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
@@ -26,7 +26,7 @@ fn gesture_glyph(kind: u8) -> u8 {
 }
 
 impl Surface<'_> {
-    pub(crate) fn stamp_diagnostics(&mut self, live: (u8, u8)) {
+    pub(crate) fn draw_diagnostics(&mut self, live: (u8, u8)) {
         let touch = self.diagnostics.touch;
         let light = self.diagnostics.lights[usize::from(self.instance)];
         let mut buf = [0u8; 6];
@@ -40,22 +40,22 @@ impl Surface<'_> {
             (b"SWP".as_slice(), u16::from(touch.swipes)),
         ];
         for (row, (label, value)) in counters.into_iter().enumerate() {
-            self.stamp_left(label, format_u16(value, &mut buf), Block::First, row);
+            self.draw_left(label, format_u16(value, &mut buf), Block::First, row);
         }
 
         let mut dir = [b' '; 8];
         dir[0] = direction_arrow(touch.last_swipe_dir);
         dir[1] = b' ';
         let nd = write_u16(touch.last_swipe_dist, &mut dir, 2);
-        self.stamp_left(b"DIR", &dir[..nd], Block::First, 8);
+        self.draw_left(b"DIR", &dir[..nd], Block::First, 8);
 
         let mut ref_buf = [0u8; 12];
         let origin = format_pair(touch.last_gesture_origin, &mut ref_buf);
-        self.stamp_left(b"XY", origin, Block::First, 9);
+        self.draw_left(b"XY", origin, Block::First, 9);
 
         let mut end_buf = [0u8; 12];
         let end = format_pair(touch.last_gesture_end, &mut end_buf);
-        self.stamp_left(b"XY2", end, Block::First, 10);
+        self.draw_left(b"XY2", end, Block::First, 10);
 
         type SlotRow = (&'static [u8], &'static [u8], &'static [u8], &'static [u8]);
 
@@ -79,7 +79,7 @@ impl Surface<'_> {
                     1
                 }
             };
-            self.stamp_left(xy_label, &xy[..n], Block::Second, base);
+            self.draw_left(xy_label, &xy[..n], Block::Second, base);
 
             let last = touch.finger[slot];
             let mut value = [b'-'; 6];
@@ -91,9 +91,9 @@ impl Surface<'_> {
                 digits.len()
             };
             let gesture = [gesture_glyph(last.kind)];
-            self.stamp_left(gesture_label, &gesture, Block::Second, base + 1);
-            self.stamp_left(value_label, &value[..value_len], Block::Second, base + 2);
-            self.stamp_left(
+            self.draw_left(gesture_label, &gesture, Block::Second, base + 1);
+            self.draw_left(value_label, &value[..value_len], Block::Second, base + 2);
+            self.draw_left(
                 dir_label,
                 &[direction_arrow(touch.live_dir[slot])],
                 Block::Second,
@@ -101,14 +101,14 @@ impl Surface<'_> {
             );
         }
 
-        self.stamp_left(
+        self.draw_left(
             b"CHP",
             format_u16(u16::from(touch.chip_gesture_id), &mut buf),
             Block::Second,
             8,
         );
 
-        self.stamp_left(b"FRM", format_u16(touch.frames, &mut buf), Block::Second, 9);
+        self.draw_left(b"FRM", format_u16(touch.frames, &mut buf), Block::Second, 9);
 
         let mut lo_hi = [0u8; 8];
         let mut n = write_u16(u16::from(light.breath.min_brightness), &mut lo_hi, 0);
@@ -117,45 +117,45 @@ impl Surface<'_> {
 
         match light.mode {
             MODE_BREATH => {
-                self.stamp_left(light_mode_word(light.mode), b"MOD", Block::Third, 0);
-                self.stamp_left(
+                self.draw_left(light_mode_word(light.mode), b"MOD", Block::Third, 0);
+                self.draw_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
                     Block::Third,
                     1,
                 );
-                self.stamp_left(&lo_hi[..n], b"LO HI", Block::Third, 2);
-                self.stamp_left(
+                self.draw_left(&lo_hi[..n], b"LO HI", Block::Third, 2);
+                self.draw_left(
                     format_u16(light.breath.period_ms, &mut buf),
                     b"PER",
                     Block::Third,
                     3,
                 );
-                self.stamp_left(
+                self.draw_left(
                     format_u16(u16::from(live.1), &mut buf),
                     b"HUE",
                     Block::Third,
                     4,
                 );
-                self.stamp_left(
+                self.draw_left(
                     format_u16(light.breath.hue_period_ms, &mut buf),
                     b"HPR",
                     Block::Third,
                     5,
                 );
-                self.stamp_left(
+                self.draw_left(
                     format_u16(u16::from(light.breath.hue_span), &mut buf),
                     b"SPN",
                     Block::Third,
                     6,
                 );
-                self.stamp_left(
+                self.draw_left(
                     format_u16(u16::from(light.breath.group_len), &mut buf),
                     b"GRP",
                     Block::Third,
                     7,
                 );
-                self.stamp_left(
+                self.draw_left(
                     format_u16(u16::from(light.breath.saturation), &mut buf),
                     b"SAT",
                     Block::Third,
@@ -163,21 +163,21 @@ impl Surface<'_> {
                 );
             }
             MODE_SOLID => {
-                self.stamp_left(light_mode_word(light.mode), b"MOD", Block::Third, 0);
-                self.stamp_left(
+                self.draw_left(light_mode_word(light.mode), b"MOD", Block::Third, 0);
+                self.draw_left(
                     format_u16(u16::from(live.0), &mut buf),
                     b"BRI",
                     Block::Third,
                     1,
                 );
-                self.stamp_left(
+                self.draw_left(
                     format_u16(u16::from(live.1), &mut buf),
                     b"HUE",
                     Block::Third,
                     2,
                 );
             }
-            _ => self.stamp_left(light_mode_word(light.mode), b"MOD", Block::Third, 0),
+            _ => self.draw_left(light_mode_word(light.mode), b"MOD", Block::Third, 0),
         }
     }
 }

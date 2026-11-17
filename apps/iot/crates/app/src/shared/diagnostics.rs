@@ -14,7 +14,7 @@ use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 use iot_core::drivers::surface::MAX_LIGHTS;
 
-/// Capture state stamped on the Audio page: the phase driving the panel plus the envelope
+/// Capture state the Audio page draws: the phase driving the panel plus the envelope
 /// it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct AudioDiagnostics {
@@ -29,7 +29,7 @@ pub struct AudioDiagnostics {
     pub health: Health,
 }
 
-/// Playback state stamped on the Speaker page: the phase the page is showing, the sound a
+/// Playback state the Speaker page draws: the phase the page is showing, the sound a
 /// tap would play, the mute latch, and the two tallies that make a busy finger visible —
 /// sounds started against taps that arrived over one and were therefore not heard.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -98,7 +98,7 @@ pub struct LightSnapshot {
     pub breath: BreathSnapshot,
 }
 
-/// The touch-path diagnostics stamped on a light surface, folded field by field out of
+/// The touch-path diagnostics drawn on a light surface, folded field by field out of
 /// [`DeviceState`](crate::shared::model::DeviceState): counter gaps between `taps` and `presses`
 /// localize dropped touches, `ghost` flags input trouble the classifier saw,
 /// `points`/`finger` carry the live per-finger readout.

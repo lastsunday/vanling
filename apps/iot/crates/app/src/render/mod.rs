@@ -13,8 +13,7 @@ pub use self::common::{
 };
 pub use self::lamp::LampRenderer;
 pub use self::screen::{
-    AppPainter, DIAG_REPAINT_STEP_MS, ScreenRenderer, diag_repaint_due, windowed_percent,
-    windowed_rate,
+    AppPainter, ScreenRenderer, diag_repaint_due, windowed_percent, windowed_rate,
 };
 pub use self::wiring::{Renderers, wired};
 

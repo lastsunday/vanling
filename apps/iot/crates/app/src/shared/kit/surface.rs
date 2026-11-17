@@ -1,7 +1,7 @@
 //! The portable page surface: a [`Canvas`] plus the snapshot the current page draws from.
 //!
-//! The surface owns the primitives, not the page match: [`Page::stamp`](crate::pages::Page::stamp)
-//! decides which page stamps what.
+//! The surface owns the marks, not the page match: [`paint`](crate::pages::paint) decides which
+//! page draws what.
 
 use core::ops::{Deref, DerefMut};
 
@@ -68,11 +68,11 @@ impl<'a> Surface<'a> {
         }
     }
 
-    pub(crate) fn stamp_fps(&mut self) {
-        self.stamp_fps_at(FPS_Y);
+    pub(crate) fn draw_fps(&mut self) {
+        self.draw_fps_at(FPS_Y);
     }
 
-    fn stamp_fps_at(&mut self, top: usize) {
+    fn draw_fps_at(&mut self, top: usize) {
         let fps = self.fps;
         let buf = &mut [0u8; 6];
         let digits = format_u16(u16::from(fps), buf);
@@ -81,8 +81,8 @@ impl<'a> Surface<'a> {
             .max(0) as usize;
         let label_left = (value_left as isize - (3 * GLYPH_PITCH as isize + OVERLAY_GAP as isize))
             .max(0) as usize;
-        self.stamp_text(b"FPS", label_left, top);
-        self.stamp_text(digits, value_left, top);
+        self.draw_text(b"FPS", label_left, top);
+        self.draw_text(digits, value_left, top);
     }
 }
 
@@ -123,7 +123,7 @@ mod tests {
             let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, None);
             let mut surface =
                 Surface::new(canvas, &diagnostics, 0, 60, false, 100).with_stack_probe(probe);
-            surface.stamp_sweep(&[0; ENVELOPE_COLUMNS], &[0; ENVELOPE_COLUMNS], None);
+            surface.draw_sweep(&[0; ENVELOPE_COLUMNS], &[0; ENVELOPE_COLUMNS], None);
         }
         assert_eq!(
             PROBES.load(Ordering::Relaxed),

@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn a_notice_starts_lit_and_unstamped() {
+    fn a_notice_starts_lit_with_no_start_time() {
         for kind in [NoticeKind::Joined, NoticeKind::Offline, NoticeKind::Refused] {
             let notice = Notice::new(kind);
             assert_eq!(notice.started_ms, None);
@@ -1015,7 +1015,7 @@ mod lamp {
         assert_eq!(
             announced.and_then(|notice| notice.started_ms),
             Some(0),
-            "the first frame stamps the announcement"
+            "the first frame records the announcement"
         );
 
         failed(&mut manager, NetworkError::Credentials, false);

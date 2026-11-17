@@ -16,14 +16,14 @@ pub(crate) fn text_left(rect: ControlRect, text: &[u8]) -> usize {
 }
 
 impl Surface<'_> {
-    /// Stamps `text` over a filled block: the run the finger is on.
-    pub(crate) fn stamp_marked(&mut self, text: &[u8], left: usize, top: usize) {
+    /// Draws `text` over a filled block: the run the finger is on.
+    pub(crate) fn draw_marked(&mut self, text: &[u8], left: usize, top: usize) {
         let (right, bottom) = (left + text_width(text), top + FONT_H);
         for y in top.saturating_sub(1)..=bottom {
             for x in left.saturating_sub(1)..=right {
-                self.stamp_pixel(x as isize, y as isize);
+                self.draw_pixel(x as isize, y as isize);
             }
         }
-        self.stamp_text(text, left, top);
+        self.draw_text(text, left, top);
     }
 }

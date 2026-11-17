@@ -50,7 +50,7 @@ weight = 10
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`stamp`/`geometry`/`paint`，因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::intent`、几何在 `app::pages::network::layout`
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`geometry`/`paint`（含 RGB565 打包与反色），因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::intent`、几何在 `app::pages::network::layout`
 - **main 入口**：产品二进制入口（`bin/*-probe.rs` 是各自的探针入口）；芯片 init、堆、执行器与 `Wiring` 都在 `main.rs`，芯片族分支留在 `start_executors`。产品与面板 bench 共用这条启动路径，`panel-bench` feature 只决定最后调 `lib::run` 还是 `bench::run`
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
@@ -80,9 +80,9 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 定义应用侧 `Page`（`apply`/`publish`）与屏幕侧 `LocalPage`（`bind`/`on_show`/`on_hide`），持有全部实例的 `PageSet`，以及按 `PageId` 穷尽分派的墨迹/底色/出帧/重绘函数；`<page>/tests.rs` 是这一页的输入契约，跨页的黄金像素表在 `pages/tests.rs` |
-| `pages/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
-| `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs`、`pages/env/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
+| `pages/` | 产品页面，一页一个垂直切片：每页目录自带它需要的 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 定义应用侧 `Page`（`apply`/`publish`）与屏幕侧 `LocalPage`（`bind`/`on_show`/`on_hide`），持有全部实例的 `PageSet`，以及按 `PageId` 穷尽分派的绘制/底色/出帧/重绘函数；`<page>/tests.rs` 是这一页的输入契约，跨页的黄金像素表在 `pages/tests.rs` |
+| `pages/{ambient,attitude,camera,env,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `paint_*` 直接画 |
+| `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `pages/network/{controller,layout,view}/` | Network 页的手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制；页视图是 `NetworkPage` 自己的字段，类型 `NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`page.rs` 是页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读） |
@@ -96,7 +96,7 @@ weight = 10
 | `state/translate.rs` | 输入边界：先答跨页绑定（setup 长按、三击），再把事件交给 `PageSet::get(当前页).bind`；不读键格、band 或确认框几何 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
-| `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `pages::stamp`、`repaint.rs`（诊断漂移与重绘步长） |
+| `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `pages::paint`、`repaint.rs`（诊断漂移与重绘步长） |
 | `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有面板会叠上去的东西 |
 | `render/wiring.rs` | 接线：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
@@ -118,7 +118,7 @@ lib               → { render, state, runtime }
 pages/<page>   → { assets, shared::{intent, kit, model, route} }
 pages             → { pages::<page>::controller, shared::{diagnostics, intent, kit, model, route} }
 state             → { pages::PageSet, shared::{intent, model, route} }
-render            → { pages::{draws_frames, ground, repaint_step_ms, repaints_on, stamp}, shared::{diagnostics, kit, model, route} }
+render            → { pages::{camera_frames, ground, paint, repaint_step_ms, repaints_on}, shared::{diagnostics, kit, model, route} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, model}, runtime::workers }
@@ -129,8 +129,8 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ```
 
 - **页面之间不互相 import**：页面目录只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
-- **`pages` 是唯一认识所有页面的模块**：每页一个具体类型（`AmbientPage`…`NetworkPage`），`PageSet` 按 `PageId` 穷尽分派；`state` 只经 `PageSet::apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `pages::stamp`/`ground`/`draws_frames`/`repaint_step_ms`/`repaints_on` 取答案；页面只读 `shared`（含 `DeviceState`、`Diagnostics`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
-- **`shared/kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `pages::stamp` 决定
+- **`pages` 是唯一认识所有页面的模块**：每页一个具体类型（`AmbientPage`…`NetworkPage`），`PageSet` 按 `PageId` 穷尽分派；`state` 只经 `PageSet::apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `pages::paint`/`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on` 取答案；页面只读 `shared`（含 `DeviceState`、`Diagnostics`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
+- **`shared/kit` 不认页面**：`Surface` 提供 `draw_*` 记号，哪个页面画什么由 `pages::paint` 决定
 - `shared` 是叶子：不依赖 `state`/`pages`/`render`/`runtime`。`DeviceState`、`PageSnapshot` 与 `NetworkView` 放在这里，就是为了让页面、快照和渲染都只朝下看
 - `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`diagnostics`（快照）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
 - `shared/model` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`page.rs` 是页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读）
@@ -142,6 +142,8 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ### 页面模型
 
 每个页面是一个具体类型，回答分两层。`Page` 是所有客户端共享的：`apply(&BusinessIntent, &DeviceState) -> Option<Command>` 认领意图，`publish(&mut PageSnapshot)` 交出视图；两者默认什么都不做，页面只答自己有的。`LocalPage: Page` 只属于正在显示它的屏：`bind` 必答一个手势的含义，`on_show`/`on_hide` 默认空。
+
+渲染答案分两层：`Surface` 上的 `draw_*` 落一个记号（像素、一行字、一个键），页层的 `paint_*` 组合一整页，`pages::paint` 按 `PageId` 分派再去盖角标；其余四个答案（`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`）同样是穷尽 `match`，事实留在各页文件里。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn)}` 之一，而不是一段带空形参的函数。
 
 `PageSet` 持有八个实例，公开 `get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。新增页面＝建 `pages/<page>/`、在 `PageSet` 加一个字段、在 `get`/`get_mut` 与五个分派函数里各加一条臂；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。
 

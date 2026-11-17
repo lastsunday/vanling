@@ -51,7 +51,7 @@ fn window_geometry<S: WindowReadable>(sensor: &mut S) -> Option<WindowGeometry> 
 const BYTES_PER_PIXEL: usize = 2;
 
 /// The camera's frame: the panel's full width and height, so the picture fills the glass
-/// and the readout is stamped over it.
+/// and the readout is drawn over it.
 pub const FRAME_WIDTH: u16 = 320;
 pub const FRAME_HEIGHT: u16 = 240;
 
@@ -69,7 +69,7 @@ const DESCRIPTORS_PER_FRAME: usize = FRAME_BYTES / CHUNK_BYTES;
 const RING_FRAMES: usize = 1;
 
 /// 153,600 B: the panel's whole 150 KB frame buffer, which the board hands the capture. It is
-/// not a second allocation — the camera fills the frame and the page stamps its readout over
+/// not a second allocation — the camera fills the frame and the page draws its readout over
 /// it, so this ring costs no memory of its own. The arena it sits in is what a probe's heap is
 /// sized against once `.rwtext` and the panel's SPI buffers take their share of `dram_seg`.
 ///

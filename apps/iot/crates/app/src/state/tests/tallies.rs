@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn tap_tallies_stamps_origin_and_accumulates() {
+fn tap_tallies_records_origin_and_accumulates() {
     let mut manager = DeviceManager::new();
     for _ in 0..3 {
         manager.apply_input(tap());

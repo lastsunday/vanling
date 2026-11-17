@@ -1,5 +1,5 @@
 //! Attitude-dial geometry: rolls/pitches to a normalized horizon line, keeping sign
-//! conventions host-testable so the panel layer only stamps.
+//! conventions host-testable so the panel layer only draws.
 
 use core::f32::consts::PI;
 use libm::{cosf, roundf, sinf};

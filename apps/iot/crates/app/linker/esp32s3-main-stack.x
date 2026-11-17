@@ -3,7 +3,7 @@
  *
  * esp-hal's stack.x fills .stack from the top of the static data up to
  * ORIGIN(RWDATA) + LENGTH(RWDATA), which stops where dram2_seg begins and leaves
- * dram2_seg's 72 KiB unclaimed. A render stamps a whole 240x320 frame while holding
+ * dram2_seg's 72 KiB unclaimed. A paint lays down a whole 240x320 frame while holding
  * Diagnostics copies and two column arrays, and the stack that is left over runs into
  * its floor, so dram2_seg has to be available to it. The boot code loads its initial SP
  * from `_stack_start_cpu0` and esp-rtos sizes the main task from `_stack_start_cpu0 -

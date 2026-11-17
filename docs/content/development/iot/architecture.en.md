@@ -54,7 +54,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 - **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
 - **iot-app**: the application layer, product name `vanling`; zero chip dependencies in business code; flash/RAM budgets go through linking and partitions, not the type system.
 - **Naming convention**: board layer uses board names, application layer uses the product name `vanling`; never duplicate.
-- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`stamp`/`geometry`/`paint`) are there because both the pages and `intent` read them; the key grid belongs to the Network page: its vocabulary is in `app::shared::intent` and its geometry in `app::pages::network::layout`.
+- **Pure-logic modules used only inside bsp stay in bsp**: `hardware.rs` (the boot inventory) knows neither board nor chip and is host-testable. The sound catalogue (which `Sound` is which `.mid`, and how it becomes a frame) lives in `iot-app`: a board's `Speaker::play` takes a `Box<dyn SampleSource>`, frames rather than a name. The font and numeric text live in `iot-core::ui`; the page shell, view layers and network words live in `iot-app`. The peers left in `core` (`overlay`/`geometry`/`paint`, including RGB565 packing and inversion) are there because both the pages and `intent` read them; the key grid belongs to the Network page: its vocabulary is in `app::shared::intent` and its geometry in `app::pages::network::layout`.
 - **main entry**: the product binary entry (`bin/*-probe.rs` are their own probe entries); chip init, the heap, the executors and `Wiring` all live in `main.rs`, with the per-family branch in `start_executors`. The product and the panel bench share that path; the `panel-bench` feature only decides whether the entry finally calls `lib::run` or `bench::run`.
 - **`iot-tool` sits outside that chain**: the only crate that is not device code, reading and writing this repository's source files (currently just `midi`, which builds the sound catalogue's `.mid` files). **No dependencies** — a change on the device side must not be able to break the thing that builds the device side's assets. The only bare-metal `--workspace` left is the one in `lefthook.yml`, which excludes it; every `moon` task names `-p` and never reached it anyway. Its entry points are `moon run iot:test-tool` and `moon run iot:gen-midi-assets`.
 
@@ -72,7 +72,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 
 `Readiness` is the RAM half: the first frame has been flushed to every wired surface and the network stack is up (or this build deliberately has no radio). The watchdog calls `mark_healthy()` once both arrive and clears the count — time alone is not evidence.
 
-Names follow the work: a one-shot report is `*_reported` (`first_frame_reported`, `health_reported`, `chain_reported`), taking a fact in is `note_*`, sending it out is `report_*`, and stamping a persistent marker is `mark_*`.
+Names follow the work: a one-shot report is `*_reported` (`first_frame_reported`, `health_reported`, `chain_reported`), taking a fact in is `note_*`, sending it out is `report_*`, and setting a persistent marker is `mark_*`.
 
 ## Inside `iot-app`
 
@@ -84,9 +84,9 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
-| `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` defines the shared `Page` (`apply`/`publish`) and the screen-side `LocalPage` (`bind`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the `PageId`-dispatched ink / ground / frames / repaint functions; `<page>/tests.rs` is that page's input contract, and the cross-page golden table lives in `pages/tests.rs` |
-| `pages/{ambient,attitude,camera,splash}.rs` | single-file pages with one canvas: the `stamp_*` methods on the page shell draw directly |
-| `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs`, `pages/env/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
+| `pages/` | the product's pages, one vertical slice each: every page directory holds the `model` / `controller` / `layout` / `view` it needs, and the directory is the unit of cohesion; `mod.rs` defines the shared `Page` (`apply`/`publish`) and the screen-side `LocalPage` (`bind`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the `PageId`-dispatched paint / ground / frames / repaint functions; `<page>/tests.rs` is that page's input contract, and the cross-page golden table lives in `pages/tests.rs` |
+| `pages/{ambient,attitude,camera,env,splash}.rs` | single-file pages with one canvas: the `paint_*` methods on the page shell draw directly |
+| `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `pages/network/{controller,layout,view}/` | the Network page's gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing; the page view is `NetworkPage`'s own field, and its type `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
 | `shared/` | cross-page truth and vocabulary: only what more than one page reads, and the leaf of the module graph |
 | `shared/model/` | records the workers write and the render loop reads, one file per domain; `device.rs` is the aggregate `DeviceState`, `page.rs` is the `PageSnapshot` the pages publish, and `network_view/` is the Network page's view (owned by the page, copied by the snapshot, never read by the link) |
@@ -100,7 +100,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `state/translate.rs` | the input boundary: the cross-page bindings first (the setup hold, the triple click), then `PageSet::get(current).bind`; it reads no key-grid, band or confirmation-box geometry |
 | `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `render/common/` | surface-agnostic: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, `color.rs` steps the colour, and `registry.rs` hands the appearance to the renderers that claimed it |
-| `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `pages::stamp`, `repaint.rs` (diagnostics drift and the repaint step) |
+| `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `pages::paint`, `repaint.rs` (diagnostics drift and the repaint step) |
 | `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a panel would add |
 | `render/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
@@ -124,7 +124,7 @@ lib               → { render, state, runtime }
 pages/<page>   → { assets, shared::{intent, kit, model, route} }
 pages             → { pages::<page>::controller, shared::{diagnostics, intent, kit, model, route} }
 state             → { pages::PageSet, shared::{intent, model, route} }
-render            → { pages::{draws_frames, ground, repaint_step_ms, repaints_on, stamp}, shared::{diagnostics, kit, model, route} }
+render            → { pages::{camera_frames, ground, paint, repaint_step_ms, repaints_on}, shared::{diagnostics, kit, model, route} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, model}, runtime::workers }
@@ -135,8 +135,8 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ```
 
 - **pages never import each other**: a page directory reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
-- **`pages` is the only module that knows every page**: every page is a concrete type (`AmbientPage`…`NetworkPage`), and `PageSet` dispatches on `PageId` exhaustively; `state` asks only through `PageSet::apply`/`snapshot`/`enter`/`leave`, and `render` only through `pages::stamp`/`ground`/`draws_frames`/`repaint_step_ms`/`repaints_on`; a page reads `shared` (including `DeviceState` and `Diagnostics`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
-- **`shared/kit` names no page**: `Surface` offers the `stamp_*` primitives; `pages::stamp` decides which page stamps which mark
+- **`pages` is the only module that knows every page**: every page is a concrete type (`AmbientPage`…`NetworkPage`), and `PageSet` dispatches on `PageId` exhaustively; `state` asks only through `PageSet::apply`/`snapshot`/`enter`/`leave`, and `render` only through `pages::paint`/`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`; a page reads `shared` (including `DeviceState` and `Diagnostics`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
+- **`shared/kit` names no page**: `Surface` offers the `draw_*` marks; `pages::paint` decides which page draws what
 - `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState`, `PageSnapshot` and `NetworkView` live there so pages, the snapshot and rendering all look downward
 - `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `diagnostics` (the snapshot); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
 - `shared/model` holds the records more than one place reads or writes; `DeviceState` is their aggregate, `page.rs` is the `PageSnapshot` the pages publish, and `network_view/` is the Network page's view (owned by the page, copied by the snapshot, never read by the link)
@@ -148,6 +148,8 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ### The page model
 
 Every page is a concrete type, and its answers come in two layers. `Page` is what every client shares: `apply(&BusinessIntent, &DeviceState) -> Option<Command>` claims an intent, `publish(&mut PageSnapshot)` hands out a view; both default to nothing, so a page answers only what it has. `LocalPage: Page` belongs only to the screen showing the page: `bind` must say what one gesture means, and `on_show`/`on_hide` default to doing nothing.
+
+The render answers come in two layers: `Surface`'s `draw_*` puts one mark down (a pixel, a line of glyphs, a key), a page's `paint_*` composes a whole page, and `pages::paint` dispatches on `PageId` and then adds the badge; the other four answers (`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`) are exhaustive matches too, with the facts declared in each page's own file. A page's repaint rule is one of `Repaint::{Never, Always, Overlay, When(fn)}`, not a function with unused parameters.
 
 `PageSet` owns the eight instances and exposes `get`/`apply`/`snapshot`/`enter`/`leave`; there is no per-page field accessor. Adding a page means a `pages/<page>/` directory, one field on `PageSet`, and one arm each in `get`/`get_mut` and the five dispatchers; a missing arm does not compile, and `iot-tool/tests/page_table.rs` guards the template.
 

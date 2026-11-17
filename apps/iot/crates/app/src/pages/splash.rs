@@ -3,7 +3,6 @@
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS};
 use iot_core::paint::Rgb;
 
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, InputIntent, NavigationIntent};
 use crate::shared::kit::surface::Surface;
 use crate::shared::model::DeviceState;
@@ -14,8 +13,9 @@ use iot_core::drivers::input::{ButtonEvent, InputEvent};
 pub struct SplashPage;
 
 pub(super) const GROUND: Option<Rgb> = None;
-pub(super) const DRAWS_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::DIAG_REPAINT_STEP_MS;
+pub(super) const CAMERA_FRAMES: bool = false;
+pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
+pub(super) const REPAINTS: super::Repaint = super::Repaint::Never;
 
 impl super::Page for SplashPage {}
 
@@ -30,25 +30,17 @@ impl super::LocalPage for SplashPage {
     }
 }
 
-pub(super) fn stamp(surface: &mut Surface<'_>) {
-    surface.stamp_splash();
-}
-
 impl Surface<'_> {
-    pub(crate) fn stamp_splash(&mut self) {
+    pub(crate) fn paint_splash(&mut self) {
         let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
         let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;
         let top = self.height().saturating_sub(block) / 2;
         for (line, text) in lines.iter().enumerate() {
             let ink = text.len() * GLYPH_PITCH - OVERLAY_GAP;
             let left = self.width().saturating_sub(ink) / 2;
-            self.stamp_text(text, left, top + line * SPLASH_PITCH);
+            self.draw_text(text, left, top + line * SPLASH_PITCH);
         }
     }
-}
-
-pub(super) fn repaints_on(_prev: &Diagnostics, _next: &Diagnostics, _overlay: bool) -> bool {
-    false
 }
 
 const SPLASH_LINES: usize = 3;

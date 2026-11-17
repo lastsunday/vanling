@@ -11,7 +11,7 @@ use core::pin::Pin;
 use esp_hal::time::{Duration, Instant};
 use iot_core::drivers::camera::FrameOwner;
 use iot_core::drivers::surface::{PageSurface, PanelContext, PanelPainter, PanelTarget};
-use iot_core::stamp::rgb565;
+use iot_core::paint::rgb565;
 use iot_core::stats::windowed_percent;
 
 use crate::components::es7210::SPL_OFFSET_DECIBELS;

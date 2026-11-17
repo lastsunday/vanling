@@ -221,7 +221,7 @@ mod tests {
             .expect("the keyboard's last row is a row of keys");
         assert!(
             strip.y < last.y + last.h,
-            "the strip ({strip:?}) starts below the keys ({last:?}), so nothing is stamped over"
+            "the strip ({strip:?}) starts below the keys ({last:?}), so nothing is drawn over"
         );
         let label_top = strip.y + (strip.h - iot_core::overlay::FONT_H) / 2;
         assert!(

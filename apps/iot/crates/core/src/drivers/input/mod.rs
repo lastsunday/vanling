@@ -130,7 +130,7 @@ pub const PHANTOM_WINDOW_MS: u64 = TOUCH_SCAN_MS;
 /// to that ceiling.
 pub const MAX_TRACKED_POINTS: usize = 2;
 
-/// Gesture kind a finger most recently resolved, stamped into [`FingerLast::kind`]; `0` =
+/// Gesture kind a finger most recently resolved, recorded in [`FingerLast::kind`]; `0` =
 /// none yet.
 pub const FINGER_NONE: u8 = 0;
 pub const FINGER_TAP: u8 = 1;

@@ -23,7 +23,7 @@ enum Mark {
 }
 
 impl Surface<'_> {
-    pub(super) fn stamp_keyboard(&mut self, entry: Entry, revealed: bool) {
+    pub(super) fn draw_keyboard(&mut self, entry: Entry, revealed: bool) {
         let layer = entry.layer();
         let shift = entry.shift();
         let cycling = entry.cycling();
@@ -48,7 +48,7 @@ impl Surface<'_> {
                 } else {
                     key_label(key, layer)
                 };
-                self.stamp_key(rect, label, mark, b"");
+                self.draw_key(rect, label, mark, b"");
                 continue;
             };
             let run = &mut candidates[..layer.candidates_of(face).len()];
@@ -65,32 +65,32 @@ impl Surface<'_> {
                 }
                 _ => Mark::None,
             };
-            self.stamp_key(rect, &[face], mark, run);
+            self.draw_key(rect, &[face], mark, run);
         }
     }
 
-    fn stamp_key(&mut self, rect: ControlRect, face: &[u8], mark: Mark, run: &[u8]) {
+    fn draw_key(&mut self, rect: ControlRect, face: &[u8], mark: Mark, run: &[u8]) {
         let run = if run == face { b"".as_slice() } else { run };
-        self.stamp_frame(rect);
+        self.draw_frame(rect);
 
         let lines = usize::from(!run.is_empty());
         let block = (lines + 1) * FONT_H + lines * KEY_LINE_GAP;
         let face_top = rect.y + rect.h.saturating_sub(block) / 2;
         let face_left = text_left(rect, face);
         if mark == Mark::Face {
-            self.stamp_marked(face, face_left, face_top);
+            self.draw_marked(face, face_left, face_top);
         } else {
-            self.stamp_text(face, face_left, face_top);
+            self.draw_text(face, face_left, face_top);
         }
         if run.is_empty() {
             return;
         }
         let run_top = face_top + FONT_H + KEY_LINE_GAP;
         let run_left = text_left(rect, run);
-        self.stamp_text(run, run_left, run_top);
+        self.draw_text(run, run_left, run_top);
         if let Mark::Candidate(index) = mark {
             let at = run_left + index * GLYPH_PITCH;
-            self.stamp_marked(&run[index..=index], at, run_top);
+            self.draw_marked(&run[index..=index], at, run_top);
         }
     }
 }

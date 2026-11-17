@@ -1,9 +1,8 @@
-//! The pixels a page is drawn into, and the only ink there is.
+//! The pixels a page is drawn into, and the only marks there are.
 
 use crate::geometry::ControlRect;
-use crate::overlay::{FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP};
-use crate::paint::Rgb;
-use crate::stamp::{fill_surface, invert_rgb565};
+use crate::overlay::{CONTENT_BOTTOM, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP};
+use crate::paint::{Rgb, invert_rgb565, rgb565};
 
 use super::font::FONT;
 
@@ -50,7 +49,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Inverts one pixel.
-    pub fn stamp_pixel(&mut self, x: isize, y: isize) {
+    pub fn draw_pixel(&mut self, x: isize, y: isize) {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
             return;
         }
@@ -59,7 +58,7 @@ impl<'a> Canvas<'a> {
         self.frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
     }
 
-    fn stamp_char(&mut self, ch: u8, left: usize, top: usize) {
+    fn draw_char(&mut self, ch: u8, left: usize, top: usize) {
         if !(0x20..=0x7E).contains(&ch) {
             return;
         }
@@ -69,27 +68,27 @@ impl<'a> Canvas<'a> {
                 if bits & (1 << row) == 0 {
                     continue;
                 }
-                self.stamp_pixel(left as isize + col as isize, top as isize + row as isize);
+                self.draw_pixel(left as isize + col as isize, top as isize + row as isize);
             }
         }
     }
 
     /// Overdraws one run of text at a panel coordinate.
-    pub fn stamp_text(&mut self, text: &[u8], left: usize, top: usize) {
+    pub fn draw_text(&mut self, text: &[u8], left: usize, top: usize) {
         for (glyph, &ch) in text.iter().enumerate() {
-            self.stamp_char(ch, left + glyph * GLYPH_PITCH, top);
+            self.draw_char(ch, left + glyph * GLYPH_PITCH, top);
         }
     }
 
-    /// [`Canvas::stamp_text`] measured from the text's last column rather than its first,
+    /// [`Canvas::draw_text`] measured from the text's last column rather than its first,
     /// so a value that grows a digit grows leftwards into empty space.
-    pub fn stamp_text_right(&mut self, text: &[u8], right: isize, top: usize) {
+    pub fn draw_text_right(&mut self, text: &[u8], right: isize, top: usize) {
         let left = right + OVERLAY_GAP as isize - text.len() as isize * GLYPH_PITCH as isize;
-        self.stamp_text(text, left.max(0) as usize, top);
+        self.draw_text(text, left.max(0) as usize, top);
     }
 
     /// Inverts the straight run from `(x0, y0)` to `(x1, y1)` (Bresenham).
-    pub fn stamp_line(&mut self, x0: isize, y0: isize, x1: isize, y1: isize) {
+    pub fn draw_line(&mut self, x0: isize, y0: isize, x1: isize, y1: isize) {
         let dx = (x1 - x0).abs();
         let sx = if x0 < x1 { 1 } else { -1 };
         let dy = -(y1 - y0).abs();
@@ -97,7 +96,7 @@ impl<'a> Canvas<'a> {
         let mut err = dx + dy;
         let (mut x, mut y) = (x0, y0);
         loop {
-            self.stamp_pixel(x, y);
+            self.draw_pixel(x, y);
             if x == x1 && y == y1 {
                 break;
             }
@@ -115,7 +114,7 @@ impl<'a> Canvas<'a> {
 
     /// Inverts the perimeter of the circle at `(cx, cy)` with radius `r` (midpoint
     /// algorithm).
-    pub fn stamp_circle(&mut self, cx: isize, cy: isize, r: isize) {
+    pub fn draw_circle(&mut self, cx: isize, cy: isize, r: isize) {
         let mut x = r;
         let mut y = 0;
         let mut err = 1 - r;
@@ -130,7 +129,7 @@ impl<'a> Canvas<'a> {
                 (y, -x),
                 (-y, -x),
             ] {
-                self.stamp_pixel(cx + dx, cy + dy);
+                self.draw_pixel(cx + dx, cy + dy);
             }
             y += 1;
             if err <= 0 {
@@ -142,13 +141,21 @@ impl<'a> Canvas<'a> {
         }
     }
 
-    /// Fills `rect` with this frame's own ground turned over: the panel's one way of laying
-    /// a paper down for ink.
+    /// Fills `rect` with this frame's own ground turned over: the panel's one way of laying a
+    /// paper down for drawing.
     pub fn fill(&mut self, rect: ControlRect) {
         let Some(color) = self.ground else {
             return;
         };
-        fill_surface(self.frame, rect, color, self.width, self.height);
+        let surface = invert_rgb565(rgb565(color)).to_be_bytes();
+        let right = (rect.x + rect.w).min(self.width);
+        let bottom = (rect.y + rect.h).min(CONTENT_BOTTOM).min(self.height);
+        for y in rect.y..bottom {
+            for x in rect.x..right {
+                let offset = (y * self.width + x) * 2;
+                self.frame[offset..offset + 2].copy_from_slice(&surface);
+            }
+        }
     }
 }
 
@@ -159,35 +166,40 @@ mod tests {
 
     const WIDTH: usize = 32;
     const HEIGHT: usize = 24;
+    const GROUND: Rgb = Rgb(0x10, 0x20, 0x30);
 
     fn frame() -> alloc::vec::Vec<u8> {
         vec![0u8; WIDTH * HEIGHT * 2]
     }
 
+    fn pixel(frame: &[u8], x: usize, y: usize) -> u16 {
+        let offset = (y * WIDTH + x) * 2;
+        u16::from_be_bytes([frame[offset], frame[offset + 1]])
+    }
+
     #[test]
-    fn a_stamp_off_the_edge_is_clipped_rather_than_panicking() {
+    fn a_draw_off_the_edge_is_clipped_rather_than_panicking() {
         let mut bytes = frame();
         let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, None);
-        canvas.stamp_pixel(-1, 0);
-        canvas.stamp_pixel(0, -1);
-        canvas.stamp_pixel(WIDTH as isize, 0);
-        canvas.stamp_pixel(0, HEIGHT as isize);
-        canvas.stamp_text(b"X", WIDTH - 1, 0);
+        canvas.draw_pixel(-1, 0);
+        canvas.draw_pixel(0, -1);
+        canvas.draw_pixel(WIDTH as isize, 0);
+        canvas.draw_pixel(0, HEIGHT as isize);
+        canvas.draw_text(b"X", WIDTH - 1, 0);
         assert!(bytes.iter().any(|byte| *byte != 0));
     }
 
     #[test]
     fn a_fill_paints_the_rect_with_the_ground_turned_over() {
         let mut bytes = frame();
-        let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, Some(Rgb(0x10, 0x20, 0x30)));
+        let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, Some(GROUND));
         canvas.fill(ControlRect {
             x: 2,
             y: 3,
             w: 4,
             h: 5,
         });
-        let expected =
-            crate::stamp::invert_rgb565(crate::stamp::rgb565(Rgb(0x10, 0x20, 0x30))).to_be_bytes();
+        let expected = invert_rgb565(rgb565(GROUND)).to_be_bytes();
         for y in 3..8 {
             for x in 2..6 {
                 let offset = (y * WIDTH + x) * 2;
@@ -195,5 +207,48 @@ mod tests {
             }
         }
         assert_eq!(&bytes[0..2], &[0, 0], "outside the rect is untouched");
+    }
+
+    /// The fill is the page's surface, so drawing it over a glyph erases the glyph; a rect that
+    /// reaches past the content rows must leave the footer alone.
+    #[test]
+    fn a_fill_covers_what_was_drawn_and_stops_at_the_footer() {
+        const TALL: usize = CONTENT_BOTTOM + 8;
+        let ground = rgb565(GROUND).to_be_bytes();
+        let ink = invert_rgb565(rgb565(GROUND)).to_be_bytes();
+        let mut bytes = vec![0u8; WIDTH * TALL * 2];
+        for pixel in bytes.as_chunks_mut::<2>().0 {
+            pixel.copy_from_slice(&ground);
+        }
+        let mut canvas = Canvas::new(&mut bytes, WIDTH, TALL, Some(GROUND));
+        for x in 6..12 {
+            let offset = (10 * WIDTH + x) * 2;
+            bytes[offset..offset + 2].copy_from_slice(&ink);
+        }
+        bytes[((10 * WIDTH) + 1) * 2..((10 * WIDTH) + 1) * 2 + 2].copy_from_slice(&ink);
+
+        canvas.fill(ControlRect {
+            x: 4,
+            y: 8,
+            w: 16,
+            h: CONTENT_BOTTOM,
+        });
+
+        for y in 8..CONTENT_BOTTOM {
+            for x in 4..20 {
+                let offset = (y * WIDTH + x) * 2;
+                assert_eq!(bytes[offset..offset + 2], ink, "({x}, {y}) is the surface");
+            }
+        }
+        assert_eq!(
+            pixel(&bytes, 1, 10),
+            u16::from_be_bytes(ink),
+            "the word beside the box survives"
+        );
+        assert_eq!(
+            pixel(&bytes, CONTENT_BOTTOM, 0),
+            u16::from_be_bytes(ground),
+            "and the footer is never filled"
+        );
     }
 }

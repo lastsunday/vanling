@@ -201,6 +201,23 @@ pub fn backlight_level(
     (u32::from(floor_pct.min(100)) + (value - min) * room / span) as u8
 }
 
+/// Packs a colour into the panel's big-endian RGB565 word.
+pub fn rgb565(color: Rgb) -> u16 {
+    let r = color.0 as u16;
+    let g = color.1 as u16;
+    let b = color.2 as u16;
+    ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+}
+
+/// Per-channel bitwise inversion of an RGB565 word: a glyph drawn this way is visible on any
+/// fill, matching the "off" side of the contrast regardless of base colour.
+pub fn invert_rgb565(packed: u16) -> u16 {
+    let r = (packed >> 11) & 0x1F;
+    let g = (packed >> 5) & 0x3F;
+    let b = packed & 0x1F;
+    ((0x1F - r) << 11) | ((0x3F - g) << 5) | (0x1F - b)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

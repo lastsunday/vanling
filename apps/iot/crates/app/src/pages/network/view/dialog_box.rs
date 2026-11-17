@@ -45,7 +45,7 @@ impl<'a> Dialog<'a> {
         self
     }
 
-    pub(crate) fn stamp(self, surface: &mut Surface<'_>) {
+    pub(crate) fn draw(self, surface: &mut Surface<'_>) {
         surface.fill(ControlRect {
             x: DIALOG_X,
             y: DIALOG_TOP,
@@ -53,15 +53,15 @@ impl<'a> Dialog<'a> {
             h: DIALOG_H,
         });
         let left = DIALOG_X + DIALOG_INSET;
-        surface.stamp_text(self.title, left, DIALOG_TITLE_TOP);
+        surface.draw_text(self.title, left, DIALOG_TITLE_TOP);
         for (index, line) in self.lines[..self.line_count].iter().enumerate() {
-            surface.stamp_text(line, left, DIALOG_BODY_TOP + index * ROW_PITCH);
+            surface.draw_text(line, left, DIALOG_BODY_TOP + index * ROW_PITCH);
         }
         let Some((keep, act)) = self.answers else {
             return;
         };
         for (choice, label) in [(DialogChoice::Keep, keep), (DialogChoice::Act, act)] {
-            surface.stamp_cell(dialog_answer_box(choice), label);
+            surface.draw_cell(dialog_answer_box(choice), label);
         }
     }
 }

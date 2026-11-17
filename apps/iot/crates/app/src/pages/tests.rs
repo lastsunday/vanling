@@ -1,13 +1,13 @@
 //! The page golden table: every page, with the debug badge on and off, is one fingerprint.
 //!
-//! The dispatch under test is [`stamp`](crate::pages::stamp), so a page whose view moved
-//! still has to draw exactly the ink the table recorded. Regenerate only for an intended
-//! pixel change.
+//! The dispatch under test is [`paint`](crate::pages::paint), so a page whose view moved still
+//! has to draw exactly the picture the table recorded. Regenerate only for an intended pixel
+//! change.
 
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::pages::{draws_frames, ground, stamp};
+use crate::pages::{camera_frames, ground, paint};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::kit::surface::Surface;
 use crate::shared::route::PageId;
@@ -26,13 +26,13 @@ fn render(page: PageId, debug: bool) -> Vec<u8> {
     {
         let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, ground(page));
         let mut surface = Surface::new(canvas, &diagnostics, 0, 60, debug, 100);
-        stamp(page, &mut surface);
+        paint(page, &mut surface);
     }
     frame
 }
 
 /// A full-frame FNV-1a, used only by the golden table: the sampling fingerprint the camera
-/// page compares frames with is deliberately sparse and would miss small ink changes.
+/// page compares frames with is deliberately sparse and would miss small changes.
 fn fingerprint(frame: &[u8]) -> u32 {
     let mut hash = 0x811c_9dc5u32;
     for &byte in frame {
@@ -87,13 +87,13 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
 }
 
 #[test]
-fn every_page_stamps_something_and_does_it_the_same_way_twice() {
+fn every_page_paints_something_and_does_it_the_same_way_twice() {
     for page in PageId::ALL {
         let first = render(page, true);
         let second = render(page, true);
         assert!(
             first.iter().any(|byte| *byte != 0),
-            "{page:?} stamped no ink"
+            "{page:?} painted nothing"
         );
         assert_eq!(first, second, "{page:?} is not deterministic");
     }
@@ -109,7 +109,7 @@ fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
     {
         let canvas = Canvas::new(&mut expected, WIDTH, HEIGHT, None);
         let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
-        surface.stamp_fps();
+        surface.draw_fps();
     }
     assert_eq!(render(PageId::Camera, true), expected);
 }
@@ -123,7 +123,7 @@ fn every_page_answers_every_render_question() {
             "{page:?} grounds"
         );
         assert_eq!(
-            draws_frames(page),
+            camera_frames(page),
             page == PageId::Camera,
             "{page:?} frames"
         );

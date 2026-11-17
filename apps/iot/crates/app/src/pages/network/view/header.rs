@@ -65,7 +65,7 @@ const _: () = assert!(
 );
 
 impl Surface<'_> {
-    pub(super) fn stamp_header(
+    pub(super) fn draw_header(
         &mut self,
         draft: NetworkView,
         link: LinkStatus,
@@ -73,9 +73,9 @@ impl Surface<'_> {
         mac: Option<[u8; 6]>,
         list_len: Option<usize>,
     ) {
-        self.stamp_text(b"NETWORK", block_x(Block::First), overlay_row_top(0));
+        self.draw_text(b"NETWORK", block_x(Block::First), overlay_row_top(0));
         if let Some(rows) = list_len {
-            self.stamp_text(
+            self.draw_text(
                 format_window(draft.list_top, rows, &mut [0u8; 12]),
                 block_x(Block::First) + (LIST_TITLE_GLYPHS + 1) * GLYPH_PITCH,
                 overlay_row_top(0),
@@ -83,16 +83,16 @@ impl Surface<'_> {
         }
         if let Some(mac) = mac {
             let mut text = [0u8; MAC_TEXT_BYTES];
-            self.stamp_text_right(mac_text(mac, &mut text), PANEL_RIGHT, overlay_row_top(0));
+            self.draw_text_right(mac_text(mac, &mut text), PANEL_RIGHT, overlay_row_top(0));
         }
         if link.shows_setup_box() {
             if let Some(mac) = mac {
                 let mut name = [0u8; SSID_BYTES];
                 let name = format_setup_name(Some(mac), &mut name);
-                self.stamp_left(b"AP", name, Block::First, 1);
+                self.draw_left(b"AP", name, Block::First, 1);
             }
         } else if let Some(ap) = shown_ap {
-            self.stamp_left(
+            self.draw_left(
                 b"AP",
                 format_network_name(ap, HEADER_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
                 Block::First,
@@ -108,11 +108,11 @@ impl Surface<'_> {
             format_phase(draft.phase(link.phase), &mut phase_buf)
         };
         text[3..3 + word.len()].copy_from_slice(word);
-        self.stamp_text(&text[..3 + word.len()], HEADER_PHASE_X, overlay_row_top(1));
+        self.draw_text(&text[..3 + word.len()], HEADER_PHASE_X, overlay_row_top(1));
         if let Some(ap) = shown_ap
             && !link.shows_setup_box()
         {
-            self.stamp_text_right(
+            self.draw_text_right(
                 format_bars(ap.bars(), &mut [0u8; 4]),
                 PANEL_RIGHT,
                 overlay_row_top(1),
@@ -122,7 +122,7 @@ impl Surface<'_> {
             let Some(entry) = draft.entry else {
                 return;
             };
-            self.stamp_left(
+            self.draw_left(
                 b"PSK",
                 format_psk(&entry, draft.revealed, &mut [0u8; PSK_MASK_GLYPHS]),
                 Block::First,
@@ -144,7 +144,7 @@ impl Surface<'_> {
                 let mut text = [0u8; 3 + 16];
                 text[..3].copy_from_slice(b"IP ");
                 text[3..3 + quad.len()].copy_from_slice(quad);
-                self.stamp_text(
+                self.draw_text(
                     &text[..3 + quad.len()],
                     block_x(Block::First),
                     overlay_row_top(2),
@@ -154,7 +154,7 @@ impl Surface<'_> {
                 && !link.mode.is_setup()
             {
                 let mut text = [0u8; MAC_TEXT_BYTES];
-                self.stamp_text_right(
+                self.draw_text_right(
                     mac_text(ap.bssid, &mut text),
                     PANEL_RIGHT,
                     overlay_row_top(2),
@@ -188,7 +188,7 @@ mod tests {
         {
             let canvas = Canvas::new(&mut frame, PANEL_COLUMNS, PANEL_ROWS, None);
             let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
-            surface.stamp_header(draft, link, shown_ap, Some([0x02, 1, 2, 3, 4, 5]), Some(3));
+            surface.draw_header(draft, link, shown_ap, Some([0x02, 1, 2, 3, 4, 5]), Some(3));
         }
         frame
     }

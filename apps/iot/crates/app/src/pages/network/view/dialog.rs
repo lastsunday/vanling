@@ -13,7 +13,7 @@ use crate::pages::network::view::text::{
 use crate::shared::kit::surface::Surface;
 
 impl Surface<'_> {
-    pub(super) fn stamp_box(
+    pub(super) fn draw_box(
         &mut self,
         draft: NetworkView,
         link: LinkStatus,
@@ -21,27 +21,27 @@ impl Surface<'_> {
         mac: Option<[u8; 6]>,
     ) {
         if draft.confirm.is_some() {
-            self.stamp_confirm(draft, link);
+            self.draw_confirm(draft, link);
         } else if draft.setup_box_pending() {
-            self.stamp_setup_starting(mac);
+            self.draw_setup_starting(mac);
         } else if link.shows_setup_box() {
-            self.stamp_notice(draft, link, mac);
+            self.draw_notice(draft, link, mac);
         } else {
-            self.stamp_joining(link, shown_ap);
+            self.draw_joining(link, shown_ap);
         }
     }
 
     /// The box is on the glass the moment the panel asks for the access point, before the
     /// radio has been reconfigured for it.
-    fn stamp_setup_starting(&mut self, mac: Option<[u8; 6]>) {
+    fn draw_setup_starting(&mut self, mac: Option<[u8; 6]>) {
         let mut name = [0u8; SSID_BYTES];
         Dialog::new(SETUP_NOTICE_TITLE)
             .line(format_setup_notice_body(mac, &mut name))
             .line(SETUP_STARTING_BODY)
-            .stamp(self);
+            .draw(self);
     }
 
-    fn stamp_notice(&mut self, draft: NetworkView, link: LinkStatus, mac: Option<[u8; 6]>) {
+    fn draw_notice(&mut self, draft: NetworkView, link: LinkStatus, mac: Option<[u8; 6]>) {
         let answers = page_controls::answers(link);
         let mut name = [0u8; SSID_BYTES];
         let mut pass = [0u8; SSID_BYTES];
@@ -63,18 +63,18 @@ impl Surface<'_> {
             .line(format_setup_notice_body(mac, &mut name))
             .line(line)
             .answers(control_label(keep), control_label(answers.act.kind))
-            .stamp(self);
+            .draw(self);
     }
 
-    fn stamp_joining(&mut self, link: LinkStatus, shown_ap: Option<AccessPoint>) {
+    fn draw_joining(&mut self, link: LinkStatus, shown_ap: Option<AccessPoint>) {
         let mut title = [0u8; DIALOG_GLYPHS];
         let associated = link.ap.is_some();
         Dialog::new(format_joining_title(associated, shown_ap, &mut title))
             .line(joining_body(associated))
-            .stamp(self);
+            .draw(self);
     }
 
-    fn stamp_confirm(&mut self, draft: NetworkView, link: LinkStatus) {
+    fn draw_confirm(&mut self, draft: NetworkView, link: LinkStatus) {
         let Some(confirm) = draft.confirm else {
             return;
         };
@@ -86,6 +86,6 @@ impl Surface<'_> {
                 control_label(ControlKind::Keep),
                 control_label(confirm_verb(confirm)),
             )
-            .stamp(self);
+            .draw(self);
     }
 }

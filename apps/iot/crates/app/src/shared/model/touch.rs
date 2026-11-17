@@ -76,7 +76,7 @@ struct GestureRecord {
 }
 
 impl TouchState {
-    /// A gesture the classifier resolved: it tallies, stamps the finger it belongs to, and
+    /// A gesture the classifier resolved: it tallies, records the finger it belongs to, and
     /// frees that slot.
     pub fn on_gesture(&mut self, gesture: GestureEvent) {
         match gesture {

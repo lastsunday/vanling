@@ -3,8 +3,9 @@
 //! how long it lives. The enum is the destination; [`PageId::route`] is the one
 //! exhaustive map from a destination to its row, so a new page cannot exist without a route.
 //!
-//! How a page is drawn — its ink, its ground, whether frames arrive from a camera, how often
-//! it may repaint — is the page's own answer (`pages::Page`), not this table's.
+//! How a page is painted — its ground, whether frames arrive from a camera, how often it may
+//! repaint, what a snapshot drift has to move — is the page's own answer (`pages`), not this
+//! table's.
 //!
 //! [`PageId::ALL`] is the button's order too: one list, so a page cannot be listed and still be
 //! unreachable from the button. [`Navigator`] walks it (`nav`).

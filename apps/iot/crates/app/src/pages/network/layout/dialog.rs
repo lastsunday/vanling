@@ -27,7 +27,7 @@ pub const DIALOG_GAP: usize = 8;
 /// Glyphs one line of the box holds: what fits between its own margins.
 pub const DIALOG_GLYPHS: usize = (DIALOG_W - 2 * DIALOG_INSET + OVERLAY_GAP) / GLYPH_PITCH;
 
-/// The rows the box's two lines are stamped on: the question, and the consequence under it.
+/// The rows the box's two lines are drawn on: the question, and the consequence under it.
 pub const DIALOG_TITLE_TOP: usize = DIALOG_TOP + DIALOG_INSET / 2;
 pub const DIALOG_BODY_TOP: usize = DIALOG_TITLE_TOP + ROW_PITCH;
 

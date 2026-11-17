@@ -62,7 +62,7 @@ The gap from `LEVEL_UNIT_X` to `LEVEL_SPL_X` is `LEVEL_UNIT_GLYPHS + 1` characte
 
 Read `RST` together with `COL` — both moving while `PK` sits at `-90` means the driver is re-arming over and over; neither moving means the page is not running.
 
-`MS` counts wall-clock time rather than samples because every other readout on the panel is stamped from the same clock, and a late poll must not make the capture look shorter than it was.
+`MS` counts wall-clock time rather than samples because every other readout on the panel is read from the same clock, and a late poll must not make the capture look shorter than it was.
 
 ### Converting dBFS to dB SPL
 
@@ -157,11 +157,11 @@ Labelling the scale as "top is 0, decreasing downward" would put every tick an o
 
 ### One-ink overprinting has no second grey
 
-The overlay is an inverted `stamp_pixel`; there is no second level of grey.
+The overlay is an inverted `draw_pixel`; there is no second level of grey.
 
 So the RMS cannot be drawn as a thin stripe inside the peak: the stripe's pixels are the wide bar's pixels, and identical pixels are the same as none drawn at all.
 
-A solid core with a dithered shoulder is the only workable drawing and also the cheaper one: the dither lights only half the rows of the shoulder, and drawing a full solid bar takes more `stamp_pixel` calls still.
+A solid core with a dithered shoulder is the only workable drawing and also the cheaper one: the dither lights only half the rows of the shoulder, and drawing a full solid bar takes more `draw_pixel` calls still.
 
 `CLIP` is the same case — it is not a level reading but one sentence about the whole window, so it is text and not a mark alone.
 

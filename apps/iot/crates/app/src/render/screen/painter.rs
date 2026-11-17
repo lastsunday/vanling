@@ -3,7 +3,7 @@
 
 use core::any::Any;
 
-use crate::pages::stamp;
+use crate::pages::paint;
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::kit::surface::Surface;
 use iot_core::drivers::camera::CameraSnapshot;
@@ -31,7 +31,7 @@ impl PanelPainter for AppPainter {
         if let Some(probe) = context.stack_probe {
             surface = surface.with_stack_probe(probe);
         }
-        stamp(diagnostics.page, &mut surface);
+        paint(diagnostics.page, &mut surface);
     }
 
     fn paint_camera(
@@ -53,6 +53,6 @@ impl PanelPainter for AppPainter {
             DEBUG_DIAGNOSTICS,
             context.spl_offset_db,
         );
-        surface.stamp_camera(readout);
+        surface.paint_camera(readout);
     }
 }
