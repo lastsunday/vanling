@@ -203,8 +203,14 @@ fn every_page_has_a_view() {
     let page_root = repo_root().join("apps/iot/crates/app/src/pages");
     for row in rows(&source()) {
         assert!(
-            dispatch.contains(&format!("Self::{}", row.variant)),
-            "{} has no arm in `impl Page for PageId`; the answers must stay exhaustive",
+            dispatch.contains(&format!("PageId::{}", row.variant)),
+            "{} has no arm in the dispatch table; the answers must stay exhaustive",
+            row.variant
+        );
+        assert!(
+            dispatch.contains(&format!("{}Page", row.variant)),
+            "{} has no type in `PageSet`; adding a page names it there and the compiler lists \
+             the rest",
             row.variant
         );
         let candidates = [

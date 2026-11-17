@@ -70,7 +70,7 @@ fn an_offline_page_keeps_its_ap_cell_but_a_hold_does_not_raise_one() {
     );
 
     let operation = op(InputEvent::Button(ButtonEvent::LongPress));
-    let business = translate(&operation, &manager.state());
+    let business = translate(&operation, &manager.state(), manager.pages());
     assert_ne!(
         business,
         BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost),
@@ -138,10 +138,7 @@ fn the_panels_front_keeps_a_cell_for_looking_around_when_there_is_no_way_back() 
         Some(Command::Network(NetworkCommand::ScanNow)),
         "a device with no way back still asks the radio to look around"
     );
-    assert!(
-        manager.state().network_page.rescan_wait,
-        "and the strip says so"
-    );
+    assert!(manager.network_view().rescan_wait, "and the strip says so");
 
     assert_eq!(
         tap_strip(&mut manager),
@@ -216,7 +213,7 @@ fn a_front_switch_waits_for_the_other_host_to_report() {
         }))
     );
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         Some(SetupWait::Host(SetupHost::Panel)),
         "the page is waiting for the host it asked the radio for"
     );
@@ -234,7 +231,7 @@ fn a_front_switch_waits_for_the_other_host_to_report() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         None,
         "the host the radio reports is the answer the page was waiting for"
     );
@@ -246,11 +243,11 @@ fn a_front_switch_waits_for_the_other_host_to_report() {
         "and the switch is offered again"
     );
     assert!(
-        manager.state().network_page.setup_box_pending(),
+        manager.network_view().setup_box_pending(),
         "asking for the access point puts its box up before it is reported"
     );
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         Some(SetupWait::Host(SetupHost::AccessPoint))
     );
 }
@@ -267,7 +264,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         }))
     );
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         Some(SetupWait::Open(true))
     );
     assert_eq!(
@@ -292,7 +289,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         Some(SetupWait::Open(true)),
         "a report that has not changed the passphrase is not the answer"
     );
@@ -305,7 +302,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         None,
         "the box now says the access point is open, which is what was asked"
     );
@@ -324,14 +321,14 @@ fn a_setup_change_stops_waiting_when_setup_mode_ends() {
     let mut manager = on_network_page();
     setup_mode(&mut manager, false);
     tap_strip(&mut manager);
-    assert!(manager.state().network_page.setup_wait.is_some());
+    assert!(manager.network_view().setup_wait.is_some());
 
     manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         mode: NetworkMode::Browsing,
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         None,
         "a report that is not setup mode ends the wait: no setup report can follow it"
     );
@@ -343,7 +340,7 @@ fn a_refused_setup_change_stops_waiting() {
     setup_mode(&mut manager, false);
     tap_strip(&mut manager);
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         Some(SetupWait::Host(SetupHost::Panel))
     );
 
@@ -356,7 +353,7 @@ fn a_refused_setup_change_stops_waiting() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.setup_wait,
+        manager.network_view().setup_wait,
         None,
         "a refusal is an answer: the page must not keep saying WAIT for a change that failed"
     );

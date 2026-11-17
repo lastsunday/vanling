@@ -122,7 +122,7 @@ fn build_wiring(
     io: IoPlacement,
 ) -> Wiring<iot_chip_esp::Clock> {
     let surfaces = board.take_surfaces().expect("board has a wired surface");
-    let has_pages = surfaces
+    let has_display = surfaces
         .iter()
         .any(|wired| wired.role() == SurfaceRole::Pages);
 
@@ -133,7 +133,7 @@ fn build_wiring(
             station,
             board.take_credentials(),
             iot_bsp_esp::SETUP_HOST,
-            has_pages,
+            has_display,
             NetCtx {
                 bus: &RUNTIME.bus,
                 network: &RUNTIME.network,

@@ -1,10 +1,10 @@
 //! Fixtures shared by the render layer's tests.
 
-use crate::render::common::light_diagnostics;
+use crate::render::common::device_snapshot;
 use crate::render::{Appearance, LightAppearance, RenderController};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, NavigationIntent};
-use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS};
+use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, PageSnapshot};
 use crate::state::DeviceManager;
 use iot_core::demand::EffectiveDemand;
 
@@ -29,7 +29,12 @@ pub(super) fn state(light: LightState) -> DeviceState {
 
 pub(super) fn collect(ctl: &mut RenderController, s: &DeviceState) -> Vec<Appearance> {
     let mut seen = Vec::new();
-    ctl.reconcile(s, &EffectiveDemand::default(), |a| seen.push(a));
+    ctl.reconcile(
+        s,
+        PageSnapshot::default(),
+        &EffectiveDemand::default(),
+        |a| seen.push(a),
+    );
     seen
 }
 
@@ -40,7 +45,11 @@ pub(super) fn landed() -> DeviceManager {
 }
 
 pub(super) fn diagnostics_for(light: LightState) -> Diagnostics {
-    light_diagnostics(&state(light), &EffectiveDemand::default())
+    device_snapshot(
+        &state(light),
+        PageSnapshot::default(),
+        &EffectiveDemand::default(),
+    )
 }
 
 pub(super) fn light_appearances(seen: Vec<Appearance>) -> Vec<(u8, LightAppearance)> {

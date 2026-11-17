@@ -1,7 +1,9 @@
 //! What each light and the diagnostics overlay should look like, derived from state.
 
 use crate::shared::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
-use crate::shared::model::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::model::{
+    Breath, DeviceState, LightState, MAX_LIGHTS, PageSnapshot, SurfaceRole,
+};
 use iot_core::demand::EffectiveDemand;
 use iot_core::paint::{MODE_BREATH, MODE_OFF, MODE_SOLID, Rgb, rgb_hue, scale_brightness};
 
@@ -105,7 +107,11 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
     }
 }
 
-pub(crate) fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -> Diagnostics {
+pub(crate) fn device_snapshot(
+    state: &DeviceState,
+    pages: PageSnapshot,
+    demand: &EffectiveDemand,
+) -> Diagnostics {
     Diagnostics {
         demand: *demand,
         touch: TouchDiagnostics {
@@ -131,7 +137,7 @@ pub(crate) fn light_diagnostics(state: &DeviceState, demand: &EffectiveDemand) -
         link: state.network.link,
         mac: state.network.mac,
         aps: state.network.aps,
-        draft: state.network_page,
+        pages,
         motion: state.motion.sample,
         motion_counts: state.motion.counts,
         motion_caps: state.backed.motion_caps(),
@@ -160,7 +166,7 @@ mod tests {
         let mut state = state(LightState::boot());
         state.network.mac = Some(mac);
         assert_eq!(
-            light_diagnostics(&state, &EffectiveDemand::default()).mac,
+            device_snapshot(&state, PageSnapshot::default(), &EffectiveDemand::default()).mac,
             Some(mac)
         );
     }
@@ -187,7 +193,7 @@ mod tests {
         };
         manager.apply_capture(poll);
         assert_eq!(
-            light_diagnostics(&manager.state(), manager.demand())
+            device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand())
                 .audio
                 .phase,
             AudioPhase::Idle,
@@ -195,7 +201,8 @@ mod tests {
         );
         manager.apply_business(BusinessIntent::Audio(AudioIntent::Start));
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-        let recording = light_diagnostics(&manager.state(), manager.demand()).audio;
+        let recording =
+            device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
             recording.envelope, poll.envelope,
@@ -208,7 +215,8 @@ mod tests {
         );
 
         manager.apply_business(BusinessIntent::Audio(AudioIntent::Stop));
-        let stopped = light_diagnostics(&manager.state(), manager.demand()).audio;
+        let stopped =
+            device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(
             stopped.envelope, poll.envelope,
@@ -218,7 +226,7 @@ mod tests {
 
     #[test]
     fn the_diagnostics_projection_owns_every_state_domain() {
-        // Compile-time guard rather than a behaviour test: `light_diagnostics` projects
+        // Compile-time guard rather than a behaviour test: `device_snapshot` projects
         // `DeviceState` field by field, and a new domain must be looked at there instead of
         // silently reading as its `Default` on the panel.
         fn project_every_field(state: DeviceState) {
@@ -233,7 +241,6 @@ mod tests {
                 audio: _,
                 playback: _,
                 network: _,
-                network_page: _,
                 touch: _,
                 dropped_intents: _,
             } = state;
@@ -547,13 +554,13 @@ mod tests {
             iot_core::demand::Mode::Off
         );
 
-        let snapshot = light_diagnostics(&manager.state(), manager.demand());
+        let snapshot = device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand());
         assert_eq!(
             snapshot.demand.claim(DemandKey::AUDIO).mode,
             iot_core::demand::Mode::Off
         );
         assert_eq!(
-            light_diagnostics(&manager.state(), &quiet)
+            device_snapshot(&manager.state(), PageSnapshot::default(), &quiet)
                 .demand
                 .claim(DemandKey::AUDIO)
                 .mode,

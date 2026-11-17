@@ -308,7 +308,11 @@ impl HostLight {
             Ordering::SeqCst,
         );
         NETWORK_TYPED.fetch_max(
-            diagnostics.draft.entry.map_or(0, |entry| entry.len()),
+            diagnostics
+                .pages
+                .network
+                .entry
+                .map_or(0, |entry| entry.len()),
             Ordering::SeqCst,
         );
         NETWORK_SAVED.fetch_max(

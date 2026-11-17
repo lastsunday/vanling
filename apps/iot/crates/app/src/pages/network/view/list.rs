@@ -2,7 +2,7 @@
 
 use crate::pages::network::layout::LIST_ROWS;
 use crate::pages::network::layout::{LIST_ROW_H, LIST_TOP, band_lines_top};
-use crate::shared::model::NetworkDraft;
+use crate::shared::model::NetworkView;
 use iot_core::drivers::network::{ApList, LinkStatus, SSID_BYTES};
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{
@@ -44,12 +44,7 @@ const _: () = assert!(
 );
 
 impl Surface<'_> {
-    pub(super) fn stamp_list(
-        &mut self,
-        draft: NetworkDraft,
-        link: LinkStatus,
-        aps: Option<ApList>,
-    ) {
+    pub(super) fn stamp_list(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
         match aps {
             None => self.stamp_band(b"NOT SCANNED"),
             Some(list) if list.is_empty() => self.stamp_band(b"NO NETWORKS"),

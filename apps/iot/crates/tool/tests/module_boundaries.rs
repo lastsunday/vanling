@@ -408,13 +408,7 @@ fn the_core_never_knows_the_app() {
 fn the_pixel_layer_names_no_product() {
     assert_no_reference(
         sources(&ui_src()),
-        &[
-            "iot_app",
-            "PageId",
-            "Diagnostics",
-            "NetworkDraft",
-            "vanling",
-        ],
+        &["iot_app", "PageId", "Diagnostics", "NetworkView", "vanling"],
     );
 }
 
@@ -447,7 +441,7 @@ fn the_kit_names_no_page() {
         &[
             "crate::pages",
             "PageId",
-            "NetworkDraft",
+            "NetworkView",
             "Entry",
             "SetupWait",
         ],
@@ -524,7 +518,7 @@ fn declared_struct_name(line: &str) -> Option<&str> {
     while let Some(word) = words.next() {
         if word == "struct" {
             let name = words.next()?;
-            return Some(name.trim_end_matches('{').split('<').next()?);
+            return name.trim_end_matches('{').split('<').next();
         }
     }
     None
@@ -697,8 +691,22 @@ fn state_neither_draws_nor_snapshots_itself() {
 fn the_state_read_side_stays_a_reader() {
     assert_no_reference(
         shipping_source(app_src().join("state/manager.rs")),
-        &["crate::pages", "super::translate", "crate::shared::intent"],
+        &["super::translate", "crate::shared::intent"],
     );
+    // The read side owns the container and never one page: a getter that named a page would
+    // make the half that only reads depend on the half that answers.
+    for (path, text) in shipping_source(app_src().join("state/manager.rs")) {
+        let mut rest = text.as_str();
+        while let Some(at) = rest.find("crate::pages") {
+            rest = &rest[at..];
+            assert!(
+                rest.starts_with("crate::pages::PageSet"),
+                "{} reaches {rest:.40}; the read side may name only the container",
+                path.display()
+            );
+            rest = &rest["crate::pages".len()..];
+        }
+    }
 }
 
 #[test]

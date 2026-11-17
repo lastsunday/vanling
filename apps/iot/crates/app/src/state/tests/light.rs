@@ -18,7 +18,7 @@ fn two_lights() -> DeviceState {
 }
 
 fn lamp_intent(event: InputEvent, current: &DeviceState) -> BusinessIntent {
-    translate(&recognize(event, 0), current)
+    translate(&recognize(event, 0), current, &PageSet::default())
 }
 
 #[test]
@@ -60,7 +60,7 @@ fn a_touch_asks_the_panel_surface() {
         }
     );
     assert_eq!(
-        translate(&long_press(), &ambient),
+        translate(&long_press(), &ambient, &PageSet::default()),
         BusinessIntent::Light {
             instance: 0,
             action: LightAction::Cycle,
@@ -122,7 +122,7 @@ fn off_answers_only_the_cycle() {
         );
     }
     assert_eq!(
-        translate(&long_press(), &off),
+        translate(&long_press(), &off, &PageSet::default()),
         BusinessIntent::Light {
             instance: 0,
             action: LightAction::Cycle,
@@ -135,7 +135,8 @@ fn a_button_drives_its_own_surface_and_clamps() {
     assert_eq!(
         translate(
             &recognize(InputEvent::Button(ButtonEvent::Click), 1),
-            &two_lights()
+            &two_lights(),
+            &PageSet::default()
         ),
         BusinessIntent::Light {
             instance: 1,
@@ -146,7 +147,8 @@ fn a_button_drives_its_own_surface_and_clamps() {
     assert_eq!(
         translate(
             &recognize(InputEvent::Button(ButtonEvent::DoubleClick), 7),
-            &two_lights()
+            &two_lights(),
+            &PageSet::default()
         ),
         BusinessIntent::Light {
             instance: 1,
@@ -159,7 +161,7 @@ fn a_button_drives_its_own_surface_and_clamps() {
 #[test]
 fn a_tap_only_touches_the_first_surface() {
     assert_eq!(
-        translate(&tap(), &two_lights()),
+        translate(&tap(), &two_lights(), &PageSet::default()),
         BusinessIntent::Invalid,
         "the panel's surface is off, and a tap never reaches the second one"
     );

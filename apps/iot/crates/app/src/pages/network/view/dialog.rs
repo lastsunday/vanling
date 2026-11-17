@@ -2,7 +2,7 @@
 
 use crate::pages::network::controller::{self as page_controls, ControlKind, confirm_verb};
 use crate::pages::network::layout::DIALOG_GLYPHS;
-use crate::shared::model::{NetworkDraft, SetupWait};
+use crate::shared::model::{NetworkView, SetupWait};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
 
 use super::dialog_box::Dialog;
@@ -15,7 +15,7 @@ use crate::shared::kit::surface::Surface;
 impl Surface<'_> {
     pub(super) fn stamp_box(
         &mut self,
-        draft: NetworkDraft,
+        draft: NetworkView,
         link: LinkStatus,
         shown_ap: Option<AccessPoint>,
         mac: Option<[u8; 6]>,
@@ -41,7 +41,7 @@ impl Surface<'_> {
             .stamp(self);
     }
 
-    fn stamp_notice(&mut self, draft: NetworkDraft, link: LinkStatus, mac: Option<[u8; 6]>) {
+    fn stamp_notice(&mut self, draft: NetworkView, link: LinkStatus, mac: Option<[u8; 6]>) {
         let answers = page_controls::answers(link);
         let mut name = [0u8; SSID_BYTES];
         let mut pass = [0u8; SSID_BYTES];
@@ -74,7 +74,7 @@ impl Surface<'_> {
             .stamp(self);
     }
 
-    fn stamp_confirm(&mut self, draft: NetworkDraft, link: LinkStatus) {
+    fn stamp_confirm(&mut self, draft: NetworkView, link: LinkStatus) {
         let Some(confirm) = draft.confirm else {
             return;
         };

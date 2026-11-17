@@ -4,7 +4,7 @@
 use crate::pages::network::layout::ToolbarCell;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{BusinessIntent, NetworkPageIntent};
-use crate::shared::model::NetworkDraft;
+use crate::shared::model::NetworkView;
 use iot_core::drivers::network::{LinkStatus, NetworkMode, SetupHost};
 
 /// What a box does, which is also what the view has to call it.
@@ -60,7 +60,7 @@ impl Strip {
 }
 
 /// The strip the page is offering right now.
-pub fn strip(draft: NetworkDraft, link: LinkStatus) -> Strip {
+pub fn strip(draft: NetworkView, link: LinkStatus) -> Strip {
     let asked = draft.join_wait || draft.setup_wait.is_some();
     if let NetworkMode::Setup { host, cancellable } = link.mode {
         let right = Control {
@@ -191,7 +191,7 @@ mod tests {
             phase: LinkPhase::Connected,
             ..LinkStatus::default()
         };
-        let linked = strip(NetworkDraft::default(), linked);
+        let linked = strip(NetworkView::default(), linked);
         assert!(!linked.is_split());
         assert_eq!(linked.kind(ToolbarCell::Left), ControlKind::Leave);
         assert_eq!(
@@ -203,16 +203,16 @@ mod tests {
             BusinessIntent::NetworkPage(NetworkPageIntent::Leave)
         );
 
-        let idle = strip(NetworkDraft::default(), LinkStatus::default());
+        let idle = strip(NetworkView::default(), LinkStatus::default());
         assert_eq!(idle.kind(ToolbarCell::Right), ControlKind::Scan);
         assert_eq!(
             idle.command(ToolbarCell::Right),
             BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)
         );
 
-        let waiting = NetworkDraft {
+        let waiting = NetworkView {
             rescan_wait: true,
-            ..NetworkDraft::default()
+            ..NetworkView::default()
         };
         let waiting = strip(waiting, LinkStatus::default());
         assert_eq!(waiting.kind(ToolbarCell::Right), ControlKind::Wait);
@@ -224,7 +224,7 @@ mod tests {
 
     #[test]
     fn setup_offers_the_way_back_beside_the_front_switch() {
-        let split = strip(NetworkDraft::default(), in_setup(SetupHost::Panel, true));
+        let split = strip(NetworkView::default(), in_setup(SetupHost::Panel, true));
         assert!(split.is_split());
         assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Cancel);
         assert_eq!(
@@ -244,7 +244,7 @@ mod tests {
             mode: NetworkMode::Browsing,
             ..LinkStatus::default()
         };
-        let split = strip(NetworkDraft::default(), browsing);
+        let split = strip(NetworkView::default(), browsing);
         assert!(split.is_split());
         assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
         assert_eq!(
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn a_panel_with_nothing_to_go_back_to_still_has_the_next_round() {
-        let split = strip(NetworkDraft::default(), in_setup(SetupHost::Panel, false));
+        let split = strip(NetworkView::default(), in_setup(SetupHost::Panel, false));
         assert!(split.is_split());
         assert_eq!(split.kind(ToolbarCell::Left), ControlKind::Scan);
         assert_eq!(
@@ -269,9 +269,9 @@ mod tests {
         );
         assert_eq!(split.kind(ToolbarCell::Right), ControlKind::AccessPoint);
 
-        let waiting = NetworkDraft {
+        let waiting = NetworkView {
             rescan_wait: true,
-            ..NetworkDraft::default()
+            ..NetworkView::default()
         };
         let waiting = strip(waiting, in_setup(SetupHost::Panel, false));
         assert_eq!(waiting.kind(ToolbarCell::Left), ControlKind::Wait);
@@ -280,7 +280,7 @@ mod tests {
     #[test]
     fn the_phones_one_box_switches_on_either_half() {
         let one = strip(
-            NetworkDraft::default(),
+            NetworkView::default(),
             in_setup(SetupHost::AccessPoint, false),
         );
         assert!(!one.is_split());
@@ -343,9 +343,9 @@ mod tests {
 
     #[test]
     fn a_pending_join_turns_the_front_switch_into_a_wait() {
-        let draft = NetworkDraft {
+        let draft = NetworkView {
             join_wait: true,
-            ..NetworkDraft::default()
+            ..NetworkView::default()
         };
         let browsing = LinkStatus {
             mode: NetworkMode::Browsing,
@@ -362,9 +362,9 @@ mod tests {
 
     #[test]
     fn a_pending_setup_change_turns_both_cells_into_waits() {
-        let asked = NetworkDraft {
+        let asked = NetworkView {
             setup_wait: Some(SetupWait::Host(SetupHost::AccessPoint)),
-            ..NetworkDraft::default()
+            ..NetworkView::default()
         };
         let panel = strip(asked, in_setup(SetupHost::Panel, false));
         assert_eq!(panel.kind(ToolbarCell::Left), ControlKind::Wait);
@@ -377,9 +377,9 @@ mod tests {
             "closing is not offered while the switch is on its way either"
         );
 
-        let open = NetworkDraft {
+        let open = NetworkView {
             setup_wait: Some(SetupWait::Open(true)),
-            ..NetworkDraft::default()
+            ..NetworkView::default()
         };
         let one = strip(open, in_setup(SetupHost::AccessPoint, false));
         assert_eq!(one.kind(ToolbarCell::Right), ControlKind::Wait);

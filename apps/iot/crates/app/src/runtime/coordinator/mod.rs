@@ -37,8 +37,12 @@ pub async fn run_loop(
         let wall_ms = Instant::now().as_millis() as u32;
         schedule.process_intents(bus, manager);
         schedule.tick(manager, wall_ms);
-        let active = renderers.tick(manager.state_ref(), manager.demand(), pacing.frame_ms())
-            || manager.notice_active();
+        let active = renderers.tick(
+            manager.state_ref(),
+            manager.pages().snapshot(),
+            manager.demand(),
+            pacing.frame_ms(),
+        ) || manager.notice_active();
         renderers.flush().await;
         if !first_frame_reported {
             first_frame_reported = true;

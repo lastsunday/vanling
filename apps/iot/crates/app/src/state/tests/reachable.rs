@@ -27,7 +27,7 @@ const LIST_X: u16 = 30;
 
 const SWEEP_CAP: usize = 20_000;
 
-fn key(state: &DeviceState) -> Vec<u8> {
+fn key(state: &DeviceState, view: &NetworkView) -> Vec<u8> {
     let mut key = Vec::with_capacity(64);
     key.push(state.nav.entries().len() as u8);
     for page in state.nav.entries() {
@@ -63,12 +63,12 @@ fn key(state: &DeviceState) -> Vec<u8> {
             }
         }
     }
-    encode_ap(&mut key, state.network_page.selected);
-    key.push(u8::from(state.network_page.entry.is_some()));
-    key.push(u8::from(state.network_page.keyboard));
-    key.push(u8::from(state.network_page.join_wait));
-    key.push(state.network_page.list_top);
-    match state.network_page.setup_wait {
+    encode_ap(&mut key, view.selected);
+    key.push(u8::from(view.entry.is_some()));
+    key.push(u8::from(view.keyboard));
+    key.push(u8::from(view.join_wait));
+    key.push(view.list_top);
+    match view.setup_wait {
         None => key.push(0),
         Some(SetupWait::Host(SetupHost::Panel)) => key.push(1),
         Some(SetupWait::Host(SetupHost::AccessPoint)) => key.push(2),
@@ -77,7 +77,7 @@ fn key(state: &DeviceState) -> Vec<u8> {
             key.push(u8::from(open));
         }
     }
-    match state.network_page.confirm {
+    match view.confirm {
         None => key.push(0),
         Some(Confirm::Leave) => key.push(1),
         Some(Confirm::Forget(ap)) => {
@@ -105,38 +105,36 @@ fn encode_ap(bytes: &mut Vec<u8>, ap: Option<AccessPoint>) {
 // Each one is the negation of a state that draws nothing, offers nothing, or offers
 // something that is not there — the failures this page has no way to be loud about, because
 // what breaks is what the panel puts on the glass.
-fn broken(state: &DeviceState) -> Option<&'static str> {
-    if state.network_page.keyboard && state.network_page.entry.is_none() {
+fn broken(state: &DeviceState, view: &NetworkView) -> Option<&'static str> {
+    if view.keyboard && view.entry.is_none() {
         return Some(
             "the keyboard is up with no draft under it. The keys are drawn from the draft \
                  and the strip is hidden with them, so the page draws nothing between the \
                  header and the bottom edge, and no control on it can be reached",
         );
     }
-    if state.network_page.entry.is_some() && state.network_page.selected.is_none() {
+    if view.entry.is_some() && view.selected.is_none() {
         return Some(
             "a draft is kept for no row, so nothing names the network it would be handed \
                  to",
         );
     }
-    if state.network_page.confirm == Some(Confirm::Leave) && !state.network.link.is_leavable() {
+    if view.confirm == Some(Confirm::Leave) && !state.network.link.is_leavable() {
         return Some(
             "the page is asking about leaving a link that is not up, so the box has no \
                  answer left to take",
         );
     }
-    if state.network_page.rescan_wait && state.network.link.is_leavable() {
+    if view.rescan_wait && state.network.link.is_leavable() {
         return Some("the strip is waiting for a scan round under a link it would offer to leave");
     }
-    if state.network_page.join_wait && state.network_page.keyboard {
+    if view.join_wait && view.keyboard {
         return Some(
             "a join is already with the radio while the keys are still up, so the keyboard's \
                  OK would ask for a second one over the first",
         );
     }
-    if matches!(state.network_page.setup_wait, Some(SetupWait::Open(_)))
-        && !state.network.link.mode.is_setup()
-    {
+    if matches!(view.setup_wait, Some(SetupWait::Open(_))) && !state.network.link.mode.is_setup() {
         return Some(
             "a passphrase change is waiting outside setup mode, so no report the radio can \
                  send will ever clear it",
@@ -175,7 +173,7 @@ fn band_y(band: usize) -> u16 {
 fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<Command> {
     let operation = op(event);
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state());
+    let business = translate(&operation, &manager.state(), manager.pages());
     manager.apply_business(business)
 }
 
@@ -651,14 +649,14 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
         ..Default::default()
     });
     assert_eq!(
-        broken(&start.state()),
+        broken(&start.state(), &start.network_view()),
         None,
         "a booted device is already in a state the page cannot draw"
     );
 
     let mut states: Vec<DeviceManager> = alloc::vec![start];
     let mut seen: BTreeSet<Vec<u8>> = BTreeSet::new();
-    seen.insert(key(&states[0].state()));
+    seen.insert(key(&states[0].state(), &states[0].network_view()));
     let mut queue = VecDeque::from([0usize]);
     let mut origin: Vec<(Option<usize>, &'static str)> = alloc::vec![(None, "the device at boot")];
     let mut walked = 0usize;
@@ -688,13 +686,14 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
             }
             for next in outcomes {
                 let state = next.state();
-                if let Some(why) = broken(&state) {
+                let view = next.network_view();
+                if let Some(why) = broken(&state, &view) {
                     panic!(
                         "the page can reach a state where {why}\nreached by {}",
                         path(&origin, here, step.name),
                     );
                 }
-                if seen.insert(key(&state)) {
+                if seen.insert(key(&state, &view)) {
                     states.push(next);
                     origin.push((Some(here), step.name));
                     queue.push_back(states.len() - 1);
@@ -703,31 +702,32 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
         }
     }
 
-    let reached =
-        |wanted: fn(&DeviceState) -> bool| states.iter().any(|manager| wanted(&manager.state()));
+    let reached = |wanted: fn(&NetworkView) -> bool| {
+        states.iter().any(|manager| wanted(&manager.network_view()))
+    };
     assert!(
-        reached(|state| state.network_page.keyboard && state.network_page.entry.is_some()),
+        reached(|view| view.keyboard && view.entry.is_some()),
         "the keyboard never came up over a draft"
     );
     assert!(
-        reached(|state| state.network_page.join_wait),
+        reached(|view| view.join_wait),
         "a join was never held while the radio answered"
     );
     assert!(
-        reached(|state| state.network_page.setup_wait.is_some()),
+        reached(|view| view.setup_wait.is_some()),
         "a setup tap was never left waiting for the radio"
     );
     assert!(
-        reached(|state| state.network_page.selected.is_some() && state.network_page.entry.is_none()),
+        reached(|view| view.selected.is_some() && view.entry.is_none()),
         "a row was never left picked with no draft: the state a link that came up leaves \
              behind, and the one the pick after it reads"
     );
     assert!(
-        reached(|state| state.network_page.confirm == Some(Confirm::Leave)),
+        reached(|view| view.confirm == Some(Confirm::Leave)),
         "the strip never asked about leaving"
     );
     assert!(
-        reached(|state| matches!(state.network_page.confirm, Some(Confirm::Forget(_)))),
+        reached(|view| matches!(view.confirm, Some(Confirm::Forget(_)))),
         "a hold never asked about a saved row"
     );
     for (wanted, seen) in [
@@ -765,11 +765,15 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
         assert!(seen, "the page never asked for {wanted}");
     }
     assert!(
-        reached(|state| state.network.link.is_leavable()),
+        states
+            .iter()
+            .any(|manager| manager.state().network.link.is_leavable()),
         "the link was never up"
     );
     assert!(
-        reached(|state| state.page() != PageId::Network),
+        states
+            .iter()
+            .any(|manager| manager.state().page() != PageId::Network),
         "the page cycle was never walked"
     );
 }

@@ -1,17 +1,12 @@
 //! When a diagnostics drift earns a full-frame repaint.
 
-use crate::pages::Page;
+use crate::pages::{repaint_step_ms, repaints_on};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::route::PageId;
 use iot_core::demand::{DemandKey, Mode};
 
-/// The least wall time between diagnostics-driven repaints, before a page raises it: a
-/// repaint ships the whole 320×240 frame down one blocking SPI transfer (on the order of
-/// 15 ms), and the live pages — the Audio sweep follows the capture, the attitude dial the
-/// motion sample — would otherwise repaint every 20 ms snapshot and hold the shared
-/// cooperative executor in a ~15 ms block almost continuously. A page raises it for itself;
-/// see [`Page::repaint_step_ms`].
-pub const DIAG_REPAINT_STEP_MS: u64 = 40;
+#[cfg(test)]
+use crate::pages::DIAG_REPAINT_STEP_MS;
 
 pub fn diag_repaint_due(
     page: PageId,
@@ -29,20 +24,7 @@ pub fn diag_repaint_due(
     if since_ms < step {
         return false;
     }
-    page.repaints_on(prev, next, overlay)
-}
-
-/// The least wall time this page waits between diagnostics-driven repaints. The Audio page
-/// doubles it: a capture poll closes two envelope columns every 20 ms, so the default step
-/// already redraws the 200-column sweep every ~45 ms and this page alone held the executor 40%
-/// of the wall time on the S3. At twice the step a frame advances eight columns instead of
-/// four — still a sweep, at half the cost.
-pub(crate) fn repaint_step_ms(page: PageId) -> u64 {
-    if page == PageId::Audio {
-        DIAG_REPAINT_STEP_MS * 2
-    } else {
-        DIAG_REPAINT_STEP_MS
-    }
+    repaints_on(page, prev, next, overlay)
 }
 
 /// Repaint rate (frames per second) over one window, `0` for an empty or degenerate window.

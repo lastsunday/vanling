@@ -4,7 +4,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use crate::render::{Activity, Consumer, RenderController, Renderer};
-use crate::shared::model::DeviceState;
+use crate::shared::model::{DeviceState, PageSnapshot};
 use iot_core::demand::EffectiveDemand;
 
 struct Entry {
@@ -44,10 +44,16 @@ impl Registry {
 
     /// Diffs the state, fans the changed appearances out to the renderers that claim those
     /// consumers, and steps the ones that asked for time. Answers whether any still wants frames.
-    pub fn tick(&mut self, state: &DeviceState, demand: &EffectiveDemand, now_ms: u32) -> bool {
+    pub fn tick(
+        &mut self,
+        state: &DeviceState,
+        pages: PageSnapshot,
+        demand: &EffectiveDemand,
+        now_ms: u32,
+    ) -> bool {
         let controller = &mut self.controller;
         let entries = &mut self.renderers;
-        controller.reconcile(state, demand, |appearance| {
+        controller.reconcile(state, pages, demand, |appearance| {
             let consumer = appearance.consumer();
             for entry in entries.iter_mut() {
                 if entry.renderer.consumers().contains(&consumer) {
@@ -128,7 +134,7 @@ mod tests {
         let state = state();
         let demand = EffectiveDemand::default();
         let mut registry = Registry::new();
-        registry.tick(&state, &demand, 0);
+        registry.tick(&state, PageSnapshot::default(), &demand, 0);
 
         let seen = Rc::new(RefCell::new(Vec::new()));
         registry.register(

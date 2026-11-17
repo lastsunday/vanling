@@ -75,7 +75,7 @@ fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) -> Option<
         at_ms,
     }));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state());
+    let business = translate(&operation, &manager.state(), manager.pages());
     manager.apply_business(business)
 }
 
@@ -152,7 +152,7 @@ fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
         distance_px: (layout::LIST_ROW_H * 2) as u16,
     }));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state());
+    let business = translate(&operation, &manager.state(), manager.pages());
     manager.apply_business(business)
 }
 
@@ -181,7 +181,7 @@ fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
         held_ms: u16::from(FINGER_LONG_PRESS) + 20,
     }));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state());
+    let business = translate(&operation, &manager.state(), manager.pages());
     manager.apply_business(business)
 }
 
@@ -210,7 +210,7 @@ fn link_at(manager: &mut DeviceManager, phase: LinkPhase, ssid: &[u8]) {
 fn long_press_the_button(manager: &mut DeviceManager) -> Option<Command> {
     let operation = op(InputEvent::Button(ButtonEvent::LongPress));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state());
+    let business = translate(&operation, &manager.state(), manager.pages());
     manager.apply_business(business)
 }
 
@@ -230,6 +230,7 @@ fn setup_mode(manager: &mut DeviceManager, cancellable: bool) {
 mod boot;
 mod front;
 mod join;
+mod lifecycle;
 mod list;
 mod strip;
 mod typing;

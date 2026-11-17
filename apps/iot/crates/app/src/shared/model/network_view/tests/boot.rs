@@ -22,7 +22,7 @@ fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
             "{kinds:?}: the request is latched"
         );
         assert_eq!(
-            manager.state().network_page.confirm,
+            manager.network_view().confirm,
             None,
             "{kinds:?}: the splash carries no question"
         );
@@ -142,7 +142,7 @@ fn a_long_press_after_the_splash_is_the_pages_own_verb() {
 
     let asked = long_press_the_button(&mut manager);
     assert_eq!(
-        manager.state().network_page.confirm,
+        manager.network_view().confirm,
         None,
         "the press never raises the question the strip raises"
     );

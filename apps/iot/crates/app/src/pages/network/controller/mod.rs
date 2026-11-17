@@ -12,21 +12,21 @@ use self::verbs as page_controls;
 use crate::pages::network::layout;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{BusinessIntent, InputIntent, NetworkPageIntent};
-use crate::shared::model::DeviceState;
+use crate::shared::model::{DeviceState, NetworkView};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::AccessPoint;
 
-pub(crate) fn bind(op: &InputIntent, current: &DeviceState) -> BusinessIntent {
+pub(crate) fn bind(op: &InputIntent, current: &DeviceState, draft: NetworkView) -> BusinessIntent {
     match op.event {
-        InputEvent::Gesture(GestureEvent::Tap { x, y, at_ms, .. }) => tap(current, x, y, at_ms),
-        InputEvent::Gesture(GestureEvent::LongPress { x, y, .. }) => hold(current, x, y),
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. })
-            if !current.network_page.keyboard =>
-        {
-            if current.network_page.confirm.is_some() {
+        InputEvent::Gesture(GestureEvent::Tap { x, y, at_ms, .. }) => {
+            tap(current, draft, x, y, at_ms)
+        }
+        InputEvent::Gesture(GestureEvent::LongPress { x, y, .. }) => hold(current, draft, x, y),
+        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) if !draft.keyboard => {
+            if draft.confirm.is_some() {
                 return BusinessIntent::NetworkPage(NetworkPageIntent::Dismiss);
             }
-            if !Band::Content.showing(current.network_page, current.network.link) {
+            if !Band::Content.showing(draft, current.network.link) {
                 return BusinessIntent::Invalid;
             }
             match direction {
@@ -40,58 +40,57 @@ pub(crate) fn bind(op: &InputIntent, current: &DeviceState) -> BusinessIntent {
             }
         }
         InputEvent::Button(ButtonEvent::Click) => {
-            page_controls::strip(current.network_page, current.network.link)
-                .command(layout::ToolbarCell::Right)
+            page_controls::strip(draft, current.network.link).command(layout::ToolbarCell::Right)
         }
         _ => BusinessIntent::Invalid,
     }
 }
 
-fn tap(current: &DeviceState, x: u16, y: u16, at_ms: u32) -> BusinessIntent {
-    if current.network_page.keyboard {
-        let Some(entry) = current.network_page.entry else {
+fn tap(current: &DeviceState, draft: NetworkView, x: u16, y: u16, at_ms: u32) -> BusinessIntent {
+    if draft.keyboard {
+        let Some(entry) = draft.entry else {
             return BusinessIntent::Invalid;
         };
         return layout::key_at(entry.layer(), x, y).map_or(BusinessIntent::Invalid, |key| {
             BusinessIntent::NetworkPage(NetworkPageIntent::Key { key, at_ms })
         });
     }
-    if let Some(answer) = answer_at(current, x, y) {
+    if let Some(answer) = answer_at(current, draft, x, y) {
         return answer;
     }
     if let Some(cell) = layout::toolbar_cell_at(x, y) {
-        return page_controls::strip(current.network_page, current.network.link).command(cell);
+        return page_controls::strip(draft, current.network.link).command(cell);
     }
-    if !Band::Content.showing(current.network_page, current.network.link) {
+    if !Band::Content.showing(draft, current.network.link) {
         return BusinessIntent::Invalid;
     }
     match layout::list_band_at(y) {
-        Some(band) => ap_at(current, band).map_or(BusinessIntent::Invalid, |ap| {
+        Some(band) => ap_at(current, draft, band).map_or(BusinessIntent::Invalid, |ap| {
             BusinessIntent::NetworkPage(NetworkPageIntent::Choose(ap))
         }),
         None => BusinessIntent::Invalid,
     }
 }
 
-fn hold(current: &DeviceState, x: u16, y: u16) -> BusinessIntent {
-    if current.network_page.keyboard {
+fn hold(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> BusinessIntent {
+    if draft.keyboard {
         return BusinessIntent::Invalid;
     }
-    if let Some(answer) = answer_at(current, x, y) {
+    if let Some(answer) = answer_at(current, draft, x, y) {
         return answer;
     }
-    if !Band::Content.showing(current.network_page, current.network.link) {
+    if !Band::Content.showing(draft, current.network.link) {
         return BusinessIntent::Invalid;
     }
     match layout::list_band_at(y) {
-        Some(band) => ap_at(current, band).map_or(BusinessIntent::Invalid, |ap| {
+        Some(band) => ap_at(current, draft, band).map_or(BusinessIntent::Invalid, |ap| {
             BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(ap))
         }),
         None => BusinessIntent::Invalid,
     }
 }
 
-fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
+fn answer_at(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> Option<BusinessIntent> {
     if current.network.link.shows_setup_box() {
         let answers = page_controls::answers(current.network.link);
         return match layout::dialog_choice_at(x, y) {
@@ -100,7 +99,7 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
             None => None,
         };
     }
-    let confirm: Confirm = current.network_page.confirm?;
+    let confirm: Confirm = draft.confirm?;
     Some(match layout::dialog_choice_at(x, y) {
         Some(layout::DialogChoice::Act) => {
             BusinessIntent::NetworkPage(NetworkPageIntent::Answer(confirm))
@@ -111,7 +110,7 @@ fn answer_at(current: &DeviceState, x: u16, y: u16) -> Option<BusinessIntent> {
     })
 }
 
-fn ap_at(current: &DeviceState, band: usize) -> Option<AccessPoint> {
-    let index = usize::from(current.network_page.list_top) + band;
+fn ap_at(current: &DeviceState, draft: NetworkView, band: usize) -> Option<AccessPoint> {
+    let index = usize::from(draft.list_top) + band;
     current.network.aps.and_then(|list| list.get(index))
 }

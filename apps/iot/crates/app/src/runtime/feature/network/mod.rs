@@ -51,10 +51,10 @@ pub async fn task(
     station: Box<EspStation>,
     saved: Option<Box<CredentialStore>>,
     host: SetupHost,
-    has_pages: bool,
+    has_display: bool,
     ctx: NetCtx,
 ) -> ! {
-    serve(station, saved, host, has_pages, ctx).await
+    serve(station, saved, host, has_display, ctx).await
 }
 
 /// The handle the composition root hands `run`: it starts the worker without naming the radio.
@@ -62,13 +62,13 @@ pub fn worker(
     station: Box<EspStation>,
     saved: Option<Box<CredentialStore>>,
     host: SetupHost,
-    has_pages: bool,
+    has_display: bool,
     ctx: NetCtx,
 ) -> NetworkWorker {
     NetworkWorker::new(move |spawner| {
         log::info!("[WIFI] starting the network worker");
         spawner.spawn(
-            task(station, saved, host, has_pages, ctx).expect("the network task fits its slot"),
+            task(station, saved, host, has_display, ctx).expect("the network task fits its slot"),
         );
     })
 }
@@ -77,7 +77,7 @@ pub async fn serve<S, R>(
     mut station: Box<S>,
     saved: Option<Box<Store<R>>>,
     host: SetupHost,
-    has_pages: bool,
+    has_display: bool,
     ctx: NetCtx,
 ) -> !
 where
@@ -98,7 +98,7 @@ where
         mac,
         resources: Box::leak(Box::new(StackResources::<SETUP_SOCKETS>::new())),
         host,
-        has_pages,
+        has_display,
         // A board with a page can show the passphrase, so `link` secures every entry; a board
         // without one leaves it open. Publishing happens after that decision lands.
         secure_on_entry: false,

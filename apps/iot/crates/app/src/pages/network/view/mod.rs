@@ -9,7 +9,7 @@ mod text;
 
 use crate::pages::network::controller::{self as page_controls, Band, each_band};
 use crate::pages::network::layout;
-use crate::shared::model::NetworkDraft;
+use crate::shared::model::NetworkView;
 use iot_core::drivers::network::{ApList, LinkStatus};
 
 use crate::pages::network::view::text::control_label;
@@ -22,7 +22,7 @@ impl Surface<'_> {
         // stamp below takes `self` mutably. The audio sweep makes the same trade for the same
         // reason, and a list is 350 B against the envelope's kilobyte and a half.
         let aps = self.diagnostics.aps;
-        let setup = self.diagnostics.draft;
+        let setup = self.diagnostics.pages.network;
         let shown_ap = if setup.keyboard {
             setup.selected
         } else {
@@ -43,7 +43,7 @@ impl Surface<'_> {
         });
     }
 
-    fn stamp_content(&mut self, draft: NetworkDraft, link: LinkStatus, aps: Option<ApList>) {
+    fn stamp_content(&mut self, draft: NetworkView, link: LinkStatus, aps: Option<ApList>) {
         if draft.keyboard {
             if let Some(entry) = draft.entry {
                 self.stamp_keyboard(entry, draft.revealed);
@@ -53,7 +53,7 @@ impl Surface<'_> {
         self.stamp_list(draft, link, aps);
     }
 
-    fn stamp_strip(&mut self, draft: NetworkDraft, link: LinkStatus) {
+    fn stamp_strip(&mut self, draft: NetworkView, link: LinkStatus) {
         let strip = page_controls::strip(draft, link);
         if strip.is_split() {
             self.stamp_cell(

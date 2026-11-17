@@ -20,19 +20,27 @@ fn long_press_gesture() -> InputEvent {
 #[test]
 fn a_tap_plays_and_a_long_press_mutes() {
     assert_eq!(
-        translate(&op(tap_gesture(0)), &on_speaker()),
+        translate(&op(tap_gesture(0)), &on_speaker(), &PageSet::default()),
         BusinessIntent::Playback(PlaybackAction::Next)
     );
     assert_eq!(
-        translate(&op(long_press_gesture()), &on_speaker()),
+        translate(
+            &op(long_press_gesture()),
+            &on_speaker(),
+            &PageSet::default()
+        ),
         BusinessIntent::Playback(PlaybackAction::SetMuted(true))
     );
     assert_eq!(
-        translate(&op(InputEvent::Button(ButtonEvent::Click)), &on_speaker()),
+        translate(
+            &op(InputEvent::Button(ButtonEvent::Click)),
+            &on_speaker(),
+            &PageSet::default()
+        ),
         BusinessIntent::Playback(PlaybackAction::Next)
     );
     assert_eq!(
-        translate(&op(long_press_event()), &on_speaker()),
+        translate(&op(long_press_event()), &on_speaker(), &PageSet::default()),
         BusinessIntent::Playback(PlaybackAction::SetMuted(true))
     );
 }
@@ -59,7 +67,8 @@ fn the_page_never_moves_a_light() {
     assert_eq!(
         translate(
             &op(InputEvent::Button(ButtonEvent::TripleClick)),
-            &on_speaker()
+            &on_speaker(),
+            &PageSet::default()
         ),
         BusinessIntent::Navigation(NavigationIntent::NextPage)
     );
@@ -82,7 +91,7 @@ fn a_finished_play_is_never_recognized_from_an_event() {
         long_press_gesture(),
     ] {
         assert_ne!(
-            translate(&op(event), &on_speaker()),
+            translate(&op(event), &on_speaker(), &PageSet::default()),
             BusinessIntent::Playback(PlaybackAction::Finished),
             "{event:?} must not fake a driver report"
         );

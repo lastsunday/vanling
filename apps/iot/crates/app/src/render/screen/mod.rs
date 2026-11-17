@@ -4,14 +4,15 @@ mod painter;
 mod repaint;
 
 pub use self::painter::AppPainter;
-pub use self::repaint::{DIAG_REPAINT_STEP_MS, diag_repaint_due, windowed_percent, windowed_rate};
+pub use self::repaint::{diag_repaint_due, windowed_percent, windowed_rate};
+pub use crate::pages::DIAG_REPAINT_STEP_MS;
 
 use alloc::boxed::Box;
 use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::pages::Page;
+use crate::pages::{draws_frames, ground};
 use crate::render::common::ColorDriver;
 use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 use crate::shared::diagnostics::Diagnostics;
@@ -98,7 +99,7 @@ impl ScreenRenderer {
             return;
         };
         let step = self.surface.repaint_step();
-        if let Some(ground) = self.page.and_then(Page::ground) {
+        if let Some(ground) = self.page.and_then(ground) {
             self.color.ground(&mut *self.surface, step, ground);
             self.surface.set_backlight(100);
             return;
@@ -109,7 +110,7 @@ impl ScreenRenderer {
     }
 
     fn on_camera_page(&self) -> bool {
-        self.page.is_some_and(Page::draws_frames)
+        self.page.is_some_and(draws_frames)
     }
 }
 

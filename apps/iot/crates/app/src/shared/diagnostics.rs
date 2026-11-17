@@ -4,7 +4,7 @@
 //! [`DiagnosticsSink`]s.
 
 use crate::shared::model::DeviceState;
-use crate::shared::model::NetworkDraft;
+use crate::shared::model::PageSnapshot;
 use crate::shared::model::{AudioPhase, Health};
 use crate::shared::route::PageId;
 use iot_core::demand::EffectiveDemand;
@@ -140,9 +140,9 @@ pub struct Diagnostics {
     /// The board's own address, for the Network page's header.
     pub mac: Option<[u8; 6]>,
     pub aps: Option<ApList>,
-    /// What the Network page is in the middle of taking: the row a passphrase is being
-    /// typed for, the draft, and the last refusal.
-    pub draft: NetworkDraft,
+    /// What each page publishes beyond the state it read: the Network edit session, the row a
+    /// passphrase is being typed for, and the last refusal.
+    pub pages: PageSnapshot,
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,

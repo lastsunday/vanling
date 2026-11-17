@@ -1,13 +1,13 @@
 //! The page golden table: every page, with the debug badge on and off, is one fingerprint.
 //!
-//! The dispatch under test is [`Page::stamp`](crate::pages::Page::stamp), so a page whose view
-//! moved still has to draw exactly the ink the table recorded. Regenerate only for an intended
+//! The dispatch under test is [`stamp`](crate::pages::stamp), so a page whose view moved
+//! still has to draw exactly the ink the table recorded. Regenerate only for an intended
 //! pixel change.
 
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::pages::Page;
+use crate::pages::{draws_frames, ground, stamp};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::kit::surface::Surface;
 use crate::shared::route::PageId;
@@ -24,9 +24,9 @@ fn render(page: PageId, debug: bool) -> Vec<u8> {
         ..Diagnostics::default()
     };
     {
-        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, page.ground());
+        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, ground(page));
         let mut surface = Surface::new(canvas, &diagnostics, 0, 60, debug, 100);
-        page.stamp(&mut surface);
+        stamp(page, &mut surface);
     }
     frame
 }
@@ -118,12 +118,12 @@ fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
 fn every_page_answers_every_render_question() {
     for page in PageId::ALL {
         assert_eq!(
-            page.ground(),
+            ground(page),
             matches!(page, PageId::Camera | PageId::Network).then_some(Rgb(0, 0, 0)),
             "{page:?} grounds"
         );
         assert_eq!(
-            page.draws_frames(),
+            draws_frames(page),
             page == PageId::Camera,
             "{page:?} frames"
         );

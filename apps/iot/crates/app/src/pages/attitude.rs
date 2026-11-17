@@ -1,10 +1,38 @@
 use iot_core::drivers::motion::MotionCapabilities;
 use iot_core::overlay::{Block, block_x, overlay_row_top};
+use iot_core::paint::Rgb;
 
+use crate::shared::diagnostics::Diagnostics;
+use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::placement::LAST_BLOCK_ROW;
 use crate::shared::kit::surface::Surface;
 use crate::shared::kit::text::format_u16;
 use crate::shared::kit::text::{NOT_AVAILABLE, format_i32, format_tenths};
+use crate::shared::model::DeviceState;
+
+/// The attitude dial reads the motion sample and nothing else.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct AttitudePage;
+
+pub(super) const GROUND: Option<Rgb> = None;
+pub(super) const DRAWS_FRAMES: bool = false;
+pub(super) const REPAINT_MS: u64 = super::DIAG_REPAINT_STEP_MS;
+
+impl super::Page for AttitudePage {}
+
+impl super::LocalPage for AttitudePage {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+        super::lamp(op, state)
+    }
+}
+
+pub(super) fn stamp(surface: &mut Surface<'_>) {
+    surface.stamp_attitude();
+}
+
+pub(super) fn repaints_on(_prev: &Diagnostics, _next: &Diagnostics, _overlay: bool) -> bool {
+    true
+}
 
 const ESTIMATOR_ROWS: usize = 4;
 const MOTION_SEMANTIC_ROWS: usize = 14;

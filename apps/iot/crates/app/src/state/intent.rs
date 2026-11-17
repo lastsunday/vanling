@@ -2,7 +2,7 @@
 //!
 //! Systems write, renderers read.
 
-use crate::shared::intent::{BusinessIntent, InputIntent, Intent, LinkIntent, NavigationIntent};
+use crate::shared::intent::{BusinessIntent, InputIntent, Intent, NavigationIntent};
 use crate::shared::model::{
     Command, Effects, Health, NetworkCommand, Notice, NoticeKind, PlaybackPhase,
 };
@@ -26,7 +26,7 @@ impl DeviceManager {
         let business = match intent {
             Intent::Input(op) => {
                 self.apply_input(op);
-                translate(&op, self.state_ref())
+                translate(&op, self.state_ref(), &self.pages)
             }
             Intent::Business(business) => business,
         };
@@ -52,25 +52,20 @@ impl DeviceManager {
     /// Route one business intent to the domain that owns it, and answer with what that domain
     /// asked the runtime for — `None` when nothing outside the core is needed. Each domain
     /// matches its own group, so this match knows the groups and never the variants inside
-    /// them.
+    /// them. The pages see the same intent afterwards, so a page can claim a group the state
+    /// does not own.
     pub fn apply_business(&mut self, intent: BusinessIntent) -> Option<Command> {
+        let leaving = self.state.page();
         let command = match intent {
             BusinessIntent::Invalid => None,
             BusinessIntent::Navigation(intent) => self.apply_navigation(intent),
             BusinessIntent::Link(intent) => {
                 let effects = self.state.network.apply(intent);
-                if let LinkIntent::Status(status) = intent {
-                    self.state.network_page.on_link(status);
-                }
                 self.apply_effects(effects);
                 None
             }
-            BusinessIntent::NetworkPage(intent) => {
-                let has_pages = self.state.has_pages();
-                self.state
-                    .network_page
-                    .apply(intent, &self.state.network, has_pages)
-            }
+            BusinessIntent::Scan => None,
+            BusinessIntent::NetworkPage(_) => None,
             BusinessIntent::Audio(intent) => {
                 self.state.audio.apply(intent, self.state.backed.audio);
                 None
@@ -89,8 +84,14 @@ impl DeviceManager {
                 None
             }
         };
+        let arrived = self.state.page();
+        if arrived != leaving {
+            self.pages.leave(leaving);
+            self.pages.enter(arrived);
+        }
+        let from_pages = self.pages.apply(&intent, &self.state);
         self.settle_demand();
-        command
+        command.or(from_pages)
     }
 
     /// A scan round landed: the link keeps the list everyone reads, and the page's scroll
@@ -100,8 +101,7 @@ impl DeviceManager {
             return;
         }
         self.state.network.set_scan(list);
-        let rows = self.state.network.len();
-        self.state.network_page.clamp_top(rows);
+        self.apply_business(BusinessIntent::Scan);
     }
 
     pub fn apply_capture(&mut self, sample: AudioSample) {

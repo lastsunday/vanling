@@ -7,7 +7,7 @@ mod reconcile;
 mod registry;
 
 #[cfg(test)]
-pub(crate) use self::appearance::light_diagnostics;
+pub(crate) use self::appearance::device_snapshot;
 pub use self::appearance::{Appearance, Consumer, LightAppearance, light_appearance};
 pub(crate) use self::color::ColorDriver;
 pub use self::reconcile::{Activity, RenderController, Renderer};

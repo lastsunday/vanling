@@ -1,13 +1,13 @@
 //! The central judge: diffs successive state snapshots and reports only what moved.
 
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, PageSnapshot, SurfaceRole};
 use alloc::boxed::Box;
 use core::future::Future;
 use core::pin::Pin;
 use iot_core::demand::EffectiveDemand;
 
-use super::appearance::{Appearance, Consumer, light_appearance, light_diagnostics, status_lights};
+use super::appearance::{Appearance, Consumer, device_snapshot, light_appearance, status_lights};
 
 /// How a renderer wants to be driven after an appearance sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -62,11 +62,12 @@ impl RenderController {
     pub fn reconcile(
         &mut self,
         state: &DeviceState,
+        pages: PageSnapshot,
         demand: &EffectiveDemand,
         mut notify: impl FnMut(Appearance),
     ) -> bool {
         let next = Snapshot {
-            diagnostics: light_diagnostics(state, demand),
+            diagnostics: device_snapshot(state, pages, demand),
             lights: status_lights(state),
         };
         let diagnostics_moved = self.last.as_deref() != Some(&next);
@@ -135,7 +136,12 @@ mod tests {
         let boot = state(LightState::boot());
         let mut seen = Vec::new();
         assert!(
-            ctl.reconcile(&boot, &EffectiveDemand::default(), |a| seen.push(a)),
+            ctl.reconcile(
+                &boot,
+                PageSnapshot::default(),
+                &EffectiveDemand::default(),
+                |a| seen.push(a)
+            ),
             "first sync is a change"
         );
         assert_eq!(
@@ -153,16 +159,31 @@ mod tests {
             ]
         );
         assert!(
-            !ctl.reconcile(&boot, &EffectiveDemand::default(), |_| {}),
+            !ctl.reconcile(
+                &boot,
+                PageSnapshot::default(),
+                &EffectiveDemand::default(),
+                |_| {}
+            ),
             "identical state is silent"
         );
         let off = state(LightState::Off);
         assert!(
-            ctl.reconcile(&off, &EffectiveDemand::default(), |_| {}),
+            ctl.reconcile(
+                &off,
+                PageSnapshot::default(),
+                &EffectiveDemand::default(),
+                |_| {}
+            ),
             "changed state is a change"
         );
         assert!(
-            !ctl.reconcile(&off, &EffectiveDemand::default(), |_| {}),
+            !ctl.reconcile(
+                &off,
+                PageSnapshot::default(),
+                &EffectiveDemand::default(),
+                |_| {}
+            ),
             "settled state is silent"
         );
     }
@@ -357,7 +378,11 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                Appearance::Diagnostics(light_diagnostics(&two, &EffectiveDemand::default())),
+                Appearance::Diagnostics(device_snapshot(
+                    &two,
+                    PageSnapshot::default(),
+                    &EffectiveDemand::default()
+                )),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off,
@@ -389,7 +414,11 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &changed),
             vec![
-                Appearance::Diagnostics(light_diagnostics(&changed, &EffectiveDemand::default())),
+                Appearance::Diagnostics(device_snapshot(
+                    &changed,
+                    PageSnapshot::default(),
+                    &EffectiveDemand::default()
+                )),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3)),

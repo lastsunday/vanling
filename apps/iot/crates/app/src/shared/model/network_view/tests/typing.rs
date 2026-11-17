@@ -7,13 +7,12 @@ fn the_reveal_key_shows_the_draft_without_touching_it() {
     let mut manager = on_network_page();
     tap_band(&mut manager, 0);
     type_letter(&mut manager, b'b', 0);
-    assert!(!manager.state().network_page.revealed);
+    assert!(!manager.network_view().revealed);
     key(&mut manager, Key::Reveal);
-    assert!(manager.state().network_page.revealed);
+    assert!(manager.network_view().revealed);
     assert_eq!(
         manager
-            .state()
-            .network_page
+            .network_view()
             .entry
             .map(|entry| entry.as_bytes().to_vec()),
         Some(b"b".to_vec()),
@@ -21,7 +20,7 @@ fn the_reveal_key_shows_the_draft_without_touching_it() {
     );
     key(&mut manager, Key::Cancel);
     assert!(
-        !manager.state().network_page.revealed,
+        !manager.network_view().revealed,
         "and leaving the entry puts the stars back"
     );
 }
@@ -44,8 +43,8 @@ fn cancel_throws_the_draft_away_without_asking_the_radio() {
     tap_band(&mut manager, 0);
     key(&mut manager, Key::Char(b'2'));
     let handed = key(&mut manager, Key::Cancel);
-    assert_eq!(manager.state().network_page.entry, None);
-    assert_eq!(manager.state().network_page.selected, None);
+    assert_eq!(manager.network_view().entry, None);
+    assert_eq!(manager.network_view().selected, None);
     assert_eq!(
         handed_over(handed),
         None,
@@ -209,7 +208,7 @@ fn a_refusal_is_kept_until_another_attempt_starts() {
     };
     manager.apply_business(BusinessIntent::Link(LinkIntent::Status(failed)));
     assert_eq!(
-        manager.state().network_page.phase(LinkPhase::Off),
+        manager.network_view().phase(LinkPhase::Off),
         LinkPhase::Failed(NetworkError::Driver),
         "the round's own phase does not bury the refusal"
     );
@@ -218,7 +217,7 @@ fn a_refusal_is_kept_until_another_attempt_starts() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.phase(LinkPhase::Scanning),
+        manager.network_view().phase(LinkPhase::Scanning),
         LinkPhase::Failed(NetworkError::Driver),
         "nor does the scan that follows it"
     );
@@ -227,7 +226,7 @@ fn a_refusal_is_kept_until_another_attempt_starts() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.phase(LinkPhase::Connecting),
+        manager.network_view().phase(LinkPhase::Connecting),
         LinkPhase::Connecting
     );
 }

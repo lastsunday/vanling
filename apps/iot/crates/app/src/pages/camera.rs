@@ -2,11 +2,42 @@
 
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::overlay::{Block, block_value_x, block_x, overlay_row_top};
+use iot_core::paint::Rgb;
 
+use crate::shared::diagnostics::Diagnostics;
+use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::surface::Surface;
 use crate::shared::kit::text::{
     format_pair, format_u32, frame_fingerprint, light_mode_word, write_ratio,
 };
+use crate::shared::model::DeviceState;
+
+/// The camera page draws the sensor's frames and its own readout over them.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CameraPage;
+
+pub(super) const GROUND: Option<Rgb> = Some(Rgb(0, 0, 0));
+pub(super) const DRAWS_FRAMES: bool = true;
+pub(super) const REPAINT_MS: u64 = super::DIAG_REPAINT_STEP_MS;
+
+impl super::Page for CameraPage {}
+
+impl super::LocalPage for CameraPage {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+        super::lamp(op, state)
+    }
+}
+
+pub(super) fn stamp(surface: &mut Surface<'_>) {
+    surface.stamp_camera(CameraSnapshot::STARTING);
+}
+
+pub(super) fn repaints_on(_prev: &Diagnostics, _next: &Diagnostics, _overlay: bool) -> bool {
+    // A frame arriving is a data event and not anything a snapshot diff can see. Forcing a
+    // repaint here would ship a full frame that is a copy of the last one — ~15 ms of blocking
+    // SPI.
+    false
+}
 
 impl Surface<'_> {
     /// The camera's own frame, after the sensor has filled it.

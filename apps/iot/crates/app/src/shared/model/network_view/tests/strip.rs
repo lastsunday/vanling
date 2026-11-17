@@ -9,7 +9,7 @@ fn the_action_strip_leaves_while_a_link_is_up_and_looks_around_while_it_is_not()
 
     let asked = tap_strip(&mut manager);
     assert_eq!(
-        manager.state().network_page.confirm,
+        manager.network_view().confirm,
         Some(Confirm::Leave),
         "a link that is up is one to take down, and taking it down is asked about"
     );
@@ -22,14 +22,10 @@ fn the_action_strip_leaves_while_a_link_is_up_and_looks_around_while_it_is_not()
         "with no link there is something to look around for"
     );
     assert!(
-        manager.state().network_page.rescan_wait,
+        manager.network_view().rescan_wait,
         "and the strip waits for the round it asked for"
     );
-    assert_eq!(
-        manager.state().network_page.confirm,
-        None,
-        "nothing to confirm"
-    );
+    assert_eq!(manager.network_view().confirm, None, "nothing to confirm");
 }
 
 #[test]
@@ -45,7 +41,7 @@ fn a_link_that_is_coming_up_is_already_one_to_leave() {
             })));
             tap_strip(&mut manager);
             assert_eq!(
-                manager.state().network_page.confirm,
+                manager.network_view().confirm,
                 Some(Confirm::Leave),
                 "{phase:?} is a link to leave, named {named:?}"
             );
@@ -83,7 +79,7 @@ fn a_strip_leave_on_a_board_with_no_screen_is_done_rather_than_asked_about() {
         Some(Command::Network(NetworkCommand::Leave)),
         "the strip's verb is the leave itself"
     );
-    assert_eq!(manager.state().network_page.confirm, None);
+    assert_eq!(manager.network_view().confirm, None);
 }
 
 #[test]
@@ -93,7 +89,7 @@ fn leaving_happens_when_the_question_is_answered_and_not_when_it_is_left_alone()
 
     tap_strip(&mut manager);
     let asked = tap_answer(&mut manager, layout::DialogChoice::Keep);
-    assert_eq!(manager.state().network_page.confirm, None);
+    assert_eq!(manager.network_view().confirm, None);
     assert_eq!(asked, None, "the safe answer takes nothing down");
     assert_eq!(
         manager.state().network.link.phase,
@@ -107,11 +103,7 @@ fn leaving_happens_when_the_question_is_answered_and_not_when_it_is_left_alone()
         Some(Command::Network(NetworkCommand::Leave)),
         "and the request is on its way"
     );
-    assert_eq!(
-        manager.state().network_page.confirm,
-        None,
-        "the question is done"
-    );
+    assert_eq!(manager.network_view().confirm, None, "the question is done");
 }
 
 #[test]
@@ -119,7 +111,7 @@ fn a_question_about_the_link_does_not_outlive_the_link() {
     let mut manager = on_network_page();
     link_up(&mut manager, b"neighbour");
     tap_strip(&mut manager);
-    assert!(manager.state().network_page.confirm.is_some());
+    assert!(manager.network_view().confirm.is_some());
 
     manager.apply_business(BusinessIntent::Link(LinkIntent::Status(LinkStatus {
         phase: LinkPhase::Failed(NetworkError::NotFound),
@@ -128,7 +120,7 @@ fn a_question_about_the_link_does_not_outlive_the_link() {
         ..LinkStatus::default()
     })));
     assert_eq!(
-        manager.state().network_page.confirm,
+        manager.network_view().confirm,
         None,
         "a link that is gone takes its own question with it"
     );
@@ -142,12 +134,12 @@ fn a_question_about_the_link_does_not_outlive_the_link() {
 fn a_scan_round_ends_the_strips_wait() {
     let mut manager = on_network_page();
     tap_strip(&mut manager);
-    assert!(manager.state().network_page.rescan_wait);
+    assert!(manager.network_view().rescan_wait);
     manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
         LinkStatus::default(),
     )));
     assert!(
-        !manager.state().network_page.rescan_wait,
+        !manager.network_view().rescan_wait,
         "the round came back, so the strip stops waiting"
     );
 }

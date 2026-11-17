@@ -20,7 +20,7 @@ fn a_band_the_list_has_nothing_in_is_not_a_selection() {
     let mut manager = on_network_page();
     tap_band(&mut manager, 3);
     assert_eq!(
-        manager.state().network_page.entry,
+        manager.network_view().entry,
         None,
         "a band past the last network is the page's own background"
     );
@@ -40,24 +40,24 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
     manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
 
     tap_band(&mut manager, 0);
-    assert_eq!(manager.state().network_page.selected, Some(ap(b"a")));
+    assert_eq!(manager.network_view().selected, Some(ap(b"a")));
     manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
         key: Key::Cancel,
         at_ms: 1,
     }));
 
-    assert_eq!(manager.state().network_page.list_top, 0);
+    assert_eq!(manager.network_view().list_top, 0);
     manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: 1,
     }));
     assert_eq!(
-        manager.state().network_page.list_top,
+        manager.network_view().list_top,
         1,
         "a slide forward moves the window one row"
     );
     tap_band(&mut manager, 0);
     assert_eq!(
-        manager.state().network_page.selected,
+        manager.network_view().selected,
         Some(ap(b"b")),
         "and the first band now holds the second network"
     );
@@ -67,7 +67,7 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         }));
     }
     assert_eq!(
-        manager.state().network_page.list_top,
+        manager.network_view().list_top,
         (8 - LIST_ROWS) as u8,
         "eight rows through a three-row window stop five rows down"
     );
@@ -75,24 +75,21 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         rows: 1,
     }));
     assert_eq!(
-        manager.state().network_page.list_top,
+        manager.network_view().list_top,
         (8 - LIST_ROWS) as u8,
         "and the end of the list is as far as it goes"
     );
     manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: -1,
     }));
-    assert_eq!(
-        manager.state().network_page.list_top,
-        (8 - LIST_ROWS - 1) as u8
-    );
+    assert_eq!(manager.network_view().list_top, (8 - LIST_ROWS - 1) as u8);
     for _ in 0..8 {
         manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
             rows: -1,
         }));
     }
     assert_eq!(
-        manager.state().network_page.list_top,
+        manager.network_view().list_top,
         0,
         "and the top of it is as far back"
     );
@@ -106,7 +103,7 @@ fn a_hold_on_the_list_under_the_join_box_asks_nothing() {
 
     let asked = hold_band(&mut manager, 1);
     assert_eq!(
-        manager.state().network_page.confirm,
+        manager.network_view().confirm,
         None,
         "a hold under the join box asks nothing"
     );
@@ -119,14 +116,14 @@ fn a_slide_under_the_join_box_does_not_move_the_list() {
     link_at(&mut manager, LinkPhase::Connecting, b"a");
     slide_list(&mut manager);
     assert_eq!(
-        manager.state().network_page.list_top,
+        manager.network_view().list_top,
         0,
         "the window stayed where the box was drawn over it"
     );
 
     let mut manager = eight_rows();
     slide_list(&mut manager);
-    assert_eq!(manager.state().network_page.list_top, 1);
+    assert_eq!(manager.network_view().list_top, 1);
 }
 
 #[test]
@@ -144,14 +141,14 @@ fn a_scan_that_shrank_pulls_the_list_back_to_its_own_end() {
     manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
         rows: 1,
     }));
-    assert_eq!(manager.state().network_page.list_top, 1);
+    assert_eq!(manager.network_view().list_top, 1);
 
     manager.apply_scan(ApList::from_ranked(&[ap(b"a"), ap(b"b")]));
     assert_eq!(
-        manager.state().network_page.list_top,
+        manager.network_view().list_top,
         0,
         "a list shorter than its own window cannot be scrolled past its end"
     );
     tap_band(&mut manager, 1);
-    assert_eq!(manager.state().network_page.selected, Some(ap(b"b")));
+    assert_eq!(manager.network_view().selected, Some(ap(b"b")));
 }

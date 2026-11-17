@@ -41,7 +41,7 @@ fn off_tap_full_path_records_diagnostics_and_keeps_off() {
     manager.apply_to(0, LightState::Off);
     let op = tap();
     manager.apply_input(op);
-    let business = translate(&op, &manager.state());
+    let business = translate(&op, &manager.state(), manager.pages());
     manager.apply_business(business);
     assert_eq!(business, BusinessIntent::Invalid);
     assert_eq!(manager.light_state(), LightState::Off);
@@ -55,7 +55,7 @@ fn off_swipe_full_path_records_diagnostics_and_keeps_off() {
     manager.apply_to(0, LightState::Off);
     let op = swipe();
     manager.apply_input(op);
-    let business = translate(&op, &manager.state());
+    let business = translate(&op, &manager.state(), manager.pages());
     manager.apply_business(business);
     assert_eq!(business, BusinessIntent::Invalid);
     assert_eq!(manager.light_state(), LightState::Off);

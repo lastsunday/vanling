@@ -59,6 +59,8 @@ pub enum BusinessIntent {
     Navigation(NavigationIntent),
     /// What the radio reports. Written by the worker, never by a finger.
     Link(LinkIntent),
+    /// A scan round landed: the link keeps the list and every page reads it.
+    Scan,
     /// What a finger asks of the Network page.
     NetworkPage(NetworkPageIntent),
     Audio(AudioIntent),

@@ -7,7 +7,6 @@ use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::input::SwipeDirection;
 use iot_core::drivers::network::{LinkPhase, SetupHost};
 
-use super::draft::NetworkDraft;
 use super::{
     AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, PlaybackState,
     SurfaceRole, TouchState,
@@ -37,8 +36,6 @@ pub struct DeviceState {
     pub playback: PlaybackState,
     /// What the radio reported. Written only by the link's own reports.
     pub network: NetworkState,
-    /// What the Network page is drafting. Reads the link; the link never reads or writes it.
-    pub network_page: NetworkDraft,
     pub touch: TouchState,
     /// Input intents the coordinator's ring had no room for, since boot. Folded in once per
     /// frame from the handle the input worker notes into.
@@ -74,7 +71,7 @@ impl DeviceState {
     }
 
     /// Whether any wired surface draws the pages and puts the questions on them.
-    pub fn has_pages(&self) -> bool {
+    pub fn has_display(&self) -> bool {
         self.surface_roles.contains(&SurfaceRole::Pages)
     }
 

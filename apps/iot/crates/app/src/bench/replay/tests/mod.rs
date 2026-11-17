@@ -3,6 +3,7 @@
 use super::*;
 use crate::shared::intent::Layer;
 use crate::shared::intent::{BusinessIntent, LinkIntent, NavigationIntent, NetworkPageIntent};
+use crate::shared::model::NetworkView;
 use crate::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, LinkPhase, LinkStatus, SavedNetworks,
@@ -63,7 +64,9 @@ fn point(touch: Touch) -> (u16, u16) {
 fn a_run_taps_the_row_the_named_network_is_on() {
     let state = showing(&["aaa", "bbb", "ccc", "target", "eee"]);
     let mut bench = PanelBench::new();
-    let plan = bench.plan(&state, "target", "ab").expect("a run");
+    let plan = bench
+        .plan(&state, &NetworkView::default(), "target", "ab")
+        .expect("a run");
 
     assert_eq!(plan[0], Touch::NextPage);
     assert_eq!(
@@ -103,7 +106,7 @@ fn every_row_a_scan_can_carry_is_reachable_by_the_bench() {
     for (index, name) in names.iter().enumerate() {
         let mut bench = PanelBench::new();
         let plan = bench
-            .plan(&state, name, "ab")
+            .plan(&state, &NetworkView::default(), name, "ab")
             .unwrap_or_else(|| panic!("row {index} has no run"));
         let slides = plan
             .iter()
@@ -128,7 +131,7 @@ fn the_row_the_page_keeps_picked_is_the_band_its_own_tap_lands_on() {
             ..ap(name)
         })
         .collect();
-    let mut state = DeviceState {
+    let state = DeviceState {
         nav: crate::state::Navigator::new(PageId::Network),
         network: crate::state::NetworkState {
             aps: Some(ApList::from_ranked(&rows)),
@@ -136,17 +139,26 @@ fn the_row_the_page_keeps_picked_is_the_band_its_own_tap_lands_on() {
         },
         ..DeviceState::default()
     };
-    assert_eq!(picked_band(&state), None, "nothing is picked yet");
+    let mut view = NetworkView::default();
+    assert_eq!(picked_band(&state, &view), None, "nothing is picked yet");
 
-    state.network_page.selected = Some(rows[2]);
-    assert_eq!(picked_band(&state), Some(2), "the row is the band it is on");
-
-    state.network_page.list_top = 2;
-    assert_eq!(picked_band(&state), Some(0), "with the window slid onto it");
-
-    state.network_page.selected = Some(rows[0]);
+    view.selected = Some(rows[2]);
     assert_eq!(
-        picked_band(&state),
+        picked_band(&state, &view),
+        Some(2),
+        "the row is the band it is on"
+    );
+
+    view.list_top = 2;
+    assert_eq!(
+        picked_band(&state, &view),
+        Some(0),
+        "with the window slid onto it"
+    );
+
+    view.selected = Some(rows[0]);
+    assert_eq!(
+        picked_band(&state, &view),
         None,
         "and a row the window has scrolled past is one the bench cannot tap either"
     );
@@ -174,7 +186,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         picked,
     )));
     assert!(
-        manager.state_ref().network_page.keyboard,
+        manager.network_view().keyboard,
         "the pick is there to begin with"
     );
     manager.apply_scan(marked(&["target"], &["target"]));
@@ -185,8 +197,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         ..LinkStatus::default()
     })));
     assert!(
-        manager.state_ref().network_page.selected.is_some()
-            && !manager.state_ref().network_page.keyboard,
+        manager.network_view().selected.is_some() && !manager.network_view().keyboard,
         "the link cleared the draft and kept the row it was for"
     );
 
@@ -247,9 +258,9 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
                 | NetworkCommand::SplashOver { .. } => {}
             }
         }
-        if bench.act == Act::ReopenTheRowJustLeft && manager.state_ref().network_page.keyboard {
+        if bench.act == Act::ReopenTheRowJustLeft && manager.network_view().keyboard {
             assert!(
-                manager.state_ref().network_page.entry.is_some(),
+                manager.network_view().entry.is_some(),
                 "the keyboard came up over no draft, which is a page with nothing on it"
             );
             reopened += 1;
@@ -258,8 +269,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
             break;
         }
         assert!(
-            !manager.state_ref().network.link.is_leavable()
-                || !manager.state_ref().network_page.keyboard,
+            !manager.state_ref().network.link.is_leavable() || !manager.network_view().keyboard,
             "a row took a pick while a link was up"
         );
     }
@@ -300,26 +310,23 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         "the row the link was left from never opened an entry for the walk to read"
     );
     let state = manager.state_ref();
+    let view = manager.network_view();
     assert!(!state.network.link.is_leavable(), "the link is down");
     assert!(
         !state.network.aps.expect("the list is still up").is_saved(0),
         "and the saved mark is gone"
     );
-    assert_eq!(
-        state.network_page.confirm, None,
-        "with no question left open"
-    );
-    assert!(
-        !state.network_page.rescan_wait,
-        "and the strip is not waiting"
-    );
+    assert_eq!(view.confirm, None, "with no question left open");
+    assert!(!view.rescan_wait, "and the strip is not waiting");
 }
 
 #[test]
 fn a_run_ends_on_the_key_that_hands_the_passphrase_over() {
     let state = showing(&["target"]);
     let mut bench = PanelBench::new();
-    let plan = bench.plan(&state, "target", "ab").expect("a run");
+    let plan = bench
+        .plan(&state, &NetworkView::default(), "target", "ab")
+        .expect("a run");
 
     let last = plan.last().copied().expect("a run has taps");
     assert_eq!(point(last), point(key_center(Key::Connect)));
@@ -341,7 +348,11 @@ fn a_run_ends_on_the_key_that_hands_the_passphrase_over() {
 fn a_row_that_is_not_listed_is_reported_rather_than_silently_skipped() {
     let state = showing(&["aaa"]);
     let mut bench = PanelBench::new();
-    assert!(bench.plan(&state, "target", "ab").is_none());
+    assert!(
+        bench
+            .plan(&state, &NetworkView::default(), "target", "ab")
+            .is_none()
+    );
     assert!(bench.missing_reported, "the bench says the row is missing");
     assert!(
         !bench.answered,
@@ -357,7 +368,11 @@ fn an_open_network_is_refused_rather_than_typed_into() {
         ..ap("target")
     }]));
     let mut bench = PanelBench::new();
-    assert!(bench.plan(&state, "target", "ab").is_none());
+    assert!(
+        bench
+            .plan(&state, &NetworkView::default(), "target", "ab")
+            .is_none()
+    );
     assert!(bench.answered, "there is no run to wait for");
 }
 
@@ -368,12 +383,19 @@ fn no_run_is_built_before_the_list_is_there() {
         ..DeviceState::default()
     };
     let mut bench = PanelBench::new();
-    assert!(bench.plan(&state, "target", "ab").is_none());
+    assert!(
+        bench
+            .plan(&state, &NetworkView::default(), "target", "ab")
+            .is_none()
+    );
     assert!(!bench.missing_reported, "nothing has been looked at yet");
     assert!(!bench.absent_reported, "nothing has been looked at yet");
 
     state.network.aps = Some(ApList::from_ranked(&[ap("target")]));
-    state.network_page.keyboard = true;
-    assert!(bench.plan(&state, "target", "ab").is_none());
+    let typing = NetworkView {
+        keyboard: true,
+        ..NetworkView::default()
+    };
+    assert!(bench.plan(&state, &typing, "target", "ab").is_none());
     assert!(!bench.missing_reported);
 }

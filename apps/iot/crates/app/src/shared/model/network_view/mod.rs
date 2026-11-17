@@ -1,10 +1,10 @@
-//! The Network page's draft: the row a passphrase is being typed for, the draft itself, the
+//! The Network page's view: the row a passphrase is being typed for, the draft itself, the
 //! question the page is asking, and where the list is scrolled. The link is not here — this
 //! record reads [`NetworkState`] and never writes it, so a report from the worker cannot land
 //! in a page field and a page edit cannot change what the radio said.
 //!
-//! It lives beside [`DeviceState`](super::DeviceState) because the device owns it: the page
-//! edits it, the diagnostics snapshot copies it, and the link never reads it.
+//! The type lives beside the other shared records because [`PageSnapshot`](super::PageSnapshot)
+//! carries it; the one instance belongs to the page.
 
 use crate::shared::intent::Key;
 use crate::shared::intent::NetworkPageIntent;
@@ -23,7 +23,7 @@ pub const LIST_ROWS: usize = 3;
 /// What the Network page is in the middle of: the row a passphrase is being typed for, the
 /// draft itself, and the last refusal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct NetworkDraft {
+pub struct NetworkView {
     /// The scanned row the user picked, whose name the draft goes with.
     pub selected: Option<AccessPoint>,
     /// The draft, and with it what a passphrase is being typed for.
@@ -53,10 +53,18 @@ pub enum SetupWait {
     Open(bool),
 }
 
-impl NetworkDraft {
+impl NetworkView {
     /// Whether the page is waiting on an ask of its own, so the strip has nothing to offer.
     pub fn busy(&self) -> bool {
         self.rescan_wait || self.join_wait || self.setup_wait.is_some()
+    }
+
+    /// Leaving the page puts the edit presentation away, and keeps what the user chose: the
+    /// picked row, the draft, and the refusal that explains it.
+    pub(crate) fn collapse(&mut self) {
+        self.keyboard = false;
+        self.revealed = false;
+        self.confirm = None;
     }
 
     /// Whether the box the page is about to draw is the access point's.
@@ -78,7 +86,7 @@ impl NetworkDraft {
         &mut self,
         intent: NetworkPageIntent,
         link: &NetworkState,
-        has_pages: bool,
+        has_display: bool,
     ) -> Option<Command> {
         match intent {
             NetworkPageIntent::Key { key, at_ms } => self.apply_key(key, at_ms),
@@ -95,10 +103,10 @@ impl NetworkDraft {
                 self.no_copy(ssid);
                 None
             }
-            NetworkPageIntent::Leave => self.leave_link(link, has_pages),
+            NetworkPageIntent::Leave => self.leave_link(link, has_display),
             NetworkPageIntent::Answer(confirm) => self.answer(confirm, link),
             NetworkPageIntent::CloseSetup => self.close_setup(link),
-            NetworkPageIntent::SwitchHost => self.switch_host(link, has_pages),
+            NetworkPageIntent::SwitchHost => self.switch_host(link, has_display),
             NetworkPageIntent::ScanNow => self.scan_now(link),
             NetworkPageIntent::SetOpenAccessPoint(open) => self.set_open(open, link),
             NetworkPageIntent::Dismiss => {
@@ -247,11 +255,11 @@ impl NetworkDraft {
         self.confirm = Some(Confirm::Forget(ap));
     }
 
-    fn leave_link(&mut self, link: &NetworkState, has_pages: bool) -> Option<Command> {
+    fn leave_link(&mut self, link: &NetworkState, has_display: bool) -> Option<Command> {
         if !link.link.is_leavable() {
             return None;
         }
-        if has_pages {
+        if has_display {
             self.confirm = Some(Confirm::Leave);
             None
         } else {
@@ -259,8 +267,8 @@ impl NetworkDraft {
         }
     }
 
-    fn switch_host(&mut self, link: &NetworkState, has_pages: bool) -> Option<Command> {
-        if !has_pages || self.join_wait || self.setup_wait.is_some() {
+    fn switch_host(&mut self, link: &NetworkState, has_display: bool) -> Option<Command> {
+        if !has_display || self.join_wait || self.setup_wait.is_some() {
             return None;
         }
         let from = link.setup_host()?;

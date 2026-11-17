@@ -64,7 +64,7 @@ where
     let entry_host = setup.host;
 
     let setup_asked = splash_setup(watch.commands()).await;
-    setup.secure_on_entry = setup_ap_starts_secured(setup.has_pages);
+    setup.secure_on_entry = setup_ap_starts_secured(setup.has_display);
     if setup_asked {
         log::info!(
             "[WIFI] the splash asked for setup mode; the access point is the host it opens on"
@@ -104,7 +104,7 @@ where
             Some(chosen) => chosen,
             None => match first_saved(&saved) {
                 Some(chosen) => chosen,
-                None if !setup.has_pages => {
+                None if !setup.has_display => {
                     log::info!("[WIFI] no page surface and no saved network; waiting offline");
                     park().await
                 }

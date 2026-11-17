@@ -27,7 +27,7 @@ fn in_setup(state: DeviceState) -> DeviceState {
 fn the_splash_page_is_where_the_button_asks_for_setup_mode() {
     let booting = state_on(PageId::Splash, LightState::Off);
     assert_eq!(
-        translate(&op(long_press_event()), &booting),
+        translate(&op(long_press_event()), &booting, &PageSet::default()),
         BusinessIntent::Navigation(NavigationIntent::RequestSetup)
     );
 }
@@ -49,13 +49,17 @@ fn the_splash_page_answers_nothing_but_the_hold() {
         }),
     ] {
         assert_eq!(
-            translate(&op(event), &booting),
+            translate(&op(event), &booting, &PageSet::default()),
             BusinessIntent::Invalid,
             "{event:?} on the splash"
         );
     }
     assert_eq!(
-        translate(&op(long_press_event()), &connected(booting)),
+        translate(
+            &op(long_press_event()),
+            &connected(booting),
+            &PageSet::default()
+        ),
         BusinessIntent::Navigation(NavigationIntent::RequestSetup)
     );
 }
@@ -65,7 +69,8 @@ fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
     assert_eq!(
         translate(
             &op(long_press_event()),
-            &connected(state_on(PageId::Ambient, LightState::Off))
+            &connected(state_on(PageId::Ambient, LightState::Off)),
+            &PageSet::default()
         ),
         BusinessIntent::Light {
             instance: 0,
@@ -79,7 +84,8 @@ fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
     assert_eq!(
         translate(
             &op(long_press_event()),
-            &in_setup(state_on(PageId::Ambient, LightState::Off))
+            &in_setup(state_on(PageId::Ambient, LightState::Off)),
+            &PageSet::default()
         ),
         BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
     );

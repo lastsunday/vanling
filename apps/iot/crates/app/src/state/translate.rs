@@ -3,13 +3,13 @@
 //!
 //! It reads the whole device state, so it sits outside `model`: the model must not point back.
 
-use crate::pages::Page;
+use crate::pages::PageSet;
 use crate::shared::intent::{BusinessIntent, InputIntent, NavigationIntent, NetworkPageIntent};
 use crate::state::{DeviceState, PageId};
 use iot_core::drivers::input::{ButtonEvent, InputEvent};
 
 /// What one gesture means on the page the device is showing.
-pub fn translate(op: &InputIntent, current: &DeviceState) -> BusinessIntent {
+pub fn translate(op: &InputIntent, current: &DeviceState, pages: &PageSet) -> BusinessIntent {
     if let Some(intent) = shortcut(op, current) {
         return intent;
     }
@@ -18,7 +18,7 @@ pub fn translate(op: &InputIntent, current: &DeviceState) -> BusinessIntent {
     {
         return BusinessIntent::Navigation(NavigationIntent::NextPage);
     }
-    current.page().bind(op, current)
+    pages.get(current.page()).bind(op, current)
 }
 
 /// The setup-mode hold is a link decision, not a page one: switching the host is offered from
