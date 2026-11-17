@@ -6,7 +6,7 @@ use crate::shared::intent::{BusinessIntent, InputIntent, Intent, LinkIntent, Nav
 use crate::shared::model::{
     Command, Effects, Health, NetworkCommand, Notice, NoticeKind, PlaybackPhase,
 };
-use crate::shared::route::Page;
+use crate::shared::route::PageId;
 use crate::state::{DeviceManager, DeviceState};
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::input::InputEvent;
@@ -148,7 +148,7 @@ impl DeviceManager {
                 None
             }
             NavigationIntent::RequestSetup => {
-                if self.state.page() == Page::Splash {
+                if self.state.page() == PageId::Splash {
                     self.state.setup_requested = true;
                 }
                 None
@@ -158,13 +158,13 @@ impl DeviceManager {
     }
 
     fn land_after_splash(&mut self) -> Option<Command> {
-        if self.state.page() != Page::Splash {
+        if self.state.page() != PageId::Splash {
             return None;
         }
         let setup = self.state.setup_requested;
         self.state.nav.pop();
         if setup && self.state.backed.network {
-            self.state.nav.go(Page::Network, self.state.backed);
+            self.state.nav.go(PageId::Network, self.state.backed);
         }
         // A device that boots with nothing to join has nothing to say after the splash
         // except that: one amber burst, then the page's own light. A hold that asked for

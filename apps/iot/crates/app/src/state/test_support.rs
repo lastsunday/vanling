@@ -2,7 +2,13 @@ pub(crate) use super::*;
 pub(crate) use crate::shared::intent::{
     BusinessIntent, InputIntent, Intent, LightAction, NavigationIntent,
 };
-pub(crate) use crate::shared::route::CYCLE;
+/// Every page the button can reach: the table without its transients, in the button's order.
+pub(crate) fn cycled() -> impl Iterator<Item = PageId> {
+    PageId::ALL
+        .into_iter()
+        .filter(|page| page.timeout_ms().is_none())
+}
+
 pub(crate) use crate::state::translate::translate;
 pub(crate) use iot_core::demand::EffectiveDemand;
 pub(crate) use iot_core::drivers::input::{
@@ -136,12 +142,12 @@ pub(crate) fn feed_input(manager: &mut DeviceManager, operation: InputIntent) {
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
     manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
-    assert_ne!(manager.state().page(), Page::Splash);
+    assert_ne!(manager.state().page(), PageId::Splash);
     manager
 }
 
 /// A state with every capability wired, on `page`, with every light at `light`.
-pub(crate) fn state_on(page: Page, light: LightState) -> DeviceState {
+pub(crate) fn state_on(page: PageId, light: LightState) -> DeviceState {
     DeviceState {
         lights: [light; MAX_LIGHTS],
         surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
@@ -158,7 +164,7 @@ pub(crate) fn state_on(page: Page, light: LightState) -> DeviceState {
 }
 
 pub(crate) fn state(light: LightState) -> DeviceState {
-    state_on(Page::Ambient, light)
+    state_on(PageId::Ambient, light)
 }
 
 /// The base state with one network fact changed.

@@ -8,7 +8,7 @@ use iot_app::runtime::workers::Network;
 use iot_app::shared::intent::Key;
 use iot_app::shared::intent::{BusinessIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
 use iot_app::shared::model::PALETTE;
-use iot_app::state::{NetworkCommand, Page};
+use iot_app::state::{NetworkCommand, PageId};
 use iot_core::drivers::audio::dbfs;
 use iot_core::drivers::input::LONG_PRESS_MS;
 use iot_core::drivers::network::{
@@ -22,7 +22,7 @@ use super::board::*;
 const LONG_HOLD: Duration = Duration::from_millis(LONG_PRESS_MS + 400);
 
 /// Repeats the gesture only while the page has not moved; a wrong landing still fails.
-async fn triple_click_to(page: Page) {
+async fn triple_click_to(page: PageId) {
     let start = *PAGES
         .lock()
         .unwrap()
@@ -108,9 +108,9 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "button 1 must not touch surface 0's solid color"
     );
 
-    triple_click_to(Page::Attitude).await;
+    triple_click_to(PageId::Attitude).await;
 
-    triple_click_to(Page::Audio).await;
+    triple_click_to(PageId::Audio).await;
     assert!(
         AUDIO_POLLS.load(Ordering::SeqCst) > 0,
         "the capture source was never polled"
@@ -141,7 +141,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "the capture's A-weighted level did not reach the panel's diagnostics"
     );
 
-    triple_click_to(Page::Speaker).await;
+    triple_click_to(PageId::Speaker).await;
 
     click(1).await;
 
@@ -231,7 +231,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "the mute did not reach the driver as a single latch"
     );
 
-    triple_click_to(Page::Camera).await;
+    triple_click_to(PageId::Camera).await;
 
     attempts = 0;
     while CAMERA_PAINTED.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -245,7 +245,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     let painted_before = PAINTED.lock().unwrap().len();
     let released_before = RELEASED.load(Ordering::SeqCst);
-    triple_click_to(Page::Network).await;
+    triple_click_to(PageId::Network).await;
 
     assert!(
         RELEASED.load(Ordering::SeqCst) > released_before,
@@ -265,7 +265,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     );
 
     assert!(
-        page_seen(Page::Network),
+        page_seen(PageId::Network),
         "the link's page was never reached by the cycle"
     );
 

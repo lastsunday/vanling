@@ -4,7 +4,7 @@
 use core::any::TypeId;
 
 use crate::state::{
-    Command, DeviceManager, DeviceState, LampLine, LightState, NetworkCommand, Page,
+    Command, DeviceManager, DeviceState, LampLine, LightState, NetworkCommand, PageId,
 };
 use iot_core::drivers::network::SetupHost;
 
@@ -16,7 +16,7 @@ use crate::runtime::system::System;
 /// through, in the order a frame sees them.
 pub(crate) struct NetworkSystem {
     network: &'static Network,
-    page: Page,
+    page: PageId,
     front: Option<SetupHost>,
     lamp: Option<LightState>,
 }

@@ -2,7 +2,7 @@
 //! across them.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
-use crate::shared::route::{Navigator, Page};
+use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::input::SwipeDirection;
 use iot_core::drivers::network::{LinkPhase, SetupHost};
@@ -47,7 +47,7 @@ pub struct DeviceState {
 
 impl DeviceState {
     /// The page on screen: the top of the navigation stack.
-    pub fn page(&self) -> Page {
+    pub fn page(&self) -> PageId {
         self.nav.current()
     }
 
@@ -107,11 +107,11 @@ impl DeviceState {
 
     /// The page that becomes the boot page: a splash has no page to land on, and a page the
     /// board cannot back is not somewhere it could ever arrive.
-    pub(crate) fn landed_on(page: Page, backed: Backed) -> Page {
+    pub(crate) fn landed_on(page: PageId, backed: Backed) -> PageId {
         match page {
-            Page::Splash => Page::Ambient,
+            PageId::Splash => PageId::Ambient,
             page if page.is_backed(backed) => page,
-            _ => Page::Ambient,
+            _ => PageId::Ambient,
         }
     }
 }

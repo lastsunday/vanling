@@ -1,23 +1,22 @@
 //! The panel's renderer: pages over the colour, the backlight, and the camera feed.
 
 mod painter;
-mod policy;
 mod repaint;
 
 pub use self::painter::AppPainter;
-pub use self::policy::DIAG_REPAINT_STEP_MS;
-pub use self::repaint::{diag_repaint_due, windowed_percent, windowed_rate};
+pub use self::repaint::{DIAG_REPAINT_STEP_MS, diag_repaint_due, windowed_percent, windowed_rate};
 
 use alloc::boxed::Box;
 use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
+use crate::pages::Page;
 use crate::render::common::ColorDriver;
 use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::model::LightState;
-use crate::shared::route::Page;
+use crate::shared::route::PageId;
 use iot_core::demand::{DemandKey, Mode};
 use iot_core::drivers::camera::{CameraSnapshot, FrameSource};
 use iot_core::drivers::surface::{PageSurface, PanelContext, PanelPainter, PanelTarget};
@@ -47,7 +46,7 @@ pub struct ScreenRenderer {
     consumers: [Consumer; 2],
     color: ColorDriver,
     appearance: Option<LightAppearance>,
-    page: Option<Page>,
+    page: Option<PageId>,
     /// The painter the product injected, and the snapshot gate it is handed.
     painter: Option<Box<dyn PanelPainter>>,
     debug: bool,
@@ -99,7 +98,7 @@ impl ScreenRenderer {
             return;
         };
         let step = self.surface.repaint_step();
-        if let Some(ground) = self.page.and_then(policy::ground) {
+        if let Some(ground) = self.page.and_then(Page::ground) {
             self.color.ground(&mut *self.surface, step, ground);
             self.surface.set_backlight(100);
             return;
@@ -110,7 +109,7 @@ impl ScreenRenderer {
     }
 
     fn on_camera_page(&self) -> bool {
-        self.page.is_some_and(policy::draws_frames)
+        self.page.is_some_and(Page::draws_frames)
     }
 }
 
@@ -331,7 +330,7 @@ mod tests {
         }
     }
 
-    fn panel_on(page: Page, display: Mode) -> Appearance {
+    fn panel_on(page: PageId, display: Mode) -> Appearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
@@ -345,10 +344,10 @@ mod tests {
     }
 
     fn panel_asked(display: Mode) -> Appearance {
-        panel_on(Page::Ambient, display)
+        panel_on(PageId::Ambient, display)
     }
 
-    fn panel_collecting(page: Page, period_ms: u32) -> Appearance {
+    fn panel_collecting(page: PageId, period_ms: u32) -> Appearance {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
@@ -455,7 +454,7 @@ mod tests {
     #[test]
     fn the_network_page_grounds_the_panel_black_and_still() {
         let (mut r, panel) = renderer();
-        r.on_appearance(panel_on(Page::Network, Mode::Continuous), 0);
+        r.on_appearance(panel_on(PageId::Network, Mode::Continuous), 0);
         assert_eq!(
             r.on_appearance(ambient_breath(0), 0),
             Activity::Idle,
@@ -495,7 +494,7 @@ mod tests {
     #[test]
     fn the_camera_page_grounds_the_panel_black() {
         let (mut r, panel) = renderer();
-        r.on_appearance(panel_on(Page::Ambient, Mode::Continuous), 0);
+        r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 0);
         r.on_appearance(
             Appearance::Surface {
                 instance: 0,
@@ -506,7 +505,7 @@ mod tests {
         assert_eq!(panel.borrow().color, Rgb(10, 20, 30));
 
         assert_eq!(
-            r.on_appearance(panel_on(Page::Camera, Mode::Continuous), 1),
+            r.on_appearance(panel_on(PageId::Camera, Mode::Continuous), 1),
             Activity::TimeDriven,
             "a camera page is driven by arriving frames, not by the light"
         );
@@ -527,7 +526,7 @@ mod tests {
     #[test]
     fn the_camera_cadence_is_handed_to_the_surface_rather_than_read_there() {
         let (mut r, panel) = renderer();
-        r.on_appearance(panel_collecting(Page::Camera, 200), 0);
+        r.on_appearance(panel_collecting(PageId::Camera, 200), 0);
         r.step(1_000);
         assert_eq!(
             panel.borrow().camera_period,
@@ -544,14 +543,14 @@ mod tests {
     #[test]
     fn the_camera_is_released_when_the_demand_stops_collecting() {
         let (mut r, panel) = renderer();
-        r.on_appearance(panel_collecting(Page::Camera, 0), 0);
-        r.on_appearance(panel_on(Page::Ambient, Mode::Continuous), 1);
+        r.on_appearance(panel_collecting(PageId::Camera, 0), 0);
+        r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 1);
         assert_eq!(
             panel.borrow().camera_releases,
             1,
             "the renderer hands the buffer back; the surface only does as it is told"
         );
-        r.on_appearance(panel_on(Page::Ambient, Mode::Continuous), 2);
+        r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 2);
         assert_eq!(
             panel.borrow().camera_releases,
             2,
@@ -562,12 +561,12 @@ mod tests {
     #[test]
     fn leaving_the_page_that_grounds_the_panel_puts_the_light_back() {
         let (mut r, panel) = renderer();
-        r.on_appearance(panel_on(Page::Network, Mode::Continuous), 0);
+        r.on_appearance(panel_on(PageId::Network, Mode::Continuous), 0);
         r.on_appearance(ambient_breath(0), 0);
         assert_eq!(panel.borrow().color, Rgb(0, 0, 0));
 
         assert_eq!(
-            r.on_appearance(panel_on(Page::Ambient, Mode::Continuous), 100),
+            r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 100),
             Activity::TimeDriven,
             "the breathing the page was hiding resumes"
         );

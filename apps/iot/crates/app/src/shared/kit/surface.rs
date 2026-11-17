@@ -1,6 +1,6 @@
 //! The portable page surface: a [`Canvas`] plus the snapshot the current page draws from.
 //!
-//! The surface owns the primitives, not the page match: [`paint`](crate::pages::paint)
+//! The surface owns the primitives, not the page match: [`Page::stamp`](crate::pages::Page::stamp)
 //! decides which page stamps what.
 
 use core::ops::{Deref, DerefMut};

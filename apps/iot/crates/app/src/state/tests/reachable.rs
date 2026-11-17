@@ -769,7 +769,7 @@ fn every_state_the_page_can_reach_keeps_its_invariants() {
         "the link was never up"
     );
     assert!(
-        reached(|state| state.page() != Page::Network),
+        reached(|state| state.page() != PageId::Network),
         "the page cycle was never walked"
     );
 }

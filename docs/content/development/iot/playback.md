@@ -42,7 +42,7 @@ C6 和 host 没有第二个软件中断，走 `Feed::Inline`，两个循环在�
 
 Speaker 页与 Audio 页是两个页。
 
-板级没找到 ES8311 时 `Backed::playback` 为假，该页不进入页面循环（`Page::next_page` 跳过没有能力背书的页），采集与其余页照常。出声是加法，不该是采集的前置条件。
+板级没找到 ES8311 时 `Backed::playback` 为假，该页不进入页面循环（`PageId::next_page` 跳过没有能力背书的页），采集与其余页照常。出声是加法，不该是采集的前置条件。
 
 ## 声音从哪来
 
@@ -124,7 +124,7 @@ MIDI 只有 note on / note off，没有包络。而音从阶跃边起止就是 c
 
 `PLY` 与 `DRP` 分成两个数，因为它们回答的是两个问题——"它出声了吗"和"它听见我了吗"。合成一个计数的页面没法区分"喇叭不响"和"手指太忙"。
 
-Speaker 页没有动画，它的 `repaint`（`page/speaker.rs`）只比 `playback` 这一项诊断，也不看 overlay：它的相位每次播放只翻两次，且两次都来自 intent（于是都带来一份新的 diagnostics），一个每帧重画 320×240 像素只为说同一句话的页面是纯浪费。Audio 页相反，扫描条一直在动，`repaint`（`page/audio.rs`）跟着 envelope 走。
+Speaker 页没有动画，它的 `Page::repaints_on`（`pages/speaker`）只比 `playback` 这一项诊断，也不看 overlay：它的相位每次播放只翻两次，且两次都来自 intent（于是都带来一份新的 diagnostics），一个每帧重画 320×240 像素只为说同一句话的页面是纯浪费。Audio 页相反，扫描条一直在动，`Page::repaints_on`（`pages/audio`）跟着 envelope 走。
 
 ## 一个常驻环，120 ms 余量
 

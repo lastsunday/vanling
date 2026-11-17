@@ -1,31 +1,32 @@
 //! The page golden table: every page, with the debug badge on and off, is one fingerprint.
 //!
-//! The dispatch under test is [`paint`](super::paint), so a page whose view moved still has
-//! to draw exactly the ink the table recorded. Regenerate only for an intended pixel change.
+//! The dispatch under test is [`Page::stamp`](crate::pages::Page::stamp), so a page whose view
+//! moved still has to draw exactly the ink the table recorded. Regenerate only for an intended
+//! pixel change.
 
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::pages::paint;
+use crate::pages::Page;
 use crate::shared::diagnostics::Diagnostics;
 use crate::shared::kit::surface::Surface;
-use crate::shared::route::Page;
+use crate::shared::route::PageId;
 use iot_core::paint::Rgb;
 use iot_core::ui::Canvas;
 
 const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
 const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;
 
-fn render(page: Page, debug: bool, ground: Option<Rgb>) -> Vec<u8> {
+fn render(page: PageId, debug: bool) -> Vec<u8> {
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
     let diagnostics = Diagnostics {
         page,
         ..Diagnostics::default()
     };
     {
-        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, ground);
+        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, page.ground());
         let mut surface = Surface::new(canvas, &diagnostics, 0, 60, debug, 100);
-        paint(page, &mut surface);
+        page.stamp(&mut surface);
     }
     frame
 }
@@ -41,7 +42,7 @@ fn fingerprint(frame: &[u8]) -> u32 {
 }
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
-const GOLDEN: [(&str, bool, u32); 14] = [
+const GOLDEN: [(&str, bool, u32); 16] = [
     ("ambient", false, 0xc18e_7dc5),
     ("ambient", true, 0xc104_7691),
     ("attitude", false, 0x3d8d_fc2f),
@@ -56,15 +57,16 @@ const GOLDEN: [(&str, bool, u32); 14] = [
     ("network", true, 0x5c55_fd33),
     ("splash", false, 0x328a_4c63),
     ("splash", true, 0xe51b_5e55),
+    ("env", false, 0xc8c9_1e4b),
+    ("env", true, 0x80cd_763d),
 ];
 
 #[test]
 fn every_page_draws_the_picture_the_golden_table_expects() {
     let update = std::env::var_os("PAGE_GOLDEN_UPDATE").is_some();
-    for page in Page::ALL {
-        let ground = (page != Page::Camera).then_some(Rgb(0, 0, 0));
+    for page in PageId::ALL {
         for debug in [false, true] {
-            let actual = fingerprint(&render(page, debug, ground));
+            let actual = fingerprint(&render(page, debug));
             if update {
                 std::println!("    (\"{}\", {debug}, 0x{actual:08x}),", page.path());
                 continue;
@@ -86,10 +88,9 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
 
 #[test]
 fn every_page_stamps_something_and_does_it_the_same_way_twice() {
-    for page in Page::ALL {
-        let ground = (page != Page::Camera).then_some(Rgb(0, 0, 0));
-        let first = render(page, true, ground);
-        let second = render(page, true, ground);
+    for page in PageId::ALL {
+        let first = render(page, true);
+        let second = render(page, true);
         assert!(
             first.iter().any(|byte| *byte != 0),
             "{page:?} stamped no ink"
@@ -100,9 +101,9 @@ fn every_page_stamps_something_and_does_it_the_same_way_twice() {
 
 #[test]
 fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
-    let mut expected = render(Page::Camera, false, None);
+    let mut expected = render(PageId::Camera, false);
     let diagnostics = Diagnostics {
-        page: Page::Camera,
+        page: PageId::Camera,
         ..Diagnostics::default()
     };
     {
@@ -110,5 +111,21 @@ fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
         let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
         surface.stamp_fps();
     }
-    assert_eq!(render(Page::Camera, true, None), expected);
+    assert_eq!(render(PageId::Camera, true), expected);
+}
+
+#[test]
+fn every_page_answers_every_render_question() {
+    for page in PageId::ALL {
+        assert_eq!(
+            page.ground(),
+            matches!(page, PageId::Camera | PageId::Network).then_some(Rgb(0, 0, 0)),
+            "{page:?} grounds"
+        );
+        assert_eq!(
+            page.draws_frames(),
+            page == PageId::Camera,
+            "{page:?} frames"
+        );
+    }
 }

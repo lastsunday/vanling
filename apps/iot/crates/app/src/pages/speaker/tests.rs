@@ -5,7 +5,7 @@ use crate::shared::intent::PlaybackAction;
 use crate::state::test_support::*;
 
 fn on_speaker() -> DeviceState {
-    state_on(Page::Speaker, BREATH)
+    state_on(PageId::Speaker, BREATH)
 }
 
 fn long_press_gesture() -> InputEvent {

@@ -1,19 +1,20 @@
 //! When a diagnostics drift earns a full-frame repaint.
 
+use crate::pages::Page;
 use crate::shared::diagnostics::Diagnostics;
-use crate::shared::route::Page;
+use crate::shared::route::PageId;
 use iot_core::demand::{DemandKey, Mode};
 
-/// Minimum wall time between full-frame panel repaints driven by a diagnostics
-/// drift. A repaint ships the whole 320×240 frame down one blocking SPI
-/// transfer (on the order of 15 ms), so without a bound the live pages — the
-/// Audio sweep follows the capture, the attitude dial the motion sample —
-/// repaint every 20 ms snapshot and hold the shared cooperative executor in a
-/// ~15 ms block almost continuously, starving the playback feed and the
-/// capture poll past their ring runway. A page may raise it for itself; see
-/// [`repaint_step_ms`].
+/// The least wall time between diagnostics-driven repaints, before a page raises it: a
+/// repaint ships the whole 320×240 frame down one blocking SPI transfer (on the order of
+/// 15 ms), and the live pages — the Audio sweep follows the capture, the attitude dial the
+/// motion sample — would otherwise repaint every 20 ms snapshot and hold the shared
+/// cooperative executor in a ~15 ms block almost continuously. A page raises it for itself;
+/// see [`Page::repaint_step_ms`].
+pub const DIAG_REPAINT_STEP_MS: u64 = 40;
+
 pub fn diag_repaint_due(
-    page: Page,
+    page: PageId,
     prev: &Diagnostics,
     next: &Diagnostics,
     since_ms: u64,
@@ -28,39 +29,19 @@ pub fn diag_repaint_due(
     if since_ms < step {
         return false;
     }
-    repaint_due(page, prev, next, overlay)
+    page.repaints_on(prev, next, overlay)
 }
 
 /// The least wall time this page waits between diagnostics-driven repaints. The Audio page
-/// raises it in its manifest row: a capture poll closes two envelope columns every 20 ms, so
-/// the default step already redraws a 200-column sweep every ~45 ms and this page alone held
-/// the executor 40% of the wall time on the S3. At twice the step a frame advances the sweep
-/// eight columns instead of four — still a sweep, at half the cost.
-pub(crate) fn repaint_step_ms(page: Page) -> u64 {
-    super::policy::repaint_step_ms(page)
-}
-
-fn repaint_due(page: Page, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
-    match page {
-        // A frame arriving is a data event and not anything a snapshot diff can see.
-        // Forcing a repaint here would ship a full frame that is a copy of the last one —
-        // ~15 ms of blocking SPI.
-        Page::Camera | Page::Splash => false,
-        Page::Ambient => overlay,
-        Page::Attitude => true,
-        Page::Audio => {
-            prev.audio.phase != next.audio.phase
-                || prev.audio.envelope != next.audio.envelope
-                || prev.audio.restarts != next.audio.restarts
-                || prev.audio.dba_lsb != next.audio.dba_lsb
-        }
-        Page::Speaker => prev.playback != next.playback,
-        Page::Network => {
-            prev.link != next.link
-                || prev.aps != next.aps
-                || prev.draft != next.draft
-                || prev.mac != next.mac
-        }
+/// doubles it: a capture poll closes two envelope columns every 20 ms, so the default step
+/// already redraws the 200-column sweep every ~45 ms and this page alone held the executor 40%
+/// of the wall time on the S3. At twice the step a frame advances eight columns instead of
+/// four — still a sweep, at half the cost.
+pub(crate) fn repaint_step_ms(page: PageId) -> u64 {
+    if page == PageId::Audio {
+        DIAG_REPAINT_STEP_MS * 2
+    } else {
+        DIAG_REPAINT_STEP_MS
     }
 }
 
@@ -89,7 +70,6 @@ pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::render::screen::policy::DIAG_REPAINT_STEP_MS;
     use crate::state::{AudioPhase, PlaybackPhase};
     use iot_core::drivers::audio::AudioEnvelope;
     use iot_core::drivers::network::{AccessPoint, ApList, Ipv4, LinkPhase, Ssid};
@@ -115,7 +95,7 @@ mod tests {
     /// The Audio page sets its own step, so the tests follow the table rather than the
     /// default — a page that changed its cadence without changing this would fail here.
     fn audio_step() -> u64 {
-        repaint_step_ms(Page::Audio)
+        repaint_step_ms(PageId::Audio)
     }
 
     #[test]
@@ -124,14 +104,14 @@ mod tests {
         let mut moved = base;
         moved.audio.phase = AudioPhase::Recording;
         assert!(!diag_repaint_due(
-            Page::Audio,
+            PageId::Audio,
             &base,
             &moved,
             audio_step() - 1,
             false
         ));
         assert!(diag_repaint_due(
-            Page::Audio,
+            PageId::Audio,
             &base,
             &moved,
             audio_step(),
@@ -145,7 +125,7 @@ mod tests {
         let mut ticked = base;
         ticked.audio.elapsed_ms = 1_234;
         assert!(!diag_repaint_due(
-            Page::Audio,
+            PageId::Audio,
             &base,
             &ticked,
             audio_step(),
@@ -166,7 +146,7 @@ mod tests {
         level.audio.dba_lsb = 0x8000;
         for next in [phase, envelope, restarts, level] {
             assert!(
-                diag_repaint_due(Page::Audio, &base, &next, audio_step(), false),
+                diag_repaint_due(PageId::Audio, &base, &next, audio_step(), false),
                 "an Audio drift the page draws must repaint"
             );
         }
@@ -178,14 +158,14 @@ mod tests {
         let mut ticked = base;
         ticked.audio.elapsed_ms = 10;
         assert!(!diag_repaint_due(
-            Page::Attitude,
+            PageId::Attitude,
             &base,
             &ticked,
             DIAG_REPAINT_STEP_MS - 1,
             false
         ));
         assert!(diag_repaint_due(
-            Page::Attitude,
+            PageId::Attitude,
             &base,
             &ticked,
             DIAG_REPAINT_STEP_MS,
@@ -199,14 +179,14 @@ mod tests {
         let mut ticked = base;
         ticked.audio.phase = AudioPhase::Recording;
         assert!(!diag_repaint_due(
-            Page::Ambient,
+            PageId::Ambient,
             &base,
             &ticked,
             DIAG_REPAINT_STEP_MS,
             false
         ));
         assert!(diag_repaint_due(
-            Page::Ambient,
+            PageId::Ambient,
             &base,
             &ticked,
             DIAG_REPAINT_STEP_MS,
@@ -229,7 +209,7 @@ mod tests {
         dropped.playback.dropped = 2;
         for next in [playing, source, muted, played, dropped] {
             assert!(
-                diag_repaint_due(Page::Speaker, &base, &next, DIAG_REPAINT_STEP_MS, false),
+                diag_repaint_due(PageId::Speaker, &base, &next, DIAG_REPAINT_STEP_MS, false),
                 "a playback drift the Speaker page stamps must repaint even with the overlay off"
             );
         }
@@ -243,7 +223,7 @@ mod tests {
         for overlay in [false, true] {
             assert!(
                 !diag_repaint_due(
-                    Page::Speaker,
+                    PageId::Speaker,
                     &base,
                     &drifting,
                     DIAG_REPAINT_STEP_MS,
@@ -272,7 +252,7 @@ mod tests {
         scanned.aps = Some(ApList::from_ranked(&[AccessPoint::default()]));
         for next in [associated, addressed, scanned] {
             assert!(
-                diag_repaint_due(Page::Network, &base, &next, DIAG_REPAINT_STEP_MS, false),
+                diag_repaint_due(PageId::Network, &base, &next, DIAG_REPAINT_STEP_MS, false),
                 "a link or list drift the Network page draws must repaint even with the \
                  overlay off"
             );
@@ -285,7 +265,7 @@ mod tests {
         let mut addressed = base;
         addressed.mac = Some([0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef]);
         assert!(diag_repaint_due(
-            Page::Network,
+            PageId::Network,
             &base,
             &addressed,
             DIAG_REPAINT_STEP_MS,
@@ -302,7 +282,7 @@ mod tests {
         for overlay in [false, true] {
             assert!(
                 !diag_repaint_due(
-                    Page::Network,
+                    PageId::Network,
                     &base,
                     &drifting,
                     DIAG_REPAINT_STEP_MS,
@@ -341,7 +321,7 @@ mod tests {
 
         assert!(
             !diag_repaint_due(
-                Page::Audio,
+                PageId::Audio,
                 &unlit,
                 &wobble,
                 10 * DIAG_REPAINT_STEP_MS,
@@ -356,22 +336,37 @@ mod tests {
             iot_core::demand::Claim::new(Mode::OnChange, 0, iot_core::demand::Priority::Primary),
         );
         assert!(
-            !diag_repaint_due(Page::Audio, &dim, &dim, 10 * DIAG_REPAINT_STEP_MS, false),
+            !diag_repaint_due(PageId::Audio, &dim, &dim, 10 * DIAG_REPAINT_STEP_MS, false),
             "nothing changed, so there is nothing to redraw"
         );
 
         let mut dim_moved = dim;
         dim_moved.audio.phase = AudioPhase::Recording;
         assert!(
-            !diag_repaint_due(Page::Audio, &dim, &dim_moved, audio_step(), false),
+            !diag_repaint_due(PageId::Audio, &dim, &dim_moved, audio_step(), false),
             "a dim panel waits out the base cadence before it spends a frame"
         );
         assert!(diag_repaint_due(
-            Page::Audio,
+            PageId::Audio,
             &dim,
             &dim_moved,
             audio_step() * 4,
             false
         ));
+    }
+}
+
+#[test]
+fn only_the_audio_page_raises_the_step() {
+    for page in PageId::ALL {
+        assert!(
+            repaint_step_ms(page) >= DIAG_REPAINT_STEP_MS,
+            "{page:?} cannot repaint faster than the floor"
+        );
+        assert_eq!(
+            repaint_step_ms(page) > DIAG_REPAINT_STEP_MS,
+            page == PageId::Audio,
+            "{page:?} step"
+        );
     }
 }

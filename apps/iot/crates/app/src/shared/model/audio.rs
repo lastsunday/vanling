@@ -102,10 +102,10 @@ mod tests {
                 audio: true,
                 ..Backed::NONE
             },
-            boot_page: Page::Audio,
+            boot_page: PageId::Audio,
             ..Default::default()
         }));
-        assert_eq!(manager.state().page(), Page::Audio);
+        assert_eq!(manager.state().page(), PageId::Audio);
         manager
     }
 
@@ -202,7 +202,7 @@ mod tests {
     fn a_tap_records_without_leaving_the_audio_page() {
         let mut manager = on_audio_page();
         apply(&mut manager, tap());
-        assert_eq!(manager.state().page(), Page::Audio, "the page holds");
+        assert_eq!(manager.state().page(), PageId::Audio, "the page holds");
         assert_eq!(manager.state().audio.phase, AudioPhase::Recording);
     }
 
@@ -211,8 +211,10 @@ mod tests {
         let mut manager = on_audio_page();
         let before = manager.state().lights[0];
 
-        manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-        assert_eq!(manager.state().page(), Page::Ambient, "walked off audio");
+        for _ in 0..2 {
+            manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
+        }
+        assert_eq!(manager.state().page(), PageId::Ambient, "walked off audio");
 
         apply(&mut manager, tap());
         assert_eq!(

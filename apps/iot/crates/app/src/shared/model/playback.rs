@@ -133,12 +133,12 @@ mod tests {
             ..Default::default()
         }));
         for _ in 0..=3 {
-            if manager.state().page() == Page::Speaker {
+            if manager.state().page() == PageId::Speaker {
                 break;
             }
             feed_input(&mut manager, triple_click());
         }
-        assert_eq!(manager.state().page(), Page::Speaker);
+        assert_eq!(manager.state().page(), PageId::Speaker);
         manager
     }
 
@@ -346,7 +346,11 @@ mod tests {
     fn a_board_without_a_speaker_plays_nothing() {
         let mut manager = landed(DeviceManager::new());
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-        assert_eq!(manager.state().page(), Page::Ambient, "no page either");
+        assert_eq!(
+            manager.state().page(),
+            PageId::Env,
+            "no speaker page either"
+        );
         manager.apply_business(BusinessIntent::Playback(PlaybackAction::Next));
         assert_eq!(manager.playback_state(), PlaybackState::boot());
         manager.apply_business(BusinessIntent::Playback(PlaybackAction::SetMuted(true)));

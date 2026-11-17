@@ -2,10 +2,10 @@ use super::*;
 use iot_core::demand::{ALL_KEYS, Claim, DemandKey, DemandKind, Mode, Priority};
 
 fn fully_wired() -> DeviceManager {
-    fully_wired_on(Page::Ambient)
+    fully_wired_on(PageId::Ambient)
 }
 
-fn fully_wired_on(boot_page: Page) -> DeviceManager {
+fn fully_wired_on(boot_page: PageId) -> DeviceManager {
     DeviceManager::boot(Boot {
         backed: Backed {
             motion: Some(MotionCapabilities::EMPTY),
@@ -28,7 +28,7 @@ fn fully_wired_on(boot_page: Page) -> DeviceManager {
 #[test]
 fn a_pages_class_follows_the_page_that_draws_the_device() {
     assert_eq!(
-        Page::Attitude
+        PageId::Attitude
             .demand(ALL_KEYS)
             .claim(DemandKey::MOTION)
             .priority,
@@ -36,7 +36,7 @@ fn a_pages_class_follows_the_page_that_draws_the_device() {
         "the page that draws the motion sample may wait nothing for it"
     );
     assert_eq!(
-        Page::Audio
+        PageId::Audio
             .demand(ALL_KEYS)
             .claim(DemandKey::AUDIO)
             .priority,
@@ -44,8 +44,8 @@ fn a_pages_class_follows_the_page_that_draws_the_device() {
         "and the same for the page that draws the envelope"
     );
 
-    for page in CYCLE {
-        if matches!(page, Page::Attitude | Page::Camera) {
+    for page in cycled() {
+        if matches!(page, PageId::Attitude | PageId::Camera) {
             continue;
         }
         assert_eq!(
@@ -55,7 +55,7 @@ fn a_pages_class_follows_the_page_that_draws_the_device() {
         );
     }
 
-    for page in CYCLE {
+    for page in cycled() {
         assert_eq!(
             page.demand(ALL_KEYS).claim(DemandKey::MOTION).mode,
             Mode::Continuous,
@@ -84,11 +84,11 @@ fn a_device_the_board_did_not_declare_is_never_claimed() {
 
 #[test]
 fn a_page_claims_every_device_it_is_asked_about_and_nothing_more() {
-    let claimed = Page::Camera.demand(ALL_KEYS);
+    let claimed = PageId::Camera.demand(ALL_KEYS);
 
     assert_eq!(claimed.keys().count(), ALL_KEYS.len());
     assert_eq!(claimed.claim(DemandKey::CAMERA).mode, Mode::Continuous);
-    for page in CYCLE {
+    for page in cycled() {
         assert_eq!(
             page.demand(ALL_KEYS).keys().count(),
             ALL_KEYS.len(),
@@ -99,9 +99,9 @@ fn a_page_claims_every_device_it_is_asked_about_and_nothing_more() {
 
 #[test]
 fn only_the_page_that_draws_the_envelope_claims_the_microphone() {
-    for page in CYCLE {
+    for page in cycled() {
         let claimed = page.demand(ALL_KEYS).claim(DemandKey::AUDIO);
-        if page == Page::Audio {
+        if page == PageId::Audio {
             assert_eq!(claimed.mode, Mode::Continuous, "{page:?}");
         } else {
             assert_eq!(
@@ -199,7 +199,7 @@ fn every_write_that_feeds_a_proposal_reaches_the_held_demand() {
                 motion: Some(MotionCapabilities::EMPTY),
                 ..Backed::NONE
             },
-            boot_page: Page::Attitude,
+            boot_page: PageId::Attitude,
             ..Default::default()
         }),
     ] {

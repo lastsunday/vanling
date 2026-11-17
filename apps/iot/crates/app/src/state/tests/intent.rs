@@ -45,7 +45,7 @@ fn one_business_intent_answers_like_apply_business() {
         "a business intent is apply_business and nothing else"
     );
     assert_eq!(direct.state(), manual.state());
-    assert_ne!(direct.state().page(), Page::Splash, "the splash landed");
+    assert_ne!(direct.state().page(), PageId::Splash, "the splash landed");
 }
 
 fn scanned(list: ApList, backed: Backed) -> Option<ApList> {

@@ -1,10 +1,10 @@
 //! The route table is written by hand, and this test holds the parts the compiler cannot.
 //!
-//! `route()` is an exhaustive match, so a variant without a row does not compile, and the
-//! page dispatch in `app/src/pages/mod.rs` is exhaustive too. What is *not* compiler-checked is that
-//! `ALL` lists every variant, that the cycle stays a prefix of it, that a page is either
-//! bootable or transient, and that a page still has a view module. This test reads the table
-//! as source and checks those edges, so a half-added page fails here rather than on a bench.
+//! `route()` is an exhaustive match, so a variant without a row does not compile, and so are
+//! the answers a page gives in `app/src/pages/mod.rs`. What is *not* compiler-checked is that
+//! `ALL` lists every variant, that a page is either bootable or transient, and that a page
+//! still has a view module. This test reads the table as source and checks those edges, so a
+//! half-added page fails here rather than on a bench.
 
 use std::path::{Path, PathBuf};
 
@@ -60,7 +60,7 @@ fn items(text: &str, prefix: &str) -> Vec<String> {
 }
 
 fn variants(source: &str) -> Vec<String> {
-    let body = span(source, "pub enum Page {", "\n}");
+    let body = span(source, "pub enum PageId {", "\n}");
     let mut variants = Vec::new();
     for line in body.lines() {
         let line = line.trim();
@@ -186,34 +186,6 @@ fn every_page_has_a_unique_path() {
 }
 
 #[test]
-fn the_cycle_is_a_prefix_of_all_and_leaves_only_transients_out() {
-    let source = source();
-    let all = items(span(&source, "pub const ALL:", "];"), "Self::");
-    let cycle = items(span(&source, "pub(crate) const CYCLE:", "];"), "Page::");
-    assert!(!cycle.is_empty(), "the button would cycle through nothing");
-    assert_eq!(
-        &all[..cycle.len()],
-        cycle.as_slice(),
-        "CYCLE is not a prefix of ALL"
-    );
-    let rows = rows(&source);
-    for (position, variant) in all.iter().enumerate() {
-        if position < cycle.len() {
-            continue;
-        }
-        let row = rows
-            .iter()
-            .find(|row| row.variant == *variant)
-            .expect("every ALL entry has a route");
-        assert!(
-            row.timed,
-            "{variant} is outside the cycle and has no timeout: the button could never reach \
-             it and nothing would ever leave it"
-        );
-    }
-}
-
-#[test]
 fn a_page_that_cannot_be_booted_says_why() {
     for row in rows(&source()) {
         assert!(
@@ -231,8 +203,8 @@ fn every_page_has_a_view() {
     let page_root = repo_root().join("apps/iot/crates/app/src/pages");
     for row in rows(&source()) {
         assert!(
-            dispatch.contains(&format!("Page::{}", row.variant)),
-            "{} has no arm in app/src/pages/mod.rs::paint; the match must stay exhaustive",
+            dispatch.contains(&format!("Self::{}", row.variant)),
+            "{} has no arm in `impl Page for PageId`; the answers must stay exhaustive",
             row.variant
         );
         let candidates = [

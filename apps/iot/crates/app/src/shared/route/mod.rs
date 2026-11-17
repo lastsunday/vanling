@@ -1,18 +1,19 @@
 //! The pages as vocabulary: a route table declares, for every page, the name it answers to,
 //! what it needs from the board, what it claims of a demand, whether it can be booted on, and
-//! how long it lives. The enum is the destination; [`Page::route`] is the one
+//! how long it lives. The enum is the destination; [`PageId::route`] is the one
 //! exhaustive map from a destination to its row, so a new page cannot exist without a route.
 //!
-//! How a page is drawn — its ground, whether frames arrive from a camera, how often it may
-//! repaint — belongs to the renderer (`render/screen/policy.rs`), not to this table.
+//! How a page is drawn — its ink, its ground, whether frames arrive from a camera, how often
+//! it may repaint — is the page's own answer (`pages::Page`), not this table's.
 //!
-//! The order the button cycles in is a navigation fact, not a route property, and the
-//! [`Navigator`] is what walks it (`nav`).
+//! [`PageId::ALL`] is the button's order too: one list, so a page cannot be listed and still be
+//! unreachable from the button. [`Navigator`] walks it (`nav`).
 
 mod ambient;
 mod attitude;
 mod audio;
 mod camera;
+mod env;
 mod nav;
 mod network;
 mod speaker;
@@ -26,7 +27,7 @@ use iot_core::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Prio
 use iot_core::drivers::board::Backed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum Page {
+pub enum PageId {
     #[default]
     Ambient,
     Attitude,
@@ -36,12 +37,13 @@ pub enum Page {
     Network,
     /// The transient the boot lands through, never on: it has a timeout and is not bootable.
     Splash,
+    Env,
 }
 
 /// One page's row in the route table: the properties that follow from being that page.
 struct Route {
     /// The name the page answers to, trimmed and case-insensitive through
-    /// [`Page::from_path`].
+    /// [`PageId::from_path`].
     path: &'static str,
     /// What the board must wire for this page to be reachable at all.
     needs: fn(Backed) -> bool,
@@ -114,20 +116,18 @@ static SPLASH: Route = Route {
     timeout_ms: Some(SPLASH_MS),
 };
 
-/// The button's order. A prefix of [`Page::ALL`], so the page that leaves the cycle
-/// (the splash) stays at the tail and the two lists cannot drift apart silently.
-pub(crate) const CYCLE: [Page; 6] = [
-    Page::Ambient,
-    Page::Attitude,
-    Page::Audio,
-    Page::Speaker,
-    Page::Camera,
-    Page::Network,
-];
+static ENV: Route = Route {
+    path: "env",
+    needs: |_| true,
+    claim: env::claim,
+    bootable: true,
+    timeout_ms: None,
+};
 
-impl Page {
-    /// Every page, in `code()` order.
-    pub const ALL: [Self; 7] = [
+impl PageId {
+    /// Every page, in the button's order: the wire code is its index, and [`Self::next_page`]
+    /// walks it.
+    pub const ALL: [Self; 8] = [
         Self::Ambient,
         Self::Attitude,
         Self::Audio,
@@ -135,6 +135,7 @@ impl Page {
         Self::Camera,
         Self::Network,
         Self::Splash,
+        Self::Env,
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
@@ -150,21 +151,22 @@ impl Page {
             Self::Camera => &CAMERA,
             Self::Network => &NETWORK,
             Self::Splash => &SPLASH,
+            Self::Env => &ENV,
         }
     }
 
-    /// The page the button turns to: the next backed page in [`CYCLE`], wrapping. A transient
-    /// has no place in the cycle and stays until its lifetime ends.
+    /// The page the button turns to: the next page in [`Self::ALL`] the board backs, wrapping.
+    /// A transient has no place in the lap and stays until its lifetime ends.
     pub fn next_page(&self, backed: Backed) -> Self {
         if self.timeout_ms().is_some() {
             return *self;
         }
-        let Some(here) = CYCLE.iter().position(|page| page == self) else {
+        let Some(here) = Self::ALL.iter().position(|page| page == self) else {
             return *self;
         };
-        for step in 1..=CYCLE.len() {
-            let candidate = CYCLE[(here + step) % CYCLE.len()];
-            if candidate.is_backed(backed) {
+        for step in 1..=Self::ALL.len() {
+            let candidate = Self::ALL[(here + step) % Self::ALL.len()];
+            if candidate.timeout_ms().is_none() && candidate.is_backed(backed) {
                 return candidate;
             }
         }
@@ -219,15 +221,7 @@ impl Page {
             Self::Camera => 4,
             Self::Network => 5,
             Self::Splash => 6,
-        }
-    }
-
-    /// The inverse of [`Self::code`]; `None` for a code no page answers to.
-    pub const fn from_code(code: u8) -> Option<Self> {
-        if (code as usize) < Self::ALL.len() {
-            Some(Self::ALL[code as usize])
-        } else {
-            None
+            Self::Env => 7,
         }
     }
 
@@ -264,54 +258,34 @@ mod tests {
     use alloc::vec::Vec;
     use iot_core::drivers::motion::MotionCapabilities;
 
-    const MOTION: Option<MotionCapabilities> = Some(MotionCapabilities::EMPTY);
-
-    #[test]
-    fn the_table_is_in_code_order_and_the_cycle_is_its_prefix() {
-        for (position, page) in Page::ALL.iter().enumerate() {
-            assert_eq!(usize::from(page.code()), position, "{page:?}");
-        }
-        for (position, page) in CYCLE.iter().enumerate() {
-            assert_eq!(Page::ALL[position], *page);
-        }
-        assert_eq!(Page::ALL[CYCLE.len()], Page::Splash);
-    }
-
     #[test]
     fn every_page_answers_to_its_own_path() {
-        for page in Page::ALL {
-            assert_eq!(Page::from_path(page.path()), Some(page), "{page:?}");
+        for page in PageId::ALL {
+            assert_eq!(PageId::from_path(page.path()), Some(page), "{page:?}");
             assert_eq!(
-                Page::from_path(&page.path().to_ascii_uppercase()),
+                PageId::from_path(&page.path().to_ascii_uppercase()),
                 Some(page),
                 "{page:?} in capitals"
             );
         }
-        assert_eq!(Page::from_path("  CAMERA  "), Some(Page::Camera));
-        assert_eq!(Page::from_path("\tcamera\n"), Some(Page::Camera));
-        assert_eq!(Page::from_path("photograph"), None);
-        assert_eq!(Page::from_path(""), None);
-        assert_eq!(Page::from_path("   "), None);
+        assert_eq!(PageId::from_path("  CAMERA  "), Some(PageId::Camera));
+        assert_eq!(PageId::from_path("\tcamera\n"), Some(PageId::Camera));
+        assert_eq!(PageId::from_path("photograph"), None);
+        assert_eq!(PageId::from_path(""), None);
+        assert_eq!(PageId::from_path("   "), None);
     }
 
     #[test]
-    fn every_page_has_a_stable_wire_code() {
-        for (position, page) in Page::ALL.iter().enumerate() {
+    fn the_wire_code_is_the_position_in_all() {
+        for (position, page) in PageId::ALL.iter().enumerate() {
             assert_eq!(usize::from(page.code()), position, "{page:?}");
-            assert_eq!(Page::from_code(page.code()), Some(*page), "{page:?}");
         }
-        assert_eq!(
-            Page::from_code(Page::ALL.len() as u8),
-            None,
-            "one past the last page"
-        );
-        assert_eq!(Page::from_code(u8::MAX), None, "a code no page owns");
     }
 
     #[test]
     fn no_two_pages_share_a_path() {
-        for (position, page) in Page::ALL.iter().enumerate() {
-            for other in &Page::ALL[position + 1..] {
+        for (position, page) in PageId::ALL.iter().enumerate() {
+            for other in &PageId::ALL[position + 1..] {
                 assert_ne!(page.path(), other.path(), "{page:?} and {other:?}");
             }
         }
@@ -319,7 +293,7 @@ mod tests {
 
     #[test]
     fn every_route_is_either_bootable_or_transient() {
-        for page in Page::ALL {
+        for page in PageId::ALL {
             assert!(
                 page.bootable() || page.timeout_ms().is_some(),
                 "{page:?} is neither somewhere the device may come up nor a transient with a \
@@ -328,153 +302,63 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_audio_page_only_appears_on_a_board_that_has_one() {
-        let sound_only = Backed {
-            audio: true,
-            ..Backed::NONE
-        };
-        assert_eq!(
-            Page::Ambient.next_page(Backed {
-                motion: MOTION,
-                ..Backed::NONE
-            }),
-            Page::Attitude
-        );
-        assert_eq!(
-            Page::Attitude.next_page(Backed {
-                motion: MOTION,
-                ..Backed::NONE
-            }),
-            Page::Ambient,
-            "a board without audio skips the page"
-        );
-        assert_eq!(Page::Ambient.next_page(sound_only), Page::Audio);
-        assert_eq!(
-            Page::Attitude.next_page(Backed {
-                motion: MOTION,
-                audio: true,
-                ..Backed::NONE
-            }),
-            Page::Audio
-        );
+    /// One tap at a time from the default page, until the lap closes back on it.
+    fn lap(board: Backed) -> Vec<PageId> {
+        let mut walked = Vec::new();
+        let mut page = PageId::Ambient;
+        for _ in 0..PageId::ALL.len() {
+            page = page.next_page(board);
+            if page == PageId::Ambient {
+                break;
+            }
+            walked.push(page);
+        }
+        walked
     }
 
+    /// The board's capabilities decide which pages exist; the lap is the table's own order.
     #[test]
-    fn the_speaker_page_only_appears_on_a_board_that_has_one() {
+    fn one_lap_visits_exactly_the_pages_the_board_backs() {
+        let board =
+            |motion: bool, audio: bool, playback: bool, camera: bool, network: bool| Backed {
+                motion: motion.then_some(MotionCapabilities::EMPTY),
+                audio,
+                playback,
+                camera,
+                network,
+            };
+        let env = PageId::Env;
+        assert_eq!(lap(Backed::NONE), [env]);
         assert_eq!(
-            Page::Ambient.next_page(Backed {
-                motion: MOTION,
-                playback: true,
-                ..Backed::NONE
-            }),
-            Page::Attitude
+            lap(board(true, false, false, false, false)),
+            [PageId::Attitude, env]
         );
         assert_eq!(
-            Page::Audio.next_page(Backed {
-                motion: MOTION,
-                audio: true,
-                playback: true,
-                ..Backed::NONE
-            }),
-            Page::Speaker
+            lap(board(false, true, false, false, false)),
+            [PageId::Audio, env]
         );
         assert_eq!(
-            Page::Audio.next_page(Backed {
-                motion: MOTION,
-                audio: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient,
-            "a board without a speaker skips the page"
+            lap(board(false, false, true, false, false)),
+            [PageId::Speaker, env]
         );
         assert_eq!(
-            Page::Ambient.next_page(Backed {
-                playback: true,
-                ..Backed::NONE
-            }),
-            Page::Speaker
+            lap(board(false, false, false, true, false)),
+            [PageId::Camera, env]
         );
         assert_eq!(
-            Page::Speaker.next_page(Backed {
-                motion: MOTION,
-                audio: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient
-        );
-    }
-
-    #[test]
-    fn the_camera_page_only_appears_on_a_board_that_has_one() {
-        let camera_only = Backed {
-            camera: true,
-            ..Backed::NONE
-        };
-        assert_eq!(Page::Ambient.next_page(camera_only), Page::Camera);
-        assert_eq!(
-            Page::Ambient.next_page(Backed::NONE),
-            Page::Ambient,
-            "a board without a camera never reaches the page"
+            lap(board(false, false, false, false, true)),
+            [PageId::Network, env]
         );
         assert_eq!(
-            Page::Audio.next_page(camera_only),
-            Page::Camera,
-            "the camera follows the pages that need a wired source"
-        );
-        assert_eq!(
-            Page::Audio.next_page(Backed::NONE),
-            Page::Ambient,
-            "and is skipped when there is none"
-        );
-    }
-
-    #[test]
-    fn leaving_the_last_page_wraps_to_the_start_of_the_cycle() {
-        assert_eq!(
-            Page::Network.next_page(Backed {
-                motion: MOTION,
-                network: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient,
-            "a board that lost the link mid-cycle wraps rather than jumping ahead"
-        );
-        assert_eq!(
-            Page::Network.next_page(Backed {
-                network: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient,
-            "and a link is the only capability, so back to Ambient"
-        );
-        assert_eq!(
-            Page::Camera.next_page(Backed {
-                camera: true,
-                network: true,
-                ..Backed::NONE
-            }),
-            Page::Network
-        );
-        assert_eq!(
-            Page::Camera.next_page(Backed {
-                motion: MOTION,
-                ..Backed::NONE
-            }),
-            Page::Ambient,
-            "a board that lost the camera mid-cycle wraps rather than jumping ahead"
-        );
-        assert_eq!(
-            Page::Camera.next_page(Backed {
-                audio: true,
-                ..Backed::NONE
-            }),
-            Page::Ambient
-        );
-        assert_eq!(
-            Page::Camera.next_page(Backed::NONE),
-            Page::Ambient,
-            "and a camera is the only capability, so back to Ambient"
+            lap(board(true, true, true, true, true)),
+            [
+                PageId::Attitude,
+                PageId::Audio,
+                PageId::Speaker,
+                PageId::Camera,
+                PageId::Network,
+                env
+            ]
         );
     }
 
@@ -499,7 +383,11 @@ mod tests {
                 camera,
                 network,
             };
-            let backed: Vec<Page> = CYCLE
+            let cycle: Vec<PageId> = PageId::ALL
+                .into_iter()
+                .filter(|page| page.timeout_ms().is_none())
+                .collect();
+            let backed: Vec<PageId> = cycle
                 .iter()
                 .copied()
                 .filter(|page| page.is_backed(wired))
@@ -508,7 +396,7 @@ mod tests {
                 !backed.is_empty(),
                 "Ambient needs no capability, so there is always somewhere to go"
             );
-            for start in CYCLE {
+            for start in cycle {
                 let start_is_backed = backed.contains(&start);
                 let mut seen = Vec::new();
                 let mut page = start;
@@ -538,13 +426,6 @@ mod tests {
                         "one tap off {start:?} enters the cycle rather than staying put"
                     );
                 }
-            }
-            if backed.len() == 1 {
-                assert_eq!(
-                    backed[0].next_page(wired),
-                    backed[0],
-                    "a board that backs one page has nowhere to go and stays"
-                );
             }
         }
     }

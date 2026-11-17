@@ -84,7 +84,7 @@ mod tests {
     use super::*;
     use crate::render::light_appearance;
     use crate::shared::diagnostics::Diagnostics;
-    use crate::state::{LightState, Page};
+    use crate::state::{LightState, PageId};
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use iot_core::demand::{Claim, EffectiveDemand, Mode, Priority};
@@ -126,7 +126,7 @@ mod tests {
         );
         Appearance::Diagnostics(Diagnostics {
             demand,
-            page: Page::Network,
+            page: PageId::Network,
             ..Diagnostics::default()
         })
     }

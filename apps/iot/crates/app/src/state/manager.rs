@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 
 use crate::shared::model::{Backed, DeviceState, MAX_LIGHTS, PlaybackState, SurfaceRole};
-use crate::shared::route::{Navigator, Page};
+use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand, Override};
 
 /// Everything one boot decides, before the manager exists.
@@ -21,8 +21,8 @@ pub struct Boot {
     pub demand_keys: Vec<DemandKey>,
     pub surface_roles: [SurfaceRole; MAX_LIGHTS],
     /// The page to land on after the splash; a page the board cannot back falls back to
-    /// [`Page::Ambient`].
-    pub boot_page: Page,
+    /// [`PageId::Ambient`].
+    pub boot_page: PageId,
     /// What the build pins beyond the page's claim.
     pub overrides: Override,
 }
@@ -45,7 +45,7 @@ impl DeviceManager {
     pub fn boot(boot: Boot) -> Self {
         let backed = boot.backed;
         let mut nav = Navigator::new(DeviceState::landed_on(boot.boot_page, backed));
-        nav.push(Page::Splash, backed);
+        nav.push(PageId::Splash, backed);
         let state = DeviceState {
             backed,
             nav,
@@ -59,7 +59,7 @@ impl DeviceManager {
     }
 
     /// The page this device lands on once the splash is over: the root of the stack.
-    pub fn boot_page(&self) -> Page {
+    pub fn boot_page(&self) -> PageId {
         self.state.nav.root()
     }
 
@@ -108,7 +108,7 @@ pub(super) struct DemandPolicy {
     keys: Vec<DemandKey>,
     overrides: Override,
     current: EffectiveDemand,
-    page: Page,
+    page: PageId,
 }
 
 impl DemandPolicy {

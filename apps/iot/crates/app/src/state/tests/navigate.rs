@@ -17,9 +17,15 @@ fn the_page_switch_reaches_the_audio_page_and_back() {
         ..Backed::NONE
     });
     feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), Page::Audio);
+    assert_eq!(manager.state().page(), PageId::Audio);
     feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), Page::Ambient);
+    assert_eq!(
+        manager.state().page(),
+        PageId::Env,
+        "the page that needs nothing"
+    );
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Ambient);
 }
 
 #[test]
@@ -34,9 +40,11 @@ fn the_camera_page_cycles_from_the_board_and_back() {
     });
     assert!(manager.state().backed.camera);
     feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), Page::Camera);
+    assert_eq!(manager.state().page(), PageId::Camera);
     feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), Page::Ambient);
+    assert_eq!(manager.state().page(), PageId::Env);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Ambient);
 }
 
 #[test]
@@ -50,7 +58,7 @@ fn a_board_without_a_camera_never_lands_on_its_page() {
         feed_input(&mut manager, triple_click());
         assert_ne!(
             manager.state().page(),
-            Page::Camera,
+            PageId::Camera,
             "the camera page is gated on the wiring, not on how long you press"
         );
     }
@@ -64,7 +72,13 @@ fn a_full_lap_walks_every_page_and_returns_home() {
         playback: true,
         ..Backed::NONE
     });
-    for expected in [Page::Attitude, Page::Audio, Page::Speaker, Page::Ambient] {
+    for expected in [
+        PageId::Attitude,
+        PageId::Audio,
+        PageId::Speaker,
+        PageId::Env,
+        PageId::Ambient,
+    ] {
         feed_input(&mut manager, triple_click());
         assert_eq!(manager.state().page(), expected);
     }

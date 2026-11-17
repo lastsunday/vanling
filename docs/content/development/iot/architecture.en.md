@@ -84,23 +84,23 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
-| `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` is the one page→view dispatch `paint`, `<page>/tests.rs` is that page's input contract, and the cross-page golden table lives in `pages/tests.rs` |
+| `pages/` | the product's pages, one vertical slice each: every page directory holds its own `model` / `controller` / `layout` / `view`, and the directory is the unit of cohesion; `mod.rs` holds the page trait and its one implementation, `impl Page for PageId` — ink, gestures, ground, frames and repaint condition are all answered there; `<page>/tests.rs` is that page's input contract, and the cross-page golden table lives in `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,splash}.rs` | single-file pages with one canvas: the `stamp_*` methods on the page shell draw directly |
-| `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
+| `pages/audio/{mod,controller,view}.rs`, `pages/speaker/{mod,controller,view}.rs`, `pages/env/{mod,controller,view}.rs` | the page's translation and drawing; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `pages/network/{controller,layout,view}/` | the Network page's gesture translation, touch geometry (key grid, list, action strip, confirmation box), and drawing; the draft itself lives in `shared/model/draft/` |
 | `shared/` | cross-page truth and vocabulary: only what more than one page reads, and the leaf of the module graph |
 | `shared/model/` | records the workers write and the render loop reads, one file per domain; `device.rs` is the aggregate `DeviceState`, `draft/` is the Network page draft (owned by the device, edited by the page) |
-| `shared/route/{mod,nav}.rs` | the route table and `Navigator`: `Page` is the destination, `route()` is the exhaustive match, `ALL`/`CYCLE` are the order |
+| `shared/route/{mod,nav}.rs` | the route table and `Navigator`: `PageId` is the destination, `route()` is the exhaustive match, `ALL` is the only order (the button walks it too) |
 | `shared/intent/` | inbound messages: `InputIntent`/`BusinessIntent` and the questions each page asks, including the cross-page `Confirm`; the lamp's verb `LightAction` and the `BusinessIntent::Light { instance, action }` variant are defined here; `keyboard.rs` is the key vocabulary the Network page types with (`Key`/`Layer`/`Cycling`, the multitap window, the candidate character table per layer) |
 | `shared/model/light.rs` | the light record: mode, breathing schedule and palette; `LightState::apply` lands a `LightAction` on the next mode, and `can` says whether the mode accepts that verb |
 | `shared/diagnostics.rs` | the product snapshot: one image fusing every subsystem's state, including the audio and playback diagnostics and the Network page draft |
 | `shared/kit/` | the page shell `Surface`, placement constants, text layout, band/overlay primitives and widgets; it knows pixels and a snapshot, not pages |
 | `state/manager.rs` | the read side: ownership and construction of `DeviceState` (`Boot`, `DeviceManager::boot`), the per-page `DemandPolicy`, and the getters the coordinator and the render loop read |
 | `state/intent.rs` | the write side: every write from the bus, a worker report or the clock's tick; records move only here |
-| `state/translate.rs` | the input boundary: the cross-page bindings first (the setup hold, the triple click), then the current page's `pages/<page>::controller::bind`; the three lamp pages share the `lamp` table that turns an event into a `LightAction`; it reads no key-grid, band or confirmation-box geometry |
+| `state/translate.rs` | the input boundary: the cross-page bindings first (the setup hold, the triple click), then the current page's `PageId::bind`; it reads no key-grid, band or confirmation-box geometry |
 | `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
 | `render/common/` | surface-agnostic: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, `color.rs` steps the colour, and `registry.rs` hands the appearance to the renderers that claimed it |
-| `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `pages::paint`, `policy.rs` (ground, frames, repaint step), `repaint.rs` (diagnostics drift) |
+| `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `PageId::stamp`, `repaint.rs` (diagnostics drift and the repaint step) |
 | `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a panel would add |
 | `render/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
@@ -122,8 +122,9 @@ The layering is `lib → runtime → {render, state} → pages → shared`; `ass
 ```
 lib               → { render, state, runtime }
 pages/<page>   → { assets, shared::{intent, kit, model, route} }
-state             → { pages::<page>::controller, shared::{intent, model, route} }
-render            → { pages::paint, shared::{diagnostics, kit, model, route} }
+pages             → { pages::<page>::controller, shared::{diagnostics, intent, kit, model, route} }
+state             → { pages::Page, shared::{intent, model, route} }
+render            → { pages::Page, shared::{diagnostics, kit, model, route} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, model}, runtime::workers }
@@ -134,8 +135,8 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ```
 
 - **pages never import each other**: a page directory reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
-- **`state` is the only module that knows every page**: it dispatches translation to `pages/<page>::controller::bind`, but the edge is one-way — a page reads `shared::model::DeviceState` and does not know `state`; vocabulary such as `Page` comes from `shared::route`
-- **`shared/kit` names no page**: `Surface` offers the `stamp_*` primitives; `pages::paint` decides which page stamps which mark
+- **`pages` is the only module that knows every page**: each page's answers are the matches in `impl Page for PageId`, and `state` and `render` only hand it a page and take the answer; a page reads `shared` (including `DeviceState` and `Diagnostics`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
+- **`shared/kit` names no page**: `Surface` offers the `stamp_*` primitives; `PageId::stamp` decides which page stamps which mark
 - `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState` and the Network draft live there so pages, the snapshot and rendering all look downward
 - `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `diagnostics` (the snapshot); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
 - `shared/model` holds the records more than one place reads or writes; `DeviceState` is their aggregate, `draft/` is the Network page draft (edited by the page, copied by the snapshot, never read by the link)
@@ -389,7 +390,7 @@ The demand is keyed by device, not by enumerated fields. `EffectiveDemand` is a 
 
 Two devices of one kind can be demanded apart (`DemandKey::instance(Audio, 0)` and `…, 1`).
 
-The device list is the board's. `Page::demand(&self, keys)` walks the devices the board declares and calls `claim_for` per key. That match is exhaustive, so a page cannot forget a device and inherit a demand nobody chose.
+The device list is the board's. `PageId::demand(&self, keys)` walks the devices the board declares and calls `claim_for` per key. That match is exhaustive, so a page cannot forget a device and inherit a demand nobody chose.
 
 A device the board did not declare is absent from the demand and reads as `Off`, so four boolean gates are no longer needed on top.
 
@@ -466,7 +467,7 @@ This yields one rule for measurement: to ask what throttling does to the worst b
 
 ## Pages: a route table plus a navigation stack
 
-`app/src/shared/route/mod.rs` holds one route table: the `Page` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. Ground, frames and repaint step are render policy, in `app/src/render/screen/policy.rs`, and `Page::ALL`'s coverage test forces every page to answer them. `ALL` is the complete list in `code()` order (the wire code is its index), and `CYCLE` is the button's order, which must be a prefix of `ALL`; `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, the cycle prefix, and each page's dispatch arm in `app/src/pages/mod.rs` and view module under `app/src/pages/<path>` (the dispatch match itself is checked exhaustively by the compiler).
+`app/src/shared/route/mod.rs` holds one route table: the `PageId` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the whole order (the wire code is its index) and the button walks it too: from here it takes the first page the board backs that is not a transient, and wraps at the end, so "listed" and "reachable by the button" cannot drift into two lists. The page's own answers live in one other place, and only one: `impl Page for PageId` in `app/src/pages/mod.rs` (ink, gestures, ground, frames, repaint condition). `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, and each page's arm in that `impl` plus its view module under `app/src/pages/<path>` (both matches are checked exhaustively by the compiler).
 
 `Navigator` in `app/src/shared/route/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 

@@ -6,7 +6,7 @@
 use crate::shared::model::DeviceState;
 use crate::shared::model::NetworkDraft;
 use crate::shared::model::{AudioPhase, Health};
-use crate::shared::route::Page;
+use crate::shared::route::PageId;
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
@@ -132,7 +132,7 @@ pub struct Diagnostics {
     pub touch: TouchDiagnostics,
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
-    pub page: Page,
+    pub page: PageId,
     /// Where the link stands and what the last scan saw, as the network task last reported
     /// them — copied whole rather than borrowed, so a sink holds no reference into the
     /// state layer.

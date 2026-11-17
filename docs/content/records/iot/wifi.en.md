@@ -26,7 +26,7 @@ a hardware measurement, **`[as-reported]`** not reproduced, left as a trace.
 ## State
 
 **The probe has run end to end on both parts** (scan, associate, DHCP). The product page
-lands in two slices: **the read-only one is in** (`Page::Network`: phase, the access
+lands in two slices: **the read-only one is in** (`PageId::Network`: phase, the access
 point in use, the address, and the scan list), and **the second slice is in as well** (the
 4 × 4 keyboard, the reveal key, a list that slides a row at a time, hysteresis and caching for
 the list, the selected row reversed, open networks, failure classes, the page-gated survey with
@@ -450,7 +450,7 @@ probe does (`SCAN_ROUNDS = 6`, 500 ms apart).
 ### The rhythm of a round
 
 The product **asks the radio only while the scan list is really on the panel**
-(`Page::Network` — see "When the page scans"). While it is scanning, the rhythm lives in
+(`PageId::Network` — see "When the page scans"). While it is scanning, the rhythm lives in
 `iot-core::drivers::network` (`SCAN_PAUSE_MS = 5_000`, `SCAN_EMPTY_PAUSE_MS = 1_000`,
 `SCAN_EMPTY_RETRIES = 3`, and the idle backoff's `SCAN_IDLE_PAUSE_MS = 15_000` /
 `SCAN_IDLE_MAX_PAUSE_MS = 30_000` / `SCAN_IDLE_ROUNDS = 3`, decided by
@@ -503,7 +503,7 @@ after `clear`).
 
 `PageWatch` (`PAGE` in `app/src/workers/network.rs`) is the **only shared reading** of the page: the render
 loop publishes `manager.state().page` once a pass, and the network task waits on
-`PAGE.wait_for(Page::Network)` for "the list is on the panel", waking on `select3` between
+`PAGE.wait_for(PageId::Network)` for "the list is on the panel", waking on `select3` between
 "the scan interval is up", "the page has come **back** to the list" and "a staged credential is
 ready".
 
@@ -514,7 +514,7 @@ state being sent as a message. It has the same shape as `EffectiveDemand`.
 
 The gate is in the **task** rather than in the scan itself because the scan is a loop with no
 "page" input; the layer that can see both the page and the radio is the one that connects them.
-Coming back to the page, `wait_for(Page::Network)` reports that it waited, so the backoff
+Coming back to the page, `wait_for(PageId::Network)` reports that it waited, so the backoff
 counters are cleared and the page is scanned again at once.
 
 `[measured]` **"Back on the list" has to be an edge, not a level** — this is the second time the
@@ -526,7 +526,7 @@ once took effect, which is to say the radio scanned continuously while nothing o
 
 The fix is `wait_for_return()` on `PageWatch`: read the page now, then wait for it to **change** to
 the list's, so "left and came back" stops being the same thing as "never left". It is an **edge**;
-`wait_for(Page::Network)` is a **level**, and both are in use: the edge is the rest's circuit
+`wait_for(PageId::Network)` is a **level**, and both are in use: the edge is the rest's circuit
 breaker, the level is how the loop asks "should I be scanning at all". `[test]` One test pins the difference
 (`a_rest_on_the_list_is_not_cut_short_by_the_list_being_up`: on one `PageWatch`, the level is `Ready` while
 the list is up and the edge is `Pending`; only away-then-back is `Ready`).
@@ -724,7 +724,7 @@ it reached the `wifi` entry. That is `features.md` rule 5: **name every part you
 
 ## The product page: a scan list and a 4×4 keyboard
 
-`Page::Network` lands in two slices. **The first (read-only) is in**: the link across
+`PageId::Network` lands in two slices. **The first (read-only) is in**: the link across
 the top (a phase word, the access point in use with its signal bars, the address) and the scan
 list below it. **The second slice is in as well** (input and state machine,
 panel drawing, a list that slides a row at a time, hysteresis and caching for the list, the
@@ -1330,7 +1330,7 @@ panel), and `save` is called only when the origin is not `Stored`
 ## How a board with no panel gets configured: an open AP behind a page (`[measured]`/`[test]`)
 
 The C6 carries a WS2812 and a Boot key, and `LightRenderer::page_ground()` only lays down black when
-`light.draws_pages()` — a WS2812 draws no pages, so `Page::Network` on that board is **neither
+`light.draws_pages()` — a WS2812 draws no pages, so `PageId::Network` on that board is **neither
 visible nor operable**. What was added is another front door: the device brings up an **open** access
 point, hands out addresses over DHCP, answers **every** name with itself (which is what turns a
 phone's "this network has no internet" check into the page opening by itself), and serves the config
@@ -1409,7 +1409,7 @@ meaningless, because the answer is to take it down:
 
 `[measured]`: in setup mode `survey` scans **unconditionally** (the round's own pacing is unchanged —
 see "The rhythm of a round"), replacing the "wait for the panel to arrive" gate
-(`PAGE.wait_for(Page::Network)`) with a non-blocking `PAGE.shows(Page::Network)` plus
+(`PAGE.wait_for(PageId::Network)`) with a non-blocking `PAGE.shows(PageId::Network)` plus
 a rising edge. The reason: on the C6 nobody ever reaches that page, and the page is reading exactly
 this list.
 `ScanHistory::clear()` on arrival still runs, so "what a page entered shows is the room as it is"
@@ -1627,7 +1627,7 @@ that does) for 158 px, ending at 168, and the MAC's 17 glyphs start at 171 — a
 pins that they cannot meet (the first draft kept the label slot and the assertion went red by six
 pixels). The typing state needs the whole row for `PSK <draft>`, so the address is not drawn there and
 comes back when the keyboard closes. A hole in `diag_repaint_due` was closed at the same time:
-`Page::Network` compared `link`/`aps`/`setup` and **not `mac`** — the address arrives after the
+`PageId::Network` compared `link`/`aps`/`setup` and **not `mac`** — the address arrives after the
 radio's first report, while the survey's normal answer is "the list is unchanged, so the page is not
 redrawn", so that cell could stay blank for good. The diff now includes `prev.mac != next.mac`, with a
 test that changes only the MAC and requires a Network repaint.
@@ -2437,7 +2437,7 @@ The rules:
   with a finger still down (`InputSource::held()`, including a release still in debounce), the splash
   **waits for the release before closing** (`app/src/input.rs`). A press at 1.4 s released at 2.1 s
   still counts; the clock does not pull the page out from under the finger.
-- **One-shot is structural**: `Splash` is not in `CYCLE`, `next_page(Splash)` answers `Ambient`,
+- **One-shot is structural**: `Splash` is not in the lap, `next_page(Splash)` answers `Ambient`,
   `DeviceState::landed_on` folds it back to `Ambient` too, and the only exit is the input task's
   `BusinessIntent::SplashOver` when the clock runs out (retried on the next tick if the bus is
   full). No gesture can get back to the page once the device has booted.
@@ -2454,7 +2454,7 @@ The rules:
   down" implementation would leave two lines in that window and put the access point front 2–3 s
   later.
 - **No credentials means an offline device**: when `first_saved()` is empty, `browsing()` takes the
-  device. It scans only while `PAGE.shows(Page::Network)` (the panel sitting on Network),
+  device. It scans only while `PAGE.shows(PageId::Network)` (the panel sitting on Network),
   stops when the page leaves, and only `JOIN` leads to `hold` — which is where the write happens. No setup mode, no
   access point: an unwrapped device is invisible in a phone's list. The panel page still carries both
   cells, and `AP` is what raises the access point. The C6 has no panel, so configuring it still means

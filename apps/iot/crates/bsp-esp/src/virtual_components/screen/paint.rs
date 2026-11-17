@@ -1,6 +1,6 @@
 //! The colour path: a fill, the page's rows over it, and the frame that ships.
 //!
-//! Page drawing belongs to the product: this module only decides whether a frame is worth
+//! PageId drawing belongs to the product: this module only decides whether a frame is worth
 //! painting (`FrameOwner`, which also remembers what the CPU last painted) and hands the
 //! buffer to the painter the app injected.
 

@@ -229,7 +229,7 @@ write_reg(sensor->slv_addr, 0x0f, L8(win_w + 16));
 
 ## 反复进出 Camera 页会把 DMA 链反复重建，而且建起来就堵
 
-`[实测]` 复现：烧默认固件，连续快速点屏幕走完一圈（CYCLE），重复若干分钟，读串口里的 `[CAM] no descriptor completed`、`[DISPLAY] Camera … repaints … held the executor` 与 `[INPUT] held … worst single hold`。
+`[实测]` 复现：烧默认固件，连续快速点屏幕走完一圈，重复若干分钟，读串口里的 `[CAM] no descriptor completed`、`[DISPLAY] Camera … repaints … held the executor` 与 `[INPUT] held … worst single hold`。
 
 启动直接落在 Camera 页（`IOT_BOOT_PAGE=camera`）与用触摸反复进出，是**两个不同的成本**：
 

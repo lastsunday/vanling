@@ -80,23 +80,23 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是唯一的页面→视图分派 `paint`，`<page>/tests.rs` 是这一页的输入契约，跨页的黄金像素表在 `pages/tests.rs` |
+| `pages/` | 产品页面，一页一个垂直切片：每页目录自带 `model` / `controller` / `layout` / `view`，目录就是内聚单位；`mod.rs` 是页面 trait `PageId` 的唯一实现 `impl Page for PageId`——墨迹、手势、底色、是否出帧、何时重绘都在这一处作答，`<page>/tests.rs` 是这一页的输入契约，跨页的黄金像素表在 `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,splash}.rs` | 只有一块画布的单文件页：页面壳上的 `stamp_*` 直接画 |
-| `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
+| `pages/audio/{mod,controller,view}.rs`、`pages/speaker/{mod,controller,view}.rs`、`pages/env/{mod,controller,view}.rs` | 页面翻译与绘制；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `pages/network/{controller,layout,view}/` | Network 页的手势翻译、触摸几何（键格/列表/动作条/确认框）、绘制；草稿本身在 `shared/model/draft/` |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`draft/` 是 Network 页草稿（设备拥有、页面编辑） |
-| `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`Page` 是目的地，`route()` 是穷尽 `match`，`ALL`/`CYCLE` 是次序 |
+| `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`PageId` 是目的地，`route()` 是穷尽 `match`，`ALL` 是唯一次序（按钮也照它走） |
 | `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
 | `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
 | `shared/diagnostics.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放诊断与 Network 页草稿 |
 | `shared/kit/` | 页面壳 `Surface`、版面常量、文字排版、band/overlay 原语与控件；只认像素与快照，不认页面 |
 | `state/manager.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/intent.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
-| `state/translate.rs` | 输入边界：先答跨页绑定（setup 长按、三击），再按当前页分派到 `pages/<page>::controller::bind`；三个灯光页共用 `lamp` 表，把事件翻成 `LightAction`；不读键格、band 或确认框几何 |
+| `state/translate.rs` | 输入边界：先答跨页绑定（setup 长按、三击），再把事件交给当前页的 `PageId::bind`；不读键格、band 或确认框几何 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
-| `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `pages::paint`、`policy.rs`（底色/出帧/重绘步长）、`repaint.rs`（诊断漂移） |
+| `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `PageId::stamp`、`repaint.rs`（诊断漂移与重绘步长） |
 | `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有面板会叠上去的东西 |
 | `render/wiring.rs` | 接线：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
@@ -116,8 +116,9 @@ weight = 10
 ```
 lib               → { render, state, runtime }
 pages/<page>   → { assets, shared::{intent, kit, model, route} }
-state             → { pages::<page>::controller, shared::{intent, model, route} }
-render            → { pages::paint, shared::{diagnostics, kit, model, route} }
+pages             → { pages::<page>::controller, shared::{diagnostics, intent, kit, model, route} }
+state             → { pages::Page, shared::{intent, model, route} }
+render            → { pages::Page, shared::{diagnostics, kit, model, route} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, model}, runtime::workers }
@@ -128,8 +129,8 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ```
 
 - **页面之间不互相 import**：页面目录只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
-- **`state` 是唯一认识所有页面的模块**：它分派翻译到 `pages/<page>::controller::bind`，但这是单向边——页面只读 `shared::model::DeviceState`，不认识 `state`；`Page` 等词汇来自 `shared::route`
-- **`shared/kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `pages::paint` 决定
+- **`pages` 是唯一认识所有页面的模块**：每页的答案是 `impl Page for PageId` 里的一个 `match`，`state` 与 `render` 只把页面交给它、取回答案；页面只读 `shared`（含 `DeviceState`、`Diagnostics`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
+- **`shared/kit` 不认页面**：`Surface` 提供 `stamp_*` 原语，哪个页面盖哪一笔由 `PageId::stamp` 决定
 - `shared` 是叶子：不依赖 `state`/`pages`/`render`/`runtime`。`DeviceState` 与 Network 草稿放在这里，就是为了让页面、快照和渲染都只朝下看
 - `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`diagnostics`（快照）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
 - `shared/model` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`draft/` 是 Network 页草稿（页面编辑、快照复制、链路不读）
@@ -368,7 +369,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 两个同型号器件可以分开提需求（`DemandKey::instance(Audio, 0)` 与 `…, 1`）。
 
-设备清单由板子给。`Page::demand(&self, keys)` 遍历板子声明的设备表调 `claim_for`。这个 match 是穷尽的，所以页面不可能漏掉一个设备然后继承一份没人选过的需求。
+设备清单由板子给。`PageId::demand(&self, keys)` 遍历板子声明的设备表调 `claim_for`。这个 match 是穷尽的，所以页面不可能漏掉一个设备然后继承一份没人选过的需求。
 
 板子没声明的设备不出现在需求里，读作 `Off`，不需要再用四个布尔开关夹一次。
 
@@ -441,15 +442,15 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面：路由表 + 导航栈
 
-`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `Page` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。底色、是否出帧与重绘步长是渲染策略，在 `app/src/render/screen/policy.rs`，由 `Page::ALL` 的覆盖测试逼迫每页作答。`ALL` 是 `code()` 顺序的完整列表（wire code 就是它的下标），`CYCLE` 是按钮的次序、必须是 `ALL` 的前缀；`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页、`CYCLE` 前缀，以及每个页面在 `app/src/pages/mod.rs` 的分派分支与 `app/src/pages/<path>` 下的视图模块（分派本身由编译器穷尽检查）。
+`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `PageId` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是全部的次序（wire code 就是它的下标），按钮也照它走：从本页之后取第一个本板支持、又不是瞬态的页，走到末尾回绕，于是「表里有」与「按得出来」不会成为两份会漂移的清单。页面自己的答案在另一处、也只有一处：`app/src/pages/mod.rs` 的 `impl Page for PageId`（墨迹、手势、底色、是否出帧、何时重绘）。`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页，以及每个页面在 `impl` 里的分支与 `app/src/pages/<path>` 下的视图模块（两处 `match` 本身由编译器穷尽检查）。
 
-`app/src/shared/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后走一圈、取第一个本板能力支持的页、走到末尾回绕；瞬态没有次序，停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
+`app/src/shared/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后按 `ALL` 走一圈、跳过瞬态、取第一个本板能力支持的页、走到末尾回绕；瞬态停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 
 能力判定是每条路由自己的一列（`Route::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以入口交进来的是 `Wifi`（`Absent` / `Unattended` / `Worker`），`run` 在组合 `Backed` 时用 `wifi.wired()` 落成那个 `bool`：是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`wifi` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 
 这条规约是修一个缺陷写下来的。
 
-`next_page` 曾是 18 个手写跳转分支，`Camera` 的离开分支返回「第一个本板能显示的页」（`Attitude`）而非起点，于是 `Ambient` 被永久跳过：实测 `CYCLE` 全能力下走一圈是 `[Attitude, Attitude, Audio, Speaker, Camera]`，`Ambient` 消失、`Attitude` 出现两次。
+`next_page` 曾是 18 个手写跳转分支，`Camera` 的离开分支返回「第一个本板能显示的页」（`Attitude`）而非起点，于是 `Ambient` 被永久跳过：实测全能力下走一圈是 `[Attitude, Attitude, Audio, Speaker, Camera]`，`Ambient` 消失、`Attitude` 出现两次。
 
 跳着写会漏掉闭环的那一页，走一张表再回绕不会。
 

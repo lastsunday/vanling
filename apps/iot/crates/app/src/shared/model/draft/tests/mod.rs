@@ -4,7 +4,7 @@ use crate::pages::network::layout::LIST_ROWS;
 use crate::shared::intent::*;
 use crate::shared::intent::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
 use crate::state::test_support::*;
-use crate::state::{Boot, DeviceManager, Page};
+use crate::state::{Boot, DeviceManager, PageId};
 use iot_core::drivers::input::FINGER_LONG_PRESS;
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, Credentials, PASSWORD_BYTES, SetupHost};
@@ -46,13 +46,13 @@ fn marked(manager: &mut DeviceManager, names: &[&str]) {
 fn booted(boot: Boot) -> DeviceManager {
     let mut manager = landed(DeviceManager::boot(boot));
     manager.apply_scan(ApList::from_ranked(&[ap(b"neighbour"), ap(b"cafe")]));
-    for _ in 0..CYCLE.len() {
-        if manager.state().page() == Page::Network {
+    for _ in 0..PageId::ALL.len() {
+        if manager.state().page() == PageId::Network {
             break;
         }
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     }
-    assert_eq!(manager.state().page(), Page::Network);
+    assert_eq!(manager.state().page(), PageId::Network);
     manager
 }
 

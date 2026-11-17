@@ -408,7 +408,13 @@ fn the_core_never_knows_the_app() {
 fn the_pixel_layer_names_no_product() {
     assert_no_reference(
         sources(&ui_src()),
-        &["iot_app", "Page", "Diagnostics", "NetworkDraft", "vanling"],
+        &[
+            "iot_app",
+            "PageId",
+            "Diagnostics",
+            "NetworkDraft",
+            "vanling",
+        ],
     );
 }
 
@@ -438,7 +444,13 @@ fn a_page_does_not_import_another_page() {
 fn the_kit_names_no_page() {
     assert_no_reference(
         shipping_sources(&app_src().join("shared/kit")),
-        &["crate::pages", "Page", "NetworkDraft", "Entry", "SetupWait"],
+        &[
+            "crate::pages",
+            "PageId",
+            "NetworkDraft",
+            "Entry",
+            "SetupWait",
+        ],
     );
 }
 
@@ -702,7 +714,7 @@ fn drivers_never_reach_up() {
     let src = core_src().join("drivers");
     // The bare word names core's own `PageSurface` and `SurfaceRole::Pages`; a product page
     // can only reach a driver by naming a variant, so that is the token to forbid.
-    let upward = &["iot_app", "Page::", "Diagnostics"];
+    let upward = &["iot_app", "PageId::", "Diagnostics"];
     let mut plain = Vec::new();
     let mut surface = Vec::new();
     for (path, text) in shipping_sources(&src) {

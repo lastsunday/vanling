@@ -148,7 +148,7 @@ mod tests {
     use crate::render::test_support::*;
     use crate::shared::diagnostics::{BreathSnapshot, LightSnapshot};
     use crate::shared::intent::{AudioIntent, BusinessIntent, NavigationIntent};
-    use crate::state::{AudioPhase, Backed, DeviceManager, Page};
+    use crate::state::{AudioPhase, Backed, DeviceManager, PageId};
     use iot_core::demand::DemandKey;
     use iot_core::drivers::audio::{AudioEnvelope, AudioSample};
     use iot_core::drivers::network::{LinkStatus, SetupHost};
@@ -525,12 +525,12 @@ mod tests {
                 DemandKey::CAMERA,
                 DemandKey::DISPLAY
             ],
-            boot_page: Page::Audio,
+            boot_page: PageId::Audio,
             ..Default::default()
         };
         let mut quiet_manager = DeviceManager::boot(setup.clone());
         quiet_manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
-        assert_eq!(quiet_manager.state().page(), Page::Audio);
+        assert_eq!(quiet_manager.state().page(), PageId::Audio);
         let quiet = *quiet_manager.demand();
         assert_eq!(
             quiet.claim(DemandKey::AUDIO).mode,

@@ -23,7 +23,7 @@ fn ap_with(ssid: &[u8], rssi: i8, last: u8) -> AccessPoint {
 }
 
 fn on_network() -> DeviceState {
-    with_network(state_on(Page::Network, BREATH), |network| {
+    with_network(state_on(PageId::Network, BREATH), |network| {
         network.aps = Some(ApList::from_ranked(&[ap(b"neighbour", -55)]));
     })
 }

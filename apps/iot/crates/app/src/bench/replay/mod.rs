@@ -15,7 +15,7 @@ use crate::pages::network::layout::LIST_ROWS;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::Key;
 use crate::shared::intent::{Intent, recognize};
-use crate::state::{DeviceManager, DeviceState, Page};
+use crate::state::{DeviceManager, DeviceState, PageId};
 use iot_core::drivers::input::{FINGER_LONG_PRESS, GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{ApList, LinkPhase, Ssid};
 
@@ -87,7 +87,7 @@ impl PanelBench {
         self.read_parts(state);
         if self.touches.is_none() {
             let Some((ssid, psk)) = ssid().zip(psk()) else {
-                if state.page() == Page::Network && state.network.aps.is_some() {
+                if state.page() == PageId::Network && state.network.aps.is_some() {
                     self.absent("this build was named no network and no passphrase to replay");
                 }
                 return;
@@ -140,7 +140,7 @@ impl PanelBench {
     }
 
     fn read_parts(&mut self, state: &DeviceState) {
-        if state.page() != Page::Network {
+        if state.page() != PageId::Network {
             return;
         }
         let showing = |part: Band| part.showing(state.network_page, state.network.link);
@@ -187,7 +187,7 @@ impl PanelBench {
     }
 
     fn plan(&mut self, state: &DeviceState, ssid: &str, psk: &str) -> Option<Vec<Touch>> {
-        if state.page() != Page::Network || state.network_page.keyboard {
+        if state.page() != PageId::Network || state.network_page.keyboard {
             return None;
         }
         let list = state.network.aps?;

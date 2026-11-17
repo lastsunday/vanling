@@ -4,17 +4,17 @@
 
 use core::sync::atomic::Ordering;
 
-use crate::state::Page;
+use crate::state::PageId;
 
 use crate::runtime::workers::{NetworkInbox, PageWatch};
 
 impl PageWatch {
-    pub fn shows(&self, page: Page) -> bool {
+    pub fn shows(&self, page: PageId) -> bool {
         self.page.load(Ordering::Relaxed) == page.code()
     }
 
     /// Waits until the panel is on `page`.
-    pub async fn wait_for(&self, page: Page) {
+    pub async fn wait_for(&self, page: PageId) {
         while !self.shows(page) {
             self.changed.wait().await;
         }
@@ -22,7 +22,7 @@ impl PageWatch {
 
     /// A panel that never left `page` must not satisfy it: the wait starts from the page the
     /// panel is on now and returns only after a change brings it back.
-    pub async fn wait_for_return(&self, page: Page) {
+    pub async fn wait_for_return(&self, page: PageId) {
         let wanted = page.code();
         let mut seen = self.page.load(Ordering::Relaxed);
         loop {
@@ -38,7 +38,7 @@ impl PageWatch {
         }
     }
 
-    pub async fn wait_until_away(&self, page: Page) {
+    pub async fn wait_until_away(&self, page: PageId) {
         let unwanted = page.code();
         let mut seen = self.page.load(Ordering::Relaxed);
         if seen != unwanted {
@@ -101,16 +101,16 @@ mod tests {
     #[test]
     fn a_fresh_watch_starts_on_the_manifest_default_page() {
         let watch = PageWatch::new();
-        assert!(watch.shows(Page::Ambient), "the declared default");
-        assert!(!watch.shows(Page::Network));
+        assert!(watch.shows(PageId::Ambient), "the declared default");
+        assert!(!watch.shows(PageId::Network));
     }
 
     #[test]
     fn a_rest_on_the_list_is_not_cut_short_by_the_list_being_up() {
         let watch = PageWatch::new();
-        watch.publish(Page::Network);
-        let mut up = core::pin::pin!(watch.wait_for(Page::Network));
-        let mut back = core::pin::pin!(watch.wait_for_return(Page::Network));
+        watch.publish(PageId::Network);
+        let mut up = core::pin::pin!(watch.wait_for(PageId::Network));
+        let mut back = core::pin::pin!(watch.wait_for_return(PageId::Network));
         assert!(
             up.as_mut().poll(&mut cx()).is_ready(),
             "the page check answers \"is the list up?\", and it is"
@@ -120,9 +120,9 @@ mod tests {
             "a return cannot be satisfied by never having left"
         );
 
-        watch.publish(Page::Ambient);
+        watch.publish(PageId::Ambient);
         assert!(back.as_mut().poll(&mut cx()).is_pending());
-        watch.publish(Page::Network);
+        watch.publish(PageId::Network);
         assert!(
             back.as_mut().poll(&mut cx()).is_ready(),
             "away and back is the return the pause waits on"
@@ -132,16 +132,16 @@ mod tests {
     #[test]
     fn the_same_watch_answers_for_whichever_page_the_caller_names() {
         let watch = PageWatch::new();
-        watch.publish(Page::Camera);
+        watch.publish(PageId::Camera);
 
-        assert!(watch.shows(Page::Camera));
-        assert!(!watch.shows(Page::Network));
-        let mut away = core::pin::pin!(watch.wait_until_away(Page::Network));
+        assert!(watch.shows(PageId::Camera));
+        assert!(!watch.shows(PageId::Network));
+        let mut away = core::pin::pin!(watch.wait_until_away(PageId::Network));
         assert!(
             away.as_mut().poll(&mut cx()).is_ready(),
             "the camera is already away from the network page"
         );
-        let mut list = core::pin::pin!(watch.wait_for(Page::Network));
+        let mut list = core::pin::pin!(watch.wait_for(PageId::Network));
         assert!(
             list.as_mut().poll(&mut cx()).is_pending(),
             "and the camera is not the page a caller waiting for the list is after"

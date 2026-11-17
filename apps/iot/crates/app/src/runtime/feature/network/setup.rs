@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use crate::state::{NetworkCommand, Page};
+use crate::state::{NetworkCommand, PageId};
 use embassy_futures::select::{Either, Either3, select, select3};
 use embassy_net::driver::Driver;
 use embassy_net::{Stack, StackResources};
@@ -301,7 +301,7 @@ where
     let mut idle_rounds: u8 = 0;
     let mut panel_was_showing = false;
     loop {
-        let showing = watch.page().shows(Page::Network);
+        let showing = watch.page().shows(PageId::Network);
         // Browsing ends when the panel leaves; setup keeps the scan up for the phone.
         if mode.is_browsing() && !showing {
             return Choice::Hidden;

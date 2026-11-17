@@ -6,10 +6,10 @@
 //! The bench flag lives here rather than in `bench` so the network worker never names the
 //! harness that suppresses its build credential.
 
-use crate::state::Page;
+use crate::state::PageId;
 use iot_core::demand::{Override, parse_override};
 
-pub(crate) fn boot_page() -> Page {
+pub(crate) fn boot_page() -> PageId {
     if let Some(name) = UNKNOWN_BOOT_PAGE {
         log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Ambient");
     }
@@ -47,24 +47,24 @@ pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
     build_wifi_credentials()
 }
 
-const BOOT_PAGE: Page = boot_page_from_env(option_env!("IOT_BOOT_PAGE"));
+const BOOT_PAGE: PageId = boot_page_from_env(option_env!("IOT_BOOT_PAGE"));
 
 const UNKNOWN_BOOT_PAGE: Option<&str> = unknown_page(option_env!("IOT_BOOT_PAGE"));
 
-const fn boot_page_from_env(name: Option<&str>) -> Page {
+const fn boot_page_from_env(name: Option<&str>) -> PageId {
     let Some(name) = name else {
-        return Page::Ambient;
+        return PageId::Ambient;
     };
     match bootable_page(name) {
         Some(page) => page,
-        None => Page::Ambient,
+        None => PageId::Ambient,
     }
 }
 
 /// `Splash` is a page and has a name, but it is the transient the boot lands *through*, never
 /// on, so its manifest row is not bootable.
-const fn bootable_page(name: &str) -> Option<Page> {
-    match Page::from_path(name) {
+const fn bootable_page(name: &str) -> Option<PageId> {
+    match PageId::from_path(name) {
         Some(page) if page.bootable() => Some(page),
         _ => None,
     }
@@ -85,11 +85,11 @@ const fn unknown_page(name: Option<&str>) -> Option<&str> {
 mod tests {
     use super::{boot_page_from_env, unknown_page};
     use crate::shared::route::SPLASH_MS;
-    use crate::state::Page;
+    use crate::state::PageId;
 
     #[test]
     fn every_bootable_page_answers_to_its_name() {
-        for page in Page::ALL {
+        for page in PageId::ALL {
             if !page.bootable() {
                 continue;
             }
@@ -102,7 +102,7 @@ mod tests {
         for name in ["CAMERA", "Camera", "  camera  ", "\tcamera\n"] {
             assert_eq!(
                 boot_page_from_env(Some(name)),
-                Page::Camera,
+                PageId::Camera,
                 "{name:?} should resolve"
             );
         }
@@ -110,12 +110,12 @@ mod tests {
 
     #[test]
     fn anything_unusable_lands_on_ambient() {
-        assert_eq!(boot_page_from_env(None), Page::Ambient, "unset");
-        assert_eq!(boot_page_from_env(Some("")), Page::Ambient, "empty");
-        assert_eq!(boot_page_from_env(Some("   ")), Page::Ambient, "blank");
+        assert_eq!(boot_page_from_env(None), PageId::Ambient, "unset");
+        assert_eq!(boot_page_from_env(Some("")), PageId::Ambient, "empty");
+        assert_eq!(boot_page_from_env(Some("   ")), PageId::Ambient, "blank");
         assert_eq!(
             boot_page_from_env(Some("photograph")),
-            Page::Ambient,
+            PageId::Ambient,
             "a name that is not a page"
         );
     }
@@ -136,9 +136,9 @@ mod tests {
 
     #[test]
     fn the_splash_is_not_a_boot_page() {
-        assert!(!Page::Splash.bootable());
-        assert_eq!(Page::Splash.timeout_ms(), Some(SPLASH_MS));
-        assert_eq!(boot_page_from_env(Some("splash")), Page::Ambient);
+        assert!(!PageId::Splash.bootable());
+        assert_eq!(PageId::Splash.timeout_ms(), Some(SPLASH_MS));
+        assert_eq!(boot_page_from_env(Some("splash")), PageId::Ambient);
         assert_eq!(unknown_page(Some("splash")), Some("splash"));
     }
 }

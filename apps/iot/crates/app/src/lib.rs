@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::cell::Cell;
 
-use crate::state::{Backed, Boot, DeviceManager, Page};
+use crate::state::{Backed, Boot, DeviceManager, PageId};
 use embassy_executor::{SendSpawner, Spawner};
 use embassy_futures::join::join;
 use iot_core::config::Configurator;
@@ -251,7 +251,7 @@ where
         overrides: boot_override(),
     }));
     let boot = manager.boot_page();
-    if boot != Page::Ambient {
+    if boot != PageId::Ambient {
         log::info!("[IOT] boot page is {boot:?}");
     }
 

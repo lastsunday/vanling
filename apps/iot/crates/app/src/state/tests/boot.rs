@@ -30,7 +30,7 @@ fn the_wiring_record_is_what_the_page_table_asks() {
         MotionCapabilities::EMPTY,
         "a board with no part declares nothing, whatever the board would report"
     );
-    assert!(!Page::Attitude.is_backed(bare));
+    assert!(!PageId::Attitude.is_backed(bare));
 
     let wired = DeviceManager::boot(Boot {
         backed: Backed {
@@ -44,9 +44,9 @@ fn the_wiring_record_is_what_the_page_table_asks() {
     .backed;
     assert_eq!(wired.motion, Some(MotionCapabilities::TAP));
     assert_eq!(wired.motion_caps(), MotionCapabilities::TAP);
-    assert!(Page::Attitude.is_backed(wired));
-    assert!(Page::Audio.is_backed(wired));
-    assert!(!Page::Speaker.is_backed(wired));
+    assert!(PageId::Attitude.is_backed(wired));
+    assert!(PageId::Audio.is_backed(wired));
+    assert!(!PageId::Speaker.is_backed(wired));
 }
 
 #[test]
@@ -89,31 +89,35 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
             camera: true,
             ..Backed::NONE
         },
-        boot_page: Page::Camera,
+        boot_page: PageId::Camera,
         ..Default::default()
     }));
-    assert_eq!(manager.state().page(), Page::Camera);
-    feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), Page::Ambient);
-    feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), Page::Attitude);
+    assert_eq!(manager.state().page(), PageId::Camera);
+    for expected in [PageId::Env, PageId::Ambient, PageId::Attitude] {
+        feed_input(&mut manager, triple_click());
+        assert_eq!(manager.state().page(), expected);
+    }
 }
 
 #[test]
 fn the_boot_page_falls_back_for_every_capability_not_wired() {
     let bare = landed(DeviceManager::new());
     let default_page = bare.state().page();
-    for page in CYCLE {
-        let boot_page = landed(DeviceManager::boot(Boot {
+    for page in cycled() {
+        let landed_on = landed(DeviceManager::boot(Boot {
             boot_page: page,
             ..Default::default()
         }))
         .state()
         .page();
+        let expected = if page.is_backed(Backed::NONE) {
+            page
+        } else {
+            default_page
+        };
         assert_eq!(
-            boot_page, default_page,
-            "{page:?} needs no capability, so a board with nothing wired still lands on the \
-             same page either way"
+            landed_on, expected,
+            "{page:?} lands where the bare board can show it, and on the default otherwise"
         );
     }
     assert_eq!(
@@ -122,12 +126,12 @@ fn the_boot_page_falls_back_for_every_capability_not_wired() {
                 motion: Some(MotionCapabilities::EMPTY),
                 ..Backed::NONE
             },
-            boot_page: Page::Attitude,
+            boot_page: PageId::Attitude,
             ..Default::default()
         }))
         .state()
         .page(),
-        Page::Attitude,
+        PageId::Attitude,
         "the one capability it does have"
     );
     assert_eq!(
@@ -136,12 +140,12 @@ fn the_boot_page_falls_back_for_every_capability_not_wired() {
                 motion: Some(MotionCapabilities::EMPTY),
                 ..Backed::NONE
             },
-            boot_page: Page::Camera,
+            boot_page: PageId::Camera,
             ..Default::default()
         }))
         .state()
         .page(),
-        Page::Ambient,
+        PageId::Ambient,
         "and the one it does not"
     );
 }
