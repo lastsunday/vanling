@@ -1,5 +1,4 @@
 use iot_core::drivers::motion::MotionCapabilities;
-use iot_core::light::Rgb;
 use iot_core::overlay::{Block, block_x, overlay_row_top};
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
@@ -14,16 +13,13 @@ use crate::shared::snapshot::FrameSnapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AttitudePage;
 
-pub(super) const GROUND: Option<Rgb> = None;
-pub(super) const CAMERA_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
-pub(super) const REPAINTS: super::Repaint = super::Repaint::Always;
-
 impl super::Page for AttitudePage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
+}
 
+impl super::LocalPage for AttitudePage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         painter.draw_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
         let Some(sample) = snapshot.motion else {
@@ -142,6 +138,10 @@ impl super::Page for AttitudePage {
             };
             painter.draw_left(label, value, Block::Second, ESTIMATOR_ROWS + index);
         }
+    }
+
+    fn descriptor() -> super::Descriptor {
+        super::Descriptor::new(Self::paint).repaints(super::Repaint::Always)
     }
 }
 

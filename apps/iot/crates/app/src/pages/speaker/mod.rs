@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-use iot_core::light::Rgb;
-
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
 use crate::shared::kit::painter::Painter;
 use crate::shared::kit::text::{format_u16, sound_label};
@@ -15,11 +13,6 @@ use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SpeakerPage;
-
-pub(super) const GROUND: Option<Rgb> = None;
-pub(super) const CAMERA_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
-pub(super) const REPAINTS: super::Repaint = super::Repaint::When(playback_moved);
 
 impl super::Page for SpeakerPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
@@ -41,7 +34,9 @@ impl super::Page for SpeakerPage {
             _ => BusinessIntent::Invalid,
         }
     }
+}
 
+impl super::LocalPage for SpeakerPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         let playback = snapshot.playback;
         let fault = playback.health.fault();
@@ -84,6 +79,10 @@ impl super::Page for SpeakerPage {
                 painter.draw_text(b"HOLD MUTE", block_x(Block::First), hint + ROW_PITCH);
             }
         }
+    }
+
+    fn descriptor() -> super::Descriptor {
+        super::Descriptor::new(Self::paint).repaints(super::Repaint::When(playback_moved))
     }
 }
 

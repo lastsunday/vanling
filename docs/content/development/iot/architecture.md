@@ -80,7 +80,7 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `pages/` | 产品页面，一页一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `layout` / `view` 按需拆）；`mod.rs` 定义唯一的 `Page`（`apply`/`publish`/`paint`/`bind`/`on_show`/`on_hide`），持有全部实例的 `PageSet`，以及按 `PageId` 穷尽分派的绘制/底色/出帧/重绘函数；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `pages/tests.rs` |
+| `pages/` | 产品页面，一页一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `layout` / `view` 按需拆）；`mod.rs` 定义手势表问的 `Page`（`bind`）与设备问的 `LocalPage`（`apply`/`publish`/`paint`/`descriptor`/`on_show`/`on_hide`）、持有全部实例的 `PageSet`，以及 `PageId → Descriptor` 的唯一映射；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,env,splash}.rs` | 只有一块画布的单文件页：页面类型上的 `paint` 直接画 |
 | `pages/audio/{mod,tests}.rs`、`pages/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `pages/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译与动作条，`bands.rs` 决定哪几条带在屏上；`layout/` 一条带一份命中几何（`content.rs` 列表与键格、`toolbar.rs` 动作条、`dialog.rs` 确认框）；`view/` 一一对应（`header` / `content` / `overlay`，词在 `text.rs`）；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
@@ -141,19 +141,36 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 
 ### 页面模型
 
-每个页面是一个具体类型，回答只有一个 trait。`Page` 认领意图（`apply(&BusinessIntent, &DeviceState) -> Option<Command>`）、交出视图（`publish(&mut PageSnapshot)`）、回答一个手势的含义（`bind`）、画出整页（`paint(&FrameSnapshot, &mut Painter)`，不取 `self`，`where Self: Sized` 保住手势表要的 `&dyn Page`），并默认空实现 `on_show`/`on_hide`；页面只答自己有的。
+每个页面是一个具体类型，回答两个 trait。`Page` 是手势表问的那一句：`bind`——一个手势在这页是什么意思。`LocalPage: Page` 是设备侧持有页面才会问的：`apply` 认领意图（`&BusinessIntent, &DeviceState -> Option<Command>`）、`publish` 交出视图（`&mut PageSnapshot`）、`paint` 画出整页（`&FrameSnapshot, &mut Painter`，不取 `self`）、`descriptor` 描述它怎么占屏，`on_show`/`on_hide` 默认空实现。`paint` 与 `descriptor` 的 `where Self: Sized` 让 `&dyn LocalPage` 仍是手势表要的 trait 对象。
 
-渲染答案分两层：`Painter` 上的 `draw_*` 落一个记号（像素、一行字、一个键），`Page::paint` 组合一整页，`pages::paint` 按 `PageId` 分派再去盖角标；其余四个答案（`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`）同样是穷尽 `match`，事实留在各页文件里。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn)}` 之一，而不是一段带空形参的函数。
+`Descriptor` 是一页的面板答案：画法（函数指针）、底色、是否相机帧、重绘步长与触发条件。构建器默认「无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn)}` 之一，而不是一段带空形参的函数。
 
-`PageSet` 持有八个实例，公开 `get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。新增页面＝建 `pages/<page>/`、在 `PageSet` 加一个字段、在 `get`/`get_mut` 与五个分派函数里各加一条臂；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。
+渲染答案分两层：`Painter` 的 `draw_*` 落一个记号（像素、一行字、一个键），`LocalPage::paint` 组合一整页，`pages::paint` 取 `descriptor(page).paint` 再盖角标；`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on` 都是同一张 `descriptor(page)` 的一行读取。
+
+`PageSet` 持有八个实例，公开 `get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。新增页面＝建 `pages/<page>/`、在 `PageSet` 加一个字段、在 `get`/`get_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。
 
 生命周期由 `state/intent.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_display()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
 
 `PageSnapshot` 是页面对外唯一的视图（`shared/snapshot.rs`），渲染层只拿它，不认 `crate::pages`；`NetworkView` 因此也放在 `shared/model/network_view/`。
+
 - `bench` 是入口/夹具，不是层：`probe` 只被 `bin/*-probe.rs` 引用，`replay` 只被 `main.rs` 在 `panel-bench` feature 下经 `bench::run` 引用（宿主测试另编译 `replay`）；`lib` 与 `runtime` 都不认 `bench`，`module_boundaries.rs` 的 `the_bench_is_reached_only_by_its_own_entry` 守着。构建期开关 `BENCH`/`build_credentials` 在 `state::env`，网络工作者取凭据因此不会反向指向 harness
 - `core` 不认识 `iot_app`
 
 `main` 是产品二进制 crate 根（`bin/*-probe.rs` 各有自己的根），经 `iot_app::` 取 `lib::run` / `bench::run` 与 `runtime::feature::network` 的入口，不在这张模块图内；板级 bring-up 就在 `main.rs`，芯片族入口在这里把 `second_core_peak` 这类能力注入 `Wiring`，库内不再出现 `#[cfg(feature = "esp32*")]`。
+
+### 远程界面不是页面
+
+三种「把界面放到别处」的形态，判据是**谁算显示**：
+
+| 形态 | 谁算显示 | 线上传什么 | 复用 `pages` |
+| --- | --- | --- | --- |
+| WebUI | 浏览器 | 语义事实（链路、配置、电平、健康） | 不 |
+| 远程显示 | 设备（`LocalPage` + `Painter`） | 画面 | 不（画完才发） |
+| 远程控制 | 设备 | 命令 | 只用 `translate` / `apply` |
+
+把 `FrameSnapshot` 发出去就是远程显示，不是 WebUI。`Descriptor`（底图、相机帧、重绘节流）与 `PageSnapshot`（例如正在输入的口令草稿）是设备内概念，任何远程形态都不该看到。
+
+WebUI 的传输是适配层：语义 API（资源 + 动作）定一次，传输按代价爬阶梯 REST + JSON → 长轮询 → SSE → WebSocket → BLE / NFC → ESP-NOW → MQTT，够用就停。设备现有的 HTTP 服务（`core/src/provision/`，keep-alive 已实现，响应体只有定长静态内容）直接承载 REST + JSON，长轮询不用动协议；SSE 要先补 chunked 响应体。WebSocket 只在双向低延迟（远程控制）时才值，握手与每连接常驻 socket 都要算栈和镜像。BLE / NFC 是配网与配对通道（浏览器侧只有 Chromium 可达），ESP-NOW 是设备间链路、浏览器永远到不了，MQTT 适合上行遥测。局域网内的 WebUI 还要令牌（roadmap 的 `device_key`）；setup AP 的开放是配网设计，不是 UI 授权。
 
 ## 组合（三轴正交）
 
@@ -454,7 +471,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 ## 页面：路由表 + 导航栈
 
-`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `PageId` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是全部的次序（wire code 就是它的下标），按钮也照它走：从本页之后取第一个本板支持、又不是瞬态的页，走到末尾回绕，于是「表里有」与「按得出来」不会成为两份会漂移的清单。页面自己的答案在另一处、也只有一处：`app/src/pages/mod.rs` 的 `PageSet` 与五个分派函数（墨迹、底色、是否出帧、何时重绘），画、手势与生命周期在 `Page`。`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页，以及每个页面的类型、分派分支与 `app/src/pages/<path>` 下的视图模块（`match` 本身由编译器穷尽检查）。
+`app/src/shared/route/mod.rs` 只写一份路由表：枚举 `PageId` 是目的地，每个目的地一个 `static <PAGE>: Route`（名字、能力、claim、是否可启动、生存期），`route()` 是穷尽 `match`——新增变体没有路由就编译不过。`ALL` 是全部的次序（wire code 就是它的下标），按钮也照它走：从本页之后取第一个本板支持、又不是瞬态的页，走到末尾回绕，于是「表里有」与「按得出来」不会成为两份会漂移的清单。页面自己的答案在另一处、也只有一处：`app/src/pages/mod.rs` 的 `PageSet` 与一张 `descriptor(page)` 表（画法、底色、是否出帧、重绘节奏），手势在 `Page`、状态/画/生命周期在 `LocalPage`。`crates/tool/tests/page_table.rs` 守着 `ALL` 漏页，以及每个页面的类型、分派分支与 `app/src/pages/<path>` 下的视图模块（`match` 本身由编译器穷尽检查）。
 
 `app/src/shared/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后按 `ALL` 走一圈、跳过瞬态、取第一个本板能力支持的页、走到末尾回绕；瞬态停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 

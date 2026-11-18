@@ -1,8 +1,10 @@
 //! The product's pages, one vertical slice each: a page and what it owns live in one file or
 //! one directory, and that is the unit of cohesion.
 //!
-//! [`Page`] is what the app asks a page: apply an intent, publish its view, bind a gesture,
-//! paint its picture. A new page names itself here and the compiler lists the rest.
+//! [`Page`] is what the gesture table asks a page it does not own; [`LocalPage`] is what the
+//! device asks the page it owns: apply an intent, publish its view, paint its picture, and
+//! describe how it fills the panel. A new page names itself here and the compiler lists the
+//! rest.
 
 pub mod ambient;
 pub mod attitude;
@@ -31,21 +33,29 @@ use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 
-/// What the app asks a page: the intent it applies, the view it publishes, what one gesture
-/// means, its picture, and when it becomes or stops being current.
+/// What the gesture table asks a page it does not own: what one gesture means here.
 pub trait Page {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
+}
+
+/// What the device asks the page it owns: the intent it applies, the view it publishes, its
+/// picture, how it fills the panel, and when it is on screen.
+pub trait LocalPage: Page {
     fn apply(&mut self, _intent: &BusinessIntent, _state: &DeviceState) -> Option<Command> {
         None
     }
 
     fn publish(&self, _out: &mut PageSnapshot) {}
 
-    /// What one gesture means on this page.
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
-
     /// The page's picture, drawn from the frame snapshot. `where Self: Sized` keeps
-    /// `&dyn Page` dyn-compatible for the gesture table.
+    /// `&dyn LocalPage` dyn-compatible for the gesture table.
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>)
+    where
+        Self: Sized;
+
+    /// How this page occupies the panel. `where Self: Sized` for the same reason as
+    /// [`Self::paint`].
+    fn descriptor() -> Descriptor
     where
         Self: Sized;
 
@@ -72,7 +82,7 @@ pub struct PageSet {
 
 impl PageSet {
     /// The page a route names, for the local gesture table.
-    pub fn get(&self, page: PageId) -> &dyn Page {
+    pub fn get(&self, page: PageId) -> &dyn LocalPage {
         match page {
             PageId::Ambient => &self.ambient,
             PageId::Attitude => &self.attitude,
@@ -113,7 +123,7 @@ impl PageSet {
         self.get_mut(page).on_hide();
     }
 
-    fn get_mut(&mut self, page: PageId) -> &mut dyn Page {
+    fn get_mut(&mut self, page: PageId) -> &mut dyn LocalPage {
         match page {
             PageId::Ambient => &mut self.ambient,
             PageId::Attitude => &mut self.attitude,
@@ -156,19 +166,67 @@ impl Repaint {
     }
 }
 
+/// How one page occupies the panel: its draw call, the fill under it, where its frames come
+/// from, and how often a snapshot drift earns a repaint.
+#[derive(Debug, Clone, Copy)]
+pub struct Descriptor {
+    paint: fn(&FrameSnapshot, &mut Painter<'_>),
+    ground: Option<Rgb>,
+    camera_frames: bool,
+    repaint_ms: u64,
+    repaints: Repaint,
+}
+
+impl Descriptor {
+    pub(super) fn new(paint: fn(&FrameSnapshot, &mut Painter<'_>)) -> Self {
+        Self {
+            paint,
+            ground: None,
+            camera_frames: false,
+            repaint_ms: REPAINT_FLOOR_MS,
+            repaints: Repaint::Never,
+        }
+    }
+
+    pub(super) fn ground(mut self, ground: Option<Rgb>) -> Self {
+        self.ground = ground;
+        self
+    }
+
+    pub(super) fn camera_frames(mut self) -> Self {
+        self.camera_frames = true;
+        self
+    }
+
+    pub(super) fn repaint_ms(mut self, repaint_ms: u64) -> Self {
+        self.repaint_ms = repaint_ms;
+        self
+    }
+
+    pub(super) fn repaints(mut self, repaints: Repaint) -> Self {
+        self.repaints = repaints;
+        self
+    }
+}
+
+/// The page's descriptor. One exhaustive match: a variant with no descriptor does not compile.
+pub fn descriptor(page: PageId) -> Descriptor {
+    match page {
+        PageId::Ambient => AmbientPage::descriptor(),
+        PageId::Attitude => AttitudePage::descriptor(),
+        PageId::Audio => AudioPage::descriptor(),
+        PageId::Speaker => SpeakerPage::descriptor(),
+        PageId::Camera => CameraPage::descriptor(),
+        PageId::Network => NetworkPage::descriptor(),
+        PageId::Splash => SplashPage::descriptor(),
+        PageId::Env => EnvPage::descriptor(),
+    }
+}
+
 /// Paints the page, plus the debug badge every page but the camera carries: camera frames
 /// arrive outside this dispatch, so that page paints its own badge.
 pub fn paint(page: PageId, snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
-    match page {
-        PageId::Splash => SplashPage::paint(snapshot, painter),
-        PageId::Attitude => AttitudePage::paint(snapshot, painter),
-        PageId::Audio => AudioPage::paint(snapshot, painter),
-        PageId::Speaker => SpeakerPage::paint(snapshot, painter),
-        PageId::Camera => CameraPage::paint(snapshot, painter),
-        PageId::Network => NetworkPage::paint(snapshot, painter),
-        PageId::Env => EnvPage::paint(snapshot, painter),
-        PageId::Ambient => AmbientPage::paint(snapshot, painter),
-    }
+    (descriptor(page).paint)(snapshot, painter);
     if painter.debug && page != PageId::Camera {
         painter.draw_fps();
     }
@@ -177,44 +235,17 @@ pub fn paint(page: PageId, snapshot: &FrameSnapshot, painter: &mut Painter<'_>) 
 /// The fill the renderer covers the panel with first, or `None` when the page draws over what
 /// the light was already showing.
 pub fn ground(page: PageId) -> Option<Rgb> {
-    match page {
-        PageId::Splash => splash::GROUND,
-        PageId::Attitude => attitude::GROUND,
-        PageId::Audio => audio::GROUND,
-        PageId::Speaker => speaker::GROUND,
-        PageId::Camera => camera::GROUND,
-        PageId::Network => network::GROUND,
-        PageId::Env => env::GROUND,
-        PageId::Ambient => ambient::GROUND,
-    }
+    descriptor(page).ground
 }
 
 /// Whether this page's picture is the camera's frames rather than its own drawing.
 pub fn camera_frames(page: PageId) -> bool {
-    match page {
-        PageId::Splash => splash::CAMERA_FRAMES,
-        PageId::Attitude => attitude::CAMERA_FRAMES,
-        PageId::Audio => audio::CAMERA_FRAMES,
-        PageId::Speaker => speaker::CAMERA_FRAMES,
-        PageId::Camera => camera::CAMERA_FRAMES,
-        PageId::Network => network::CAMERA_FRAMES,
-        PageId::Env => env::CAMERA_FRAMES,
-        PageId::Ambient => ambient::CAMERA_FRAMES,
-    }
+    descriptor(page).camera_frames
 }
 
 /// The least wall time this page waits between snapshot-driven repaints.
 pub fn repaint_step_ms(page: PageId) -> u64 {
-    match page {
-        PageId::Splash => splash::REPAINT_MS,
-        PageId::Attitude => attitude::REPAINT_MS,
-        PageId::Audio => audio::REPAINT_MS,
-        PageId::Speaker => speaker::REPAINT_MS,
-        PageId::Camera => camera::REPAINT_MS,
-        PageId::Network => network::REPAINT_MS,
-        PageId::Env => env::REPAINT_MS,
-        PageId::Ambient => ambient::REPAINT_MS,
-    }
+    descriptor(page).repaint_ms
 }
 
 /// Whether this pair of frame snapshots earns a repaint.
@@ -224,17 +255,7 @@ pub fn repaints_on(
     next: &FrameSnapshot,
     overlay: bool,
 ) -> bool {
-    let repaint = match page {
-        PageId::Splash => splash::REPAINTS,
-        PageId::Attitude => attitude::REPAINTS,
-        PageId::Audio => audio::REPAINTS,
-        PageId::Speaker => speaker::REPAINTS,
-        PageId::Camera => camera::REPAINTS,
-        PageId::Network => network::REPAINTS,
-        PageId::Env => env::REPAINTS,
-        PageId::Ambient => ambient::REPAINTS,
-    };
-    repaint.due(prev, next, overlay)
+    descriptor(page).repaints.due(prev, next, overlay)
 }
 
 /// The lamp's table, for the pages whose only verb is the light.

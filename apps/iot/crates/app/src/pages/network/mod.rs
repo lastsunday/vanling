@@ -22,12 +22,13 @@ pub struct NetworkPage {
     draft: NetworkView,
 }
 
-pub(super) const GROUND: Option<Rgb> = Some(Rgb(0, 0, 0));
-pub(super) const CAMERA_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
-pub(super) const REPAINTS: super::Repaint = super::Repaint::When(network_moved);
-
 impl super::Page for NetworkPage {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+        controller::bind(op, state, self.draft)
+    }
+}
+
+impl super::LocalPage for NetworkPage {
     fn apply(&mut self, intent: &BusinessIntent, state: &DeviceState) -> Option<Command> {
         match intent {
             BusinessIntent::Link(LinkIntent::Status(status)) => {
@@ -48,10 +49,6 @@ impl super::Page for NetworkPage {
 
     fn publish(&self, out: &mut PageSnapshot) {
         out.network = self.draft;
-    }
-
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
-        controller::bind(op, state, self.draft)
     }
 
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
@@ -80,6 +77,12 @@ impl super::Page for NetworkPage {
 
     fn on_hide(&mut self) {
         self.draft.collapse();
+    }
+
+    fn descriptor() -> super::Descriptor {
+        super::Descriptor::new(Self::paint)
+            .ground(Some(Rgb(0, 0, 0)))
+            .repaints(super::Repaint::When(network_moved))
     }
 }
 

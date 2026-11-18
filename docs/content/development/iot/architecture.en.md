@@ -84,7 +84,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
-| `pages/` | the product's pages, one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `layout` / `view` as needed); `mod.rs` defines one `Page` (`apply`/`publish`/`paint`/`bind`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the `PageId`-dispatched paint / ground / frames / repaint functions; a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `pages/tests.rs` |
+| `pages/` | the product's pages, one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `layout` / `view` as needed); `mod.rs` defines the `Page` the gesture table asks (`bind`) and the `LocalPage` the device asks (`apply`/`publish`/`paint`/`descriptor`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the one `PageId → Descriptor` map; a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,env,splash}.rs` | single-file pages with one canvas: each page type's `paint` draws directly |
 | `pages/audio/{mod,tests}.rs`, `pages/speaker/{mod,tests}.rs` | translation and drawing both in `mod.rs`; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `pages/network/` | gestures and controls in `controller/`: `mod.rs` is the gesture translation and the strip, `bands.rs` decides which bands are on the glass; `layout/` holds one hit geometry per band (`content.rs` list and key grid, `toolbar.rs` action strip, `dialog.rs` confirmation box); `view/` mirrors them (`header` / `content` / `overlay`, with the words in `text.rs`); `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
@@ -147,15 +147,18 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 
 ### The page model
 
-Every page is a concrete type, and it answers through one trait. `Page` claims an intent (`apply(&BusinessIntent, &DeviceState) -> Option<Command>`), hands out a view (`publish(&mut PageSnapshot)`), says what one gesture means (`bind`), and draws the whole page (`paint(&FrameSnapshot, &mut Painter)`; it takes no `self`, and `where Self: Sized` keeps the `&dyn Page` the gesture table needs), while `on_show`/`on_hide` default to doing nothing; a page answers only what it has.
+Every page is a concrete type, and it answers two traits. `Page` is the one line the gesture table asks: `bind` — what one gesture means here. `LocalPage: Page` is what the device asks the page it owns: `apply` claims an intent (`&BusinessIntent, &DeviceState -> Option<Command>`), `publish` hands out a view (`&mut PageSnapshot`), `paint` draws the whole page (`&FrameSnapshot, &mut Painter`; it takes no `self`), and `descriptor` says how the page occupies the panel, while `on_show`/`on_hide` default to doing nothing. `where Self: Sized` on `paint` and `descriptor` keeps the `&dyn LocalPage` the gesture table needs.
 
-The render answers come in two layers: `Painter`'s `draw_*` puts one mark down (a pixel, a line of glyphs, a key), `Page::paint` composes a whole page, and `pages::paint` dispatches on `PageId` and then adds the badge; the other four answers (`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`) are exhaustive matches too, with the facts declared in each page's own file. A page's repaint rule is one of `Repaint::{Never, Always, Overlay, When(fn)}`, not a function with unused parameters.
+`Descriptor` is one page's panel answer: the draw call (a function pointer), the ground, whether frames come from the camera, and the repaint step and trigger. The builder defaults to no ground, no camera frames, `REPAINT_FLOOR_MS` and `Never`; each page writes only its own difference. A page's repaint rule is one of `Repaint::{Never, Always, Overlay, When(fn)}`, not a function with unused parameters.
 
-`PageSet` owns the eight instances and exposes `get`/`apply`/`snapshot`/`enter`/`leave`; there is no per-page field accessor. Adding a page means a `pages/<page>/` directory, one field on `PageSet`, and one arm each in `get`/`get_mut` and the five dispatchers; a missing arm does not compile, and `iot-tool/tests/page_table.rs` guards the template.
+The render answers come in two layers: `Painter`'s `draw_*` puts one mark down (a pixel, a line of glyphs, a key), `LocalPage::paint` composes a whole page, and `pages::paint` takes `descriptor(page).paint` and then adds the badge; `ground`/`camera_frames`/`repaint_step_ms`/`repaints_on` are one-line reads of the same `descriptor(page)`.
+
+`PageSet` owns the eight instances and exposes `get`/`apply`/`snapshot`/`enter`/`leave`; there is no per-page field accessor. Adding a page means a `pages/<page>/` directory, one field on `PageSet`, one arm each in `get`/`get_mut` and in the `descriptor(page)` match, and the page's own `bind` and `descriptor`; a missing arm does not compile, and `iot-tool/tests/page_table.rs` guards the template.
 
 `state/intent.rs` drives the lifecycle: after one business intent has landed its state, it compares `state.page()`, and on a change calls `leave(old)` then `enter(new)`; the boot `Splash` counts as an `enter`. The hooks do not depend on `has_display()` — a page on a board with no panel still hears them — but they touch only the page's own fields. The Network page puts its keyboard and confirmation box away in `on_hide` while keeping the picked row and the draft, so leaving and coming back does not reopen the keyboard.
 
 `PageSnapshot` is the one view a page shows the outside world (`shared/snapshot.rs`); the render layer takes it and never names `crate::pages`, which is why `NetworkView` lives in `shared/model/network_view/` too.
+
 - `bench` is an entry/fixture, not a layer: `probe` is reached only by `bin/*-probe.rs` and `replay` only by `main.rs` through `bench::run` under the `panel-bench` feature (the host tests also compile `replay`); neither `lib` nor `runtime` knows `bench`, held by `the_bench_is_reached_only_by_its_own_entry` in `module_boundaries.rs`. The build-time flag `BENCH` and `build_credentials` live in `state::env`, so the network worker fetching a credential never points back at the harness
 - `core` does not know `iot_app`
 
@@ -163,6 +166,20 @@ The render answers come in two layers: `Painter`'s `draw_*` puts one mark down (
 `bench::run` and `runtime::feature::network` through `iot_app::`, so it is outside this graph; the
 board bring-up lives in `main.rs`, and the chip family injects `second_core_peak` and the rest of
 the capabilities into `Wiring`, and no `#[cfg(feature = "esp32*")]` appears inside the library.
+
+### Remote surfaces are not pages
+
+Three ways to put the interface somewhere else, told apart by **who computes the display**:
+
+| Form | Who computes it | What goes on the wire | Reuses `pages` |
+| --- | --- | --- | --- |
+| WebUI | the browser | semantic facts (link, config, levels, health) | no |
+| Remote display | the device (`LocalPage` + `Painter`) | the picture | no (it ships after painting) |
+| Remote control | the device | commands | only `translate` / `apply` |
+
+Shipping `FrameSnapshot` is remote display, not a WebUI. `Descriptor` (ground, camera frames, repaint pacing) and `PageSnapshot` (a password draft being typed, say) are device-internal; no remote form should see them.
+
+A WebUI's transport is an adapter: define the semantic API (resources and actions) once, then climb the cost ladder REST + JSON → long polling → SSE → WebSocket → BLE / NFC → ESP-NOW → MQTT, taking the first rung that meets the need. The device's existing HTTP server (`core/src/provision/`; keep-alive is implemented, bodies are fixed-length static text) already carries REST + JSON, and long polling needs no protocol work; SSE needs chunked bodies first. WebSocket is worth it only for bidirectional low latency (remote control), and its handshake plus one resident socket per client both count against stack and image size. BLE / NFC are provisioning and pairing channels (browser-side only in Chromium), ESP-NOW is a device-to-device link a browser never reaches, and MQTT suits upstream telemetry. A LAN WebUI also needs a token (the roadmap's `device_key`); the open setup AP is a provisioning design, not UI authorisation.
 
 ## Composition (three orthogonal axes)
 
@@ -479,7 +496,7 @@ This yields one rule for measurement: to ask what throttling does to the worst b
 
 ## Pages: a route table plus a navigation stack
 
-`app/src/shared/route/mod.rs` holds one route table: the `PageId` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the whole order (the wire code is its index) and the button walks it too: from here it takes the first page the board backs that is not a transient, and wraps at the end, so "listed" and "reachable by the button" cannot drift into two lists. The page's own answers live in one other place, and only one: the `PageSet` and the five dispatchers in `app/src/pages/mod.rs` (ink, ground, frames, repaint condition), with drawing, gestures and lifecycle on the same `Page`. `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, and each page's type, dispatcher arm and view module under `app/src/pages/<path>` (the matches are checked exhaustively by the compiler).
+`app/src/shared/route/mod.rs` holds one route table: the `PageId` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the whole order (the wire code is its index) and the button walks it too: from here it takes the first page the board backs that is not a transient, and wraps at the end, so "listed" and "reachable by the button" cannot drift into two lists. The page's own answers live in one other place, and only one: the `PageSet` and one `descriptor(page)` map in `app/src/pages/mod.rs` (draw call, ground, frames, repaint pace), with gestures on `Page` and state/picture/lifecycle on `LocalPage`. `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, and each page's type, dispatcher arm and view module under `app/src/pages/<path>` (the matches are checked exhaustively by the compiler).
 
 `Navigator` in `app/src/shared/route/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 

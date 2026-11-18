@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-use iot_core::light::Rgb;
-
 use crate::shared::intent::{AudioIntent, BusinessIntent, InputIntent, LightAction};
 use crate::shared::kit::bands::WAVE_TOP;
 use crate::shared::kit::painter::Painter;
@@ -18,14 +16,6 @@ use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AudioPage;
-
-pub(super) const GROUND: Option<Rgb> = None;
-pub(super) const CAMERA_FRAMES: bool = false;
-
-/// A capture poll closes two envelope columns every 20 ms; at the default step the sweep would
-/// hold the executor 40% of the wall time on the S3.
-pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS * 2;
-pub(super) const REPAINTS: super::Repaint = super::Repaint::When(audio_moved);
 
 impl super::Page for AudioPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
@@ -52,7 +42,9 @@ impl super::Page for AudioPage {
             _ => BusinessIntent::Invalid,
         }
     }
+}
 
+impl super::LocalPage for AudioPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         painter.draw_text(b"AUDIO", block_x(Block::First), overlay_row_top(0));
         let fault = snapshot.audio.health.fault();
@@ -121,6 +113,14 @@ impl super::Page for AudioPage {
         let levels = envelope.weighted_rms_columns();
         let clip_age = envelope.clipped_age();
         painter.draw_sweep(&peaks, &levels, clip_age);
+    }
+
+    fn descriptor() -> super::Descriptor {
+        // A capture poll closes two envelope columns every 20 ms; at the default step the
+        // sweep would hold the executor 40% of the wall time on the S3.
+        super::Descriptor::new(Self::paint)
+            .repaint_ms(super::REPAINT_FLOOR_MS * 2)
+            .repaints(super::Repaint::When(audio_moved))
     }
 }
 

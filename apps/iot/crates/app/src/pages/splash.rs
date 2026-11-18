@@ -1,6 +1,5 @@
 //! The boot page: the product's name over the hold that opens setup mode.
 
-use iot_core::light::Rgb;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP, PANEL_COLUMNS};
 
 use crate::shared::intent::{BusinessIntent, InputIntent, NavigationIntent};
@@ -13,11 +12,6 @@ use iot_core::drivers::input::{ButtonEvent, InputEvent};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SplashPage;
 
-pub(super) const GROUND: Option<Rgb> = None;
-pub(super) const CAMERA_FRAMES: bool = false;
-pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
-pub(super) const REPAINTS: super::Repaint = super::Repaint::Never;
-
 impl super::Page for SplashPage {
     fn bind(&self, op: &InputIntent, _state: &DeviceState) -> BusinessIntent {
         match op.event {
@@ -27,7 +21,9 @@ impl super::Page for SplashPage {
             _ => BusinessIntent::Invalid,
         }
     }
+}
 
+impl super::LocalPage for SplashPage {
     fn paint(_snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
         let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;
@@ -37,6 +33,10 @@ impl super::Page for SplashPage {
             let left = painter.width().saturating_sub(ink) / 2;
             painter.draw_text(text, left, top + line * SPLASH_PITCH);
         }
+    }
+
+    fn descriptor() -> super::Descriptor {
+        super::Descriptor::new(Self::paint)
     }
 }
 

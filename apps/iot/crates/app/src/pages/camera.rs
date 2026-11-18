@@ -16,22 +16,24 @@ use crate::shared::snapshot::FrameSnapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CameraPage;
 
-pub(super) const GROUND: Option<Rgb> = Some(Rgb(0, 0, 0));
-pub(super) const CAMERA_FRAMES: bool = true;
-pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
-
-/// A frame arriving is a data event and not anything a snapshot diff can see. Forcing a
-/// repaint here would ship a full frame that is a copy of the last one — ~15 ms of blocking
-/// SPI.
-pub(super) const REPAINTS: super::Repaint = super::Repaint::Never;
-
 impl super::Page for CameraPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
+}
 
+impl super::LocalPage for CameraPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         Self::paint_frame(snapshot, painter, CameraSnapshot::STARTING);
+    }
+
+    /// A frame arriving is a data event and not anything a snapshot diff can see. Forcing a
+    /// repaint here would ship a full frame that is a copy of the last one — ~15 ms of
+    /// blocking SPI.
+    fn descriptor() -> super::Descriptor {
+        super::Descriptor::new(Self::paint)
+            .ground(Some(Rgb(0, 0, 0)))
+            .camera_frames()
     }
 }
 
