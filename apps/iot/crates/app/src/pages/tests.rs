@@ -7,7 +7,7 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::pages::{camera_frames, ground, paint};
+use crate::pages::{descriptor, paint};
 use crate::shared::kit::painter::Painter;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
@@ -24,7 +24,7 @@ fn render(page: PageId, debug: bool) -> Vec<u8> {
         ..FrameSnapshot::default()
     };
     {
-        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, ground(page));
+        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, descriptor(page).ground());
         let mut painter = Painter::new(canvas, 0, 60, debug, 100);
         paint(page, &snapshot, &mut painter);
     }
@@ -114,12 +114,12 @@ fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
 fn every_page_answers_every_render_question() {
     for page in PageId::ALL {
         assert_eq!(
-            ground(page),
+            descriptor(page).ground(),
             matches!(page, PageId::Camera | PageId::Network).then_some(Rgb(0, 0, 0)),
             "{page:?} grounds"
         );
         assert_eq!(
-            camera_frames(page),
+            descriptor(page).camera_frames(),
             page == PageId::Camera,
             "{page:?} frames"
         );

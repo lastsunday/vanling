@@ -12,7 +12,9 @@ use iot_core::drivers::input::{ButtonEvent, InputEvent};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SplashPage;
 
-impl super::Page for SplashPage {
+impl super::Service for SplashPage {}
+
+impl super::LocalPage for SplashPage {
     fn bind(&self, op: &InputIntent, _state: &DeviceState) -> BusinessIntent {
         match op.event {
             InputEvent::Button(ButtonEvent::LongPress) => {
@@ -21,9 +23,7 @@ impl super::Page for SplashPage {
             _ => BusinessIntent::Invalid,
         }
     }
-}
 
-impl super::LocalPage for SplashPage {
     fn paint(_snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         let lines: [&[u8]; SPLASH_LINES] = [b"VANLING", b"HOLD BOOT", b"SETUP"];
         let block = (SPLASH_LINES - 1) * SPLASH_PITCH + FONT_H;

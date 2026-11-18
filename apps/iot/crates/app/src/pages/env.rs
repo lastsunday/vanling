@@ -10,18 +10,18 @@ use crate::shared::snapshot::FrameSnapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EnvPage;
 
-impl super::Page for EnvPage {
+impl super::Service for EnvPage {}
+
+impl super::LocalPage for EnvPage {
     fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> BusinessIntent {
         BusinessIntent::Invalid
     }
-}
 
-impl super::LocalPage for EnvPage {
     fn paint(_snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         painter.draw_text(b"Env", block_x(Block::First), overlay_row_top(0));
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint).repaints(super::Repaint::Overlay)
+        super::Descriptor::new(Self::paint).with_repaints(super::Repaint::Overlay)
     }
 }

@@ -22,13 +22,7 @@ pub struct NetworkPage {
     draft: NetworkView,
 }
 
-impl super::Page for NetworkPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
-        controller::bind(op, state, self.draft)
-    }
-}
-
-impl super::LocalPage for NetworkPage {
+impl super::Service for NetworkPage {
     fn apply(&mut self, intent: &BusinessIntent, state: &DeviceState) -> Option<Command> {
         match intent {
             BusinessIntent::Link(LinkIntent::Status(status)) => {
@@ -45,6 +39,12 @@ impl super::LocalPage for NetworkPage {
             }
             _ => None,
         }
+    }
+}
+
+impl super::LocalPage for NetworkPage {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+        controller::bind(op, state, self.draft)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -81,8 +81,8 @@ impl super::LocalPage for NetworkPage {
 
     fn descriptor() -> super::Descriptor {
         super::Descriptor::new(Self::paint)
-            .ground(Some(Rgb(0, 0, 0)))
-            .repaints(super::Repaint::When(network_moved))
+            .with_ground(Some(Rgb(0, 0, 0)))
+            .with_repaints(super::Repaint::When(network_moved))
     }
 }
 

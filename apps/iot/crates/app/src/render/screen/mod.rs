@@ -11,7 +11,7 @@ use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::pages::{camera_frames, ground};
+use crate::pages::descriptor;
 use crate::render::common::ColorDriver;
 use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
 use crate::shared::model::LightState;
@@ -98,7 +98,7 @@ impl ScreenRenderer {
             return;
         };
         let step = self.surface.repaint_step();
-        if let Some(ground) = self.page.and_then(ground) {
+        if let Some(ground) = self.page.and_then(|page| descriptor(page).ground()) {
             self.color.ground(&mut *self.surface, step, ground);
             self.surface.set_backlight(100);
             return;
@@ -109,7 +109,8 @@ impl ScreenRenderer {
     }
 
     fn on_camera_page(&self) -> bool {
-        self.page.is_some_and(camera_frames)
+        self.page
+            .is_some_and(|page| descriptor(page).camera_frames())
     }
 }
 

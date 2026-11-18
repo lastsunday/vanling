@@ -1,5 +1,6 @@
 //! The input boundary: the bindings that answer from anywhere are answered here, before the
-//! page is asked. Each page's own bindings live beside it, in [`Page::bind`].
+//! page is asked. Each page's own bindings live beside it, in
+//! [`LocalPage::bind`](crate::pages::LocalPage::bind).
 //!
 //! It reads the whole device state, so it sits outside `model`: the model must not point back.
 

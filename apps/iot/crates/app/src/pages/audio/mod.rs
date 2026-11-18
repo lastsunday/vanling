@@ -17,7 +17,9 @@ use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AudioPage;
 
-impl super::Page for AudioPage {
+impl super::Service for AudioPage {}
+
+impl super::LocalPage for AudioPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
@@ -42,9 +44,7 @@ impl super::Page for AudioPage {
             _ => BusinessIntent::Invalid,
         }
     }
-}
 
-impl super::LocalPage for AudioPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         painter.draw_text(b"AUDIO", block_x(Block::First), overlay_row_top(0));
         let fault = snapshot.audio.health.fault();
@@ -119,8 +119,8 @@ impl super::LocalPage for AudioPage {
         // A capture poll closes two envelope columns every 20 ms; at the default step the
         // sweep would hold the executor 40% of the wall time on the S3.
         super::Descriptor::new(Self::paint)
-            .repaint_ms(super::REPAINT_FLOOR_MS * 2)
-            .repaints(super::Repaint::When(audio_moved))
+            .with_repaint_ms(super::REPAINT_FLOOR_MS * 2)
+            .with_repaints(super::Repaint::When(audio_moved))
     }
 }
 

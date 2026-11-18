@@ -13,13 +13,13 @@ use crate::shared::snapshot::FrameSnapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AttitudePage;
 
-impl super::Page for AttitudePage {
+impl super::Service for AttitudePage {}
+
+impl super::LocalPage for AttitudePage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
-}
 
-impl super::LocalPage for AttitudePage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         painter.draw_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
         let Some(sample) = snapshot.motion else {
@@ -141,7 +141,7 @@ impl super::LocalPage for AttitudePage {
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint).repaints(super::Repaint::Always)
+        super::Descriptor::new(Self::paint).with_repaints(super::Repaint::Always)
     }
 }
 

@@ -1,10 +1,10 @@
 //! The product's pages, one vertical slice each: a page and what it owns live in one file or
 //! one directory, and that is the unit of cohesion.
 //!
-//! [`Page`] is what the gesture table asks a page it does not own; [`LocalPage`] is what the
-//! device asks the page it owns: apply an intent, publish its view, paint its picture, and
-//! describe how it fills the panel. A new page names itself here and the compiler lists the
-//! rest.
+//! [`Service`] is the half every operating platform shares: a business intent comes in, the
+//! page answers. [`LocalPage`] is the face the local panel and buttons see: what a gesture
+//! means, the view the frame snapshot carries, the picture, and how it fills the panel. A new
+//! page names itself here and the compiler lists the rest.
 
 pub mod ambient;
 pub mod attitude;
@@ -33,22 +33,24 @@ use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 
-/// What the gesture table asks a page it does not own: what one gesture means here.
-pub trait Page {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
-}
-
-/// What the device asks the page it owns: the intent it applies, the view it publishes, its
-/// picture, how it fills the panel, and when it is on screen.
-pub trait LocalPage: Page {
+/// The page's service: what a business intent means, shared by every operating platform.
+pub trait Service {
+    /// Claims a business intent and answers with what the model cannot do itself.
     fn apply(&mut self, _intent: &BusinessIntent, _state: &DeviceState) -> Option<Command> {
         None
     }
+}
 
+/// The page as the local panel and buttons see it.
+pub trait LocalPage: Service {
+    /// What one gesture means on this page.
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
+
+    /// Hands the page's private UI state to the frame snapshot the local painter draws from.
     fn publish(&self, _out: &mut PageSnapshot) {}
 
     /// The page's picture, drawn from the frame snapshot. `where Self: Sized` keeps
-    /// `&dyn LocalPage` dyn-compatible for the gesture table.
+    /// `&dyn LocalPage` dyn-compatible for the input table.
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>)
     where
         Self: Sized;
@@ -188,24 +190,40 @@ impl Descriptor {
         }
     }
 
-    pub(super) fn ground(mut self, ground: Option<Rgb>) -> Self {
+    pub(super) fn with_ground(mut self, ground: Option<Rgb>) -> Self {
         self.ground = ground;
         self
     }
 
-    pub(super) fn camera_frames(mut self) -> Self {
+    pub(super) fn with_camera_frames(mut self) -> Self {
         self.camera_frames = true;
         self
     }
 
-    pub(super) fn repaint_ms(mut self, repaint_ms: u64) -> Self {
+    pub(super) fn with_repaint_ms(mut self, repaint_ms: u64) -> Self {
         self.repaint_ms = repaint_ms;
         self
     }
 
-    pub(super) fn repaints(mut self, repaints: Repaint) -> Self {
+    pub(super) fn with_repaints(mut self, repaints: Repaint) -> Self {
         self.repaints = repaints;
         self
+    }
+
+    pub fn ground(self) -> Option<Rgb> {
+        self.ground
+    }
+
+    pub fn camera_frames(self) -> bool {
+        self.camera_frames
+    }
+
+    pub fn repaint_step_ms(self) -> u64 {
+        self.repaint_ms
+    }
+
+    pub fn repaints_on(self, prev: &FrameSnapshot, next: &FrameSnapshot, overlay: bool) -> bool {
+        self.repaints.due(prev, next, overlay)
     }
 }
 
@@ -230,32 +248,6 @@ pub fn paint(page: PageId, snapshot: &FrameSnapshot, painter: &mut Painter<'_>) 
     if painter.debug && page != PageId::Camera {
         painter.draw_fps();
     }
-}
-
-/// The fill the renderer covers the panel with first, or `None` when the page draws over what
-/// the light was already showing.
-pub fn ground(page: PageId) -> Option<Rgb> {
-    descriptor(page).ground
-}
-
-/// Whether this page's picture is the camera's frames rather than its own drawing.
-pub fn camera_frames(page: PageId) -> bool {
-    descriptor(page).camera_frames
-}
-
-/// The least wall time this page waits between snapshot-driven repaints.
-pub fn repaint_step_ms(page: PageId) -> u64 {
-    descriptor(page).repaint_ms
-}
-
-/// Whether this pair of frame snapshots earns a repaint.
-pub fn repaints_on(
-    page: PageId,
-    prev: &FrameSnapshot,
-    next: &FrameSnapshot,
-    overlay: bool,
-) -> bool {
-    descriptor(page).repaints.due(prev, next, overlay)
 }
 
 /// The lamp's table, for the pages whose only verb is the light.

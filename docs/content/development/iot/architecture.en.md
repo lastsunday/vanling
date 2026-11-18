@@ -84,7 +84,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | --- | --- |
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
-| `pages/` | the product's pages, one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `layout` / `view` as needed); `mod.rs` defines the `Page` the gesture table asks (`bind`) and the `LocalPage` the device asks (`apply`/`publish`/`paint`/`descriptor`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the one `PageId → Descriptor` map; a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `pages/tests.rs` |
+| `pages/` | the product's pages, one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `layout` / `view` as needed); `mod.rs` defines the `Service` every operating platform shares (`apply`) and the local platform's `LocalPage: Service` (`bind`/`publish`/`paint`/`descriptor`/`on_show`/`on_hide`), the `PageSet` holding every instance, and the one `PageId → Descriptor` map; a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `pages/tests.rs` |
 | `pages/{ambient,attitude,camera,env,splash}.rs` | single-file pages with one canvas: each page type's `paint` draws directly |
 | `pages/audio/{mod,tests}.rs`, `pages/speaker/{mod,tests}.rs` | translation and drawing both in `mod.rs`; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `pages/network/` | gestures and controls in `controller/`: `mod.rs` is the gesture translation and the strip, `bands.rs` decides which bands are on the glass; `layout/` holds one hit geometry per band (`content.rs` list and key grid, `toolbar.rs` action strip, `dialog.rs` confirmation box); `view/` mirrors them (`header` / `content` / `overlay`, with the words in `text.rs`); `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
@@ -124,7 +124,7 @@ lib               → { render, state, runtime }
 pages/<page>   → { assets, shared::{intent, kit, model, route, snapshot} }
 pages             → { pages::<page>::controller, shared::{intent, kit, model, route, snapshot} }
 state             → { pages::PageSet, shared::{intent, model, route} }
-render            → { pages::{camera_frames, ground, paint, repaint_step_ms, repaints_on}, shared::{kit, model, route, snapshot} }
+render            → { pages::{descriptor, paint}, shared::{kit, model, route, snapshot} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, model}, runtime::workers }
@@ -135,7 +135,7 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 ```
 
 - **pages never import each other**: a page reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
-- **`pages` is the only module that knows every page**: every page is a concrete type (`AmbientPage`…`NetworkPage`), and `PageSet` dispatches on `PageId` exhaustively; `state` asks only through `PageSet::apply`/`snapshot`/`enter`/`leave`, and `render` only through `pages::paint`/`ground`/`camera_frames`/`repaint_step_ms`/`repaints_on`; a page reads `shared` (including `DeviceState` and `FrameSnapshot`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
+- **`pages` is the only module that knows every page**: every page is a concrete type (`AmbientPage`…`NetworkPage`), and `PageSet` dispatches on `PageId` exhaustively; `state` asks only through `PageSet::apply`/`snapshot`/`enter`/`leave`, and `render` only through `pages::paint` and the reads on `pages::descriptor(page)`; a page reads `shared` (including `DeviceState` and `FrameSnapshot`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
 - **`shared/kit` names no page**: `Painter` offers the `draw_*` marks; `pages::paint` decides which page draws what
 - `shared` is a leaf: it does not depend on `state`/`pages`/`render`/`runtime`. `DeviceState`, `PageSnapshot` and `NetworkView` live there so pages, the snapshot and rendering all look downward
 - `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `snapshot` (the frame and page views); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
@@ -147,13 +147,13 @@ bench             → { lib::run_with, pages::network::{controller, layout}, sha
 
 ### The page model
 
-Every page is a concrete type, and it answers two traits. `Page` is the one line the gesture table asks: `bind` — what one gesture means here. `LocalPage: Page` is what the device asks the page it owns: `apply` claims an intent (`&BusinessIntent, &DeviceState -> Option<Command>`), `publish` hands out a view (`&mut PageSnapshot`), `paint` draws the whole page (`&FrameSnapshot, &mut Painter`; it takes no `self`), and `descriptor` says how the page occupies the panel, while `on_show`/`on_hide` default to doing nothing. `where Self: Sized` on `paint` and `descriptor` keeps the `&dyn LocalPage` the gesture table needs.
+Every page is a concrete type with two layers. `Service` is the half every operating platform shares: `apply` claims a business intent (`&BusinessIntent, &DeviceState -> Option<Command>`). `LocalPage: Service` is the local platform's face: `bind` turns a local gesture into a business intent, `publish` hands the page's private local UI state to the frame snapshot (the passphrase draft, keys, confirmation box; no remote platform sees it), `paint` draws the whole page (`&FrameSnapshot, &mut Painter`; it takes no `self`), and `descriptor` says how the page occupies the panel, while `on_show`/`on_hide` default to doing nothing. `where Self: Sized` on `paint` and `descriptor` keeps the `&dyn LocalPage` the local input table needs.
 
 `Descriptor` is one page's panel answer: the draw call (a function pointer), the ground, whether frames come from the camera, and the repaint step and trigger. The builder defaults to no ground, no camera frames, `REPAINT_FLOOR_MS` and `Never`; each page writes only its own difference. A page's repaint rule is one of `Repaint::{Never, Always, Overlay, When(fn)}`, not a function with unused parameters.
 
-The render answers come in two layers: `Painter`'s `draw_*` puts one mark down (a pixel, a line of glyphs, a key), `LocalPage::paint` composes a whole page, and `pages::paint` takes `descriptor(page).paint` and then adds the badge; `ground`/`camera_frames`/`repaint_step_ms`/`repaints_on` are one-line reads of the same `descriptor(page)`.
+The render answers come in two layers: `Painter`'s `draw_*` puts one mark down (a pixel, a line of glyphs, a key), `LocalPage::paint` composes a whole page, and `pages::paint` takes `descriptor(page).paint` and then adds the badge; the other four answers are reads on `descriptor(page)` (`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`).
 
-`PageSet` owns the eight instances and exposes `get`/`apply`/`snapshot`/`enter`/`leave`; there is no per-page field accessor. Adding a page means a `pages/<page>/` directory, one field on `PageSet`, one arm each in `get`/`get_mut` and in the `descriptor(page)` match, and the page's own `bind` and `descriptor`; a missing arm does not compile, and `iot-tool/tests/page_table.rs` guards the template.
+`PageSet` owns the eight instances and exposes `get`/`apply`/`snapshot`/`enter`/`leave`; there is no per-page field accessor. Adding a page means a `pages/<page>/` directory, one field on `PageSet`, one arm each in `get`/`get_mut` and in the `descriptor(page)` match, and the page's own `bind` and `descriptor` (plus `apply` when it claims intents); a missing arm does not compile, and `iot-tool/tests/page_table.rs` guards the template.
 
 `state/intent.rs` drives the lifecycle: after one business intent has landed its state, it compares `state.page()`, and on a change calls `leave(old)` then `enter(new)`; the boot `Splash` counts as an `enter`. The hooks do not depend on `has_display()` — a page on a board with no panel still hears them — but they touch only the page's own fields. The Network page puts its keyboard and confirmation box away in `on_hide` while keeping the picked row and the draft, so leaving and coming back does not reopen the keyboard.
 
@@ -173,9 +173,9 @@ Three ways to put the interface somewhere else, told apart by **who computes the
 
 | Form | Who computes it | What goes on the wire | Reuses `pages` |
 | --- | --- | --- | --- |
-| WebUI | the browser | semantic facts (link, config, levels, health) | no |
+| WebUI | the browser | semantic facts (link, config, levels, health) | only `Service` |
 | Remote display | the device (`LocalPage` + `Painter`) | the picture | no (it ships after painting) |
-| Remote control | the device | commands | only `translate` / `apply` |
+| Remote control | the device | commands | only `Service::apply` |
 
 Shipping `FrameSnapshot` is remote display, not a WebUI. `Descriptor` (ground, camera frames, repaint pacing) and `PageSnapshot` (a password draft being typed, say) are device-internal; no remote form should see them.
 
@@ -496,7 +496,7 @@ This yields one rule for measurement: to ask what throttling does to the worst b
 
 ## Pages: a route table plus a navigation stack
 
-`app/src/shared/route/mod.rs` holds one route table: the `PageId` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the whole order (the wire code is its index) and the button walks it too: from here it takes the first page the board backs that is not a transient, and wraps at the end, so "listed" and "reachable by the button" cannot drift into two lists. The page's own answers live in one other place, and only one: the `PageSet` and one `descriptor(page)` map in `app/src/pages/mod.rs` (draw call, ground, frames, repaint pace), with gestures on `Page` and state/picture/lifecycle on `LocalPage`. `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, and each page's type, dispatcher arm and view module under `app/src/pages/<path>` (the matches are checked exhaustively by the compiler).
+`app/src/shared/route/mod.rs` holds one route table: the `PageId` enum is the destination, one `static <PAGE>: Route` per destination (path, needs, claim, whether it is bootable, lifetime), and `route()` is an exhaustive `match` — **a new variant with no route does not compile**. `ALL` is the whole order (the wire code is its index) and the button walks it too: from here it takes the first page the board backs that is not a transient, and wraps at the end, so "listed" and "reachable by the button" cannot drift into two lists. The page's own answers live in one other place, and only one: the `PageSet` and one `descriptor(page)` map in `app/src/pages/mod.rs` (draw call, ground, frames, repaint pace), with business on `Service` and local gesture/view/picture/lifecycle on `LocalPage`. `crates/tool/tests/page_table.rs` guards a page missing from `ALL`, and each page's type, dispatcher arm and view module under `app/src/pages/<path>` (the matches are checked exhaustively by the compiler).
 
 `Navigator` in `app/src/shared/route/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 

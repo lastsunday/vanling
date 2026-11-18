@@ -16,13 +16,13 @@ use crate::shared::snapshot::FrameSnapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CameraPage;
 
-impl super::Page for CameraPage {
+impl super::Service for CameraPage {}
+
+impl super::LocalPage for CameraPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
-}
 
-impl super::LocalPage for CameraPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         Self::paint_frame(snapshot, painter, CameraSnapshot::STARTING);
     }
@@ -32,8 +32,8 @@ impl super::LocalPage for CameraPage {
     /// blocking SPI.
     fn descriptor() -> super::Descriptor {
         super::Descriptor::new(Self::paint)
-            .ground(Some(Rgb(0, 0, 0)))
-            .camera_frames()
+            .with_ground(Some(Rgb(0, 0, 0)))
+            .with_camera_frames()
     }
 }
 

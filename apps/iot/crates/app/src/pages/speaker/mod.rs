@@ -14,7 +14,9 @@ use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SpeakerPage;
 
-impl super::Page for SpeakerPage {
+impl super::Service for SpeakerPage {}
+
+impl super::LocalPage for SpeakerPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
@@ -34,9 +36,7 @@ impl super::Page for SpeakerPage {
             _ => BusinessIntent::Invalid,
         }
     }
-}
 
-impl super::LocalPage for SpeakerPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         let playback = snapshot.playback;
         let fault = playback.health.fault();
@@ -82,7 +82,7 @@ impl super::LocalPage for SpeakerPage {
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint).repaints(super::Repaint::When(playback_moved))
+        super::Descriptor::new(Self::paint).with_repaints(super::Repaint::When(playback_moved))
     }
 }
 

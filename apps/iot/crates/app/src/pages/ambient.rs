@@ -9,13 +9,13 @@ use crate::shared::snapshot::FrameSnapshot;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AmbientPage;
 
-impl super::Page for AmbientPage {
+impl super::Service for AmbientPage {}
+
+impl super::LocalPage for AmbientPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
-}
 
-impl super::LocalPage for AmbientPage {
     fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
         if painter.debug {
             let live = painter.live(snapshot);
@@ -24,6 +24,6 @@ impl super::LocalPage for AmbientPage {
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint).repaints(super::Repaint::Overlay)
+        super::Descriptor::new(Self::paint).with_repaints(super::Repaint::Overlay)
     }
 }

@@ -1,6 +1,6 @@
 //! When a frame drift earns a full-frame repaint.
 
-use crate::pages::{repaint_step_ms, repaints_on};
+use crate::pages::descriptor;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::{DemandKey, Mode};
@@ -15,7 +15,7 @@ pub fn frame_repaint_due(
     since_ms: u64,
     overlay: bool,
 ) -> bool {
-    let step = repaint_step_ms(page);
+    let step = descriptor(page).repaint_step_ms();
     match next.demand.claim(DemandKey::DISPLAY).mode {
         Mode::Off => return false,
         Mode::OnChange => return since_ms >= step * 4 && prev != next,
@@ -24,7 +24,7 @@ pub fn frame_repaint_due(
     if since_ms < step {
         return false;
     }
-    repaints_on(page, prev, next, overlay)
+    descriptor(page).repaints_on(prev, next, overlay)
 }
 
 /// Repaint rate (frames per second) over one window, `0` for an empty or degenerate window.
@@ -77,7 +77,7 @@ mod tests {
     /// The Audio page sets its own step, so the tests follow the table rather than the
     /// default — a page that changed its cadence without changing this would fail here.
     fn audio_step() -> u64 {
-        repaint_step_ms(PageId::Audio)
+        descriptor(PageId::Audio).repaint_step_ms()
     }
 
     #[test]
@@ -324,11 +324,11 @@ mod tests {
 fn only_the_audio_page_raises_the_step() {
     for page in PageId::ALL {
         assert!(
-            repaint_step_ms(page) >= REPAINT_FLOOR_MS,
+            descriptor(page).repaint_step_ms() >= REPAINT_FLOOR_MS,
             "{page:?} cannot repaint faster than the floor"
         );
         assert_eq!(
-            repaint_step_ms(page) > REPAINT_FLOOR_MS,
+            descriptor(page).repaint_step_ms() > REPAINT_FLOOR_MS,
             page == PageId::Audio,
             "{page:?} step"
         );
