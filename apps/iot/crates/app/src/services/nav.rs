@@ -1,12 +1,21 @@
 //! The device's own navigation: the page cycle, the setup request, and what the splash lands
 //! on. It reads the wiring, the link and the boot decision together, so it is not a page's.
 
-use crate::shared::intent::{BusinessIntent, NavigationIntent};
+use crate::shared::intent::{BusinessIntent, InputIntent, NavigationIntent};
 use crate::shared::model::{Command, DeviceState, Effects, NetworkCommand, NoticeKind};
 use crate::shared::route::PageId;
+use iot_core::drivers::input::{ButtonEvent, InputEvent};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct NavService;
+
+impl NavService {
+    /// The gesture the button answers from anywhere: three clicks turn the page.
+    pub(super) fn from_anywhere(op: &InputIntent) -> Option<BusinessIntent> {
+        matches!(op.event, InputEvent::Button(ButtonEvent::TripleClick))
+            .then_some(BusinessIntent::Navigation(NavigationIntent::NextPage))
+    }
+}
 
 impl super::Service for NavService {
     fn apply(

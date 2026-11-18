@@ -1,6 +1,6 @@
+use self::support::*;
 use crate::shared::intent::Layer;
 use crate::shared::intent::*;
-use crate::state::test_support::*;
 use iot_core::demand::DemandKey;
 use iot_core::drivers::input::FingerLast;
 use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
@@ -18,6 +18,7 @@ mod motion;
 mod navigate;
 mod reachable;
 mod separation;
+pub(crate) mod support;
 mod tallies;
 mod touch;
 mod trackers;

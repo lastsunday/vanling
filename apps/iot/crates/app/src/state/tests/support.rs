@@ -1,8 +1,8 @@
-pub(crate) use super::*;
 pub(crate) use crate::services::Services;
 pub(crate) use crate::shared::intent::{
     BusinessIntent, InputIntent, Intent, LightAction, NavigationIntent,
 };
+pub(crate) use crate::state::*;
 /// Every page the button can reach: the table without its transients, in the button's order.
 pub(crate) fn cycled() -> impl Iterator<Item = PageId> {
     PageId::ALL
@@ -10,7 +10,16 @@ pub(crate) fn cycled() -> impl Iterator<Item = PageId> {
         .filter(|page| page.timeout_ms().is_none())
 }
 
-pub(crate) use crate::state::translate::translate;
+/// The input boundary from the write side's seat, so a test can ask what a gesture means
+/// without holding a manager.
+pub(crate) fn translate(
+    op: &InputIntent,
+    state: &DeviceState,
+    services: &Services,
+) -> Option<BusinessIntent> {
+    services.bind(op, state)
+}
+
 pub(crate) use iot_core::demand::EffectiveDemand;
 pub(crate) use iot_core::drivers::input::{
     ButtonEvent, GestureEvent, InputEvent, MAX_TOUCH_POINTS, SwipeDirection, TouchEvent,

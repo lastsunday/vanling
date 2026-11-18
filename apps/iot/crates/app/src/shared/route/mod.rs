@@ -4,25 +4,18 @@
 //! exhaustive map from a destination to its row, so a new page cannot exist without a route.
 //!
 //! How a page is painted — its ground, whether frames arrive from a camera, how often it may
-//! repaint, what a snapshot drift has to move — is the page's own answer (`pages`), not this
-//! table's.
+//! repaint, what a snapshot drift has to move — is the page's own answer (`services`), not
+//! this table's.
 //!
 //! [`PageId::ALL`] is the button's order too: one list, so a page cannot be listed and still be
 //! unreachable from the button. [`Navigator`] walks it (`nav`).
 
-mod ambient;
-mod attitude;
-mod audio;
-mod camera;
-mod env;
 mod nav;
-mod network;
-mod speaker;
-mod splash;
 
 pub use self::nav::{MAX_DEPTH, Navigator};
 
-pub use self::splash::SPLASH_MS;
+/// How long the boot page stays up before the build's page takes over.
+pub const SPLASH_MS: u64 = 1_500;
 
 use iot_core::demand::{Claim, DemandKey, DemandKind, EffectiveDemand, Mode, Priority};
 use iot_core::drivers::board::Backed;
@@ -61,10 +54,44 @@ const MOTION_FOREGROUND: Claim = Claim::new(Mode::Continuous, 0, Priority::Prima
 
 const ON_SCREEN: Claim = Claim::new(Mode::Continuous, 0, Priority::Primary);
 
+const fn motion_background(kind: DemandKind) -> Claim {
+    match kind {
+        DemandKind::Motion => MOTION_BACKGROUND,
+        DemandKind::Display => ON_SCREEN,
+        DemandKind::Interaction | DemandKind::Audio | DemandKind::Camera => Claim::off(),
+    }
+}
+
+const fn motion_foreground(kind: DemandKind) -> Claim {
+    match kind {
+        DemandKind::Motion => MOTION_FOREGROUND,
+        DemandKind::Display => ON_SCREEN,
+        DemandKind::Interaction | DemandKind::Audio | DemandKind::Camera => Claim::off(),
+    }
+}
+
+const fn audio_on_screen(kind: DemandKind) -> Claim {
+    match kind {
+        DemandKind::Audio => ON_SCREEN,
+        DemandKind::Motion => MOTION_BACKGROUND,
+        DemandKind::Display => ON_SCREEN,
+        DemandKind::Interaction | DemandKind::Camera => Claim::off(),
+    }
+}
+
+const fn camera_on_screen(kind: DemandKind) -> Claim {
+    match kind {
+        DemandKind::Camera => ON_SCREEN,
+        DemandKind::Motion => MOTION_BACKGROUND,
+        DemandKind::Display => ON_SCREEN,
+        DemandKind::Interaction | DemandKind::Audio => Claim::off(),
+    }
+}
+
 static AMBIENT: Route = Route {
     path: "ambient",
     needs: |_| true,
-    claim: ambient::claim,
+    claim: motion_background,
     bootable: true,
     timeout_ms: None,
 };
@@ -72,7 +99,7 @@ static AMBIENT: Route = Route {
 static ATTITUDE: Route = Route {
     path: "attitude",
     needs: |backed| backed.motion.is_some(),
-    claim: attitude::claim,
+    claim: motion_foreground,
     bootable: true,
     timeout_ms: None,
 };
@@ -80,7 +107,7 @@ static ATTITUDE: Route = Route {
 static AUDIO: Route = Route {
     path: "audio",
     needs: |backed| backed.audio,
-    claim: audio::claim,
+    claim: audio_on_screen,
     bootable: true,
     timeout_ms: None,
 };
@@ -88,7 +115,7 @@ static AUDIO: Route = Route {
 static SPEAKER: Route = Route {
     path: "speaker",
     needs: |backed| backed.playback,
-    claim: speaker::claim,
+    claim: motion_background,
     bootable: true,
     timeout_ms: None,
 };
@@ -96,7 +123,7 @@ static SPEAKER: Route = Route {
 static CAMERA: Route = Route {
     path: "camera",
     needs: |backed| backed.camera,
-    claim: camera::claim,
+    claim: camera_on_screen,
     bootable: true,
     timeout_ms: None,
 };
@@ -104,7 +131,7 @@ static CAMERA: Route = Route {
 static NETWORK: Route = Route {
     path: "network",
     needs: |backed| backed.network,
-    claim: network::claim,
+    claim: motion_background,
     bootable: true,
     timeout_ms: None,
 };
@@ -112,7 +139,7 @@ static NETWORK: Route = Route {
 static SPLASH: Route = Route {
     path: "splash",
     needs: |_| true,
-    claim: splash::claim,
+    claim: motion_background,
     bootable: false,
     timeout_ms: Some(SPLASH_MS),
 };
@@ -120,7 +147,7 @@ static SPLASH: Route = Route {
 static ENV: Route = Route {
     path: "env",
     needs: |_| true,
-    claim: env::claim,
+    claim: motion_background,
     bootable: true,
     timeout_ms: None,
 };
@@ -159,7 +186,7 @@ impl PageId {
     /// The page the button turns to: the next page in [`Self::ALL`] the board backs, wrapping.
     /// A transient has no place in the lap and stays until its lifetime ends.
     pub fn next_page(&self, backed: Backed) -> Self {
-        if self.timeout_ms().is_some() {
+        if self.is_transient() {
             return *self;
         }
         let Some(here) = Self::ALL.iter().position(|page| page == self) else {
@@ -167,7 +194,7 @@ impl PageId {
         };
         for step in 1..=Self::ALL.len() {
             let candidate = Self::ALL[(here + step) % Self::ALL.len()];
-            if candidate.timeout_ms().is_none() && candidate.is_backed(backed) {
+            if !candidate.is_transient() && candidate.is_backed(backed) {
                 return candidate;
             }
         }
@@ -211,19 +238,15 @@ impl PageId {
         self.route().timeout_ms
     }
 
-    /// A stable wire code for tasks that cannot hold the enum: the position in [`Self::ALL`],
-    /// written out so a policy call site stays `const`.
+    /// Whether this page is a transient the device lands through, not on.
+    pub const fn is_transient(&self) -> bool {
+        self.timeout_ms().is_some()
+    }
+
+    /// A stable wire code for tasks that cannot hold the enum: the discriminant, which
+    /// [`Self::ALL`] keeps in the same order.
     pub const fn code(&self) -> u8 {
-        match self {
-            Self::Ambient => 0,
-            Self::Attitude => 1,
-            Self::Audio => 2,
-            Self::Speaker => 3,
-            Self::Camera => 4,
-            Self::Network => 5,
-            Self::Splash => 6,
-            Self::Env => 7,
-        }
+        *self as u8
     }
 
     fn claim_for(&self, key: DemandKey) -> Claim {

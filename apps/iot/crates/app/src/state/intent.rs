@@ -3,27 +3,24 @@
 //! Systems write, renderers read.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, Intent};
-use crate::shared::model::{Command, Effects, Health, Notice, NoticeKind, PlaybackPhase};
+use crate::shared::model::{Command, Effects};
 use crate::state::DeviceManager;
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
-use iot_core::drivers::playback::Sound;
-
-use super::translate::translate;
 
 impl DeviceManager {
     /// Route one intent all the way to the state it moves, and answer with what the model
     /// cannot do itself.
     ///
     /// The two input halves touch different fields: the write lands in `touch`/`motion`, which
-    /// only renderers and the frame snapshot read, while the translation reads the page, the lights and
-    /// the link. Their order is a reading order, not a dependency.
+    /// only renderers and the frame snapshot read, while the binding reads the page, the lights
+    /// and the link. Their order is a reading order, not a dependency.
     pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
         let business = match intent {
             Intent::Input(op) => {
                 self.apply_input(op);
-                translate(&op, self.state_ref(), &self.services)?
+                self.services.bind(&op, self.state_ref())?
             }
             Intent::Business(business) => business,
         };
@@ -73,51 +70,20 @@ impl DeviceManager {
     }
 
     pub fn apply_capture(&mut self, sample: AudioSample) {
-        if self.state.backed.audio {
-            self.state.audio.health = match sample.fault {
-                Some(reason) => Health::Down(reason),
-                None => Health::Ready,
-            };
-            self.state.audio.view.live = sample;
-        }
+        self.state.audio.observe(sample, self.state.backed.audio);
     }
 
     pub fn tick_notice(&mut self, now_ms: u32) {
-        let Some(mut notice) = self.state.notice else {
-            return;
-        };
-        let started = *notice.started_ms.get_or_insert(now_ms);
-        match notice.kind.light_at(now_ms.wrapping_sub(started)) {
-            Some(light) => {
-                notice.light = light;
-                self.state.notice = Some(notice);
-            }
-            None => self.state.notice = None,
-        }
+        self.state.notice = self.state.notice.and_then(|notice| notice.tick(now_ms));
     }
 
     /// What a domain asked the rest of the device for, applied after its own state settled.
     fn apply_effects(&mut self, effects: Effects) {
         if let Some(sound) = effects.sound {
-            self.ring(sound);
+            self.state.playback.start(sound, self.state.backed.playback);
         }
         if let Some(kind) = effects.notice {
-            self.announce(kind);
+            self.state.announce(kind);
         }
-    }
-
-    fn ring(&mut self, sound: Sound) {
-        if !self.state.backed.playback || self.state.playback.phase != PlaybackPhase::Idle {
-            return;
-        }
-        self.state.playback.sound = sound;
-        self.state.playback.phase = PlaybackPhase::Playing;
-    }
-
-    fn announce(&mut self, kind: NoticeKind) {
-        if !self.state.has_lamp() || !self.state.backed.network {
-            return;
-        }
-        self.state.notice = Some(Notice::new(kind));
     }
 }

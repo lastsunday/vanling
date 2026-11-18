@@ -697,7 +697,7 @@ fn state_neither_draws_nor_snapshots_itself() {
 fn the_state_read_side_stays_a_reader() {
     assert_no_reference(
         shipping_source(app_src().join("state/manager.rs")),
-        &["super::translate", "crate::shared::intent"],
+        &["crate::shared::intent"],
     );
     // The read side owns the container and never one page: a getter that named a page would
     // make the half that only reads depend on the half that answers.
@@ -718,7 +718,7 @@ fn the_state_read_side_stays_a_reader() {
 #[test]
 fn translation_dispatches_without_naming_page_geometry() {
     assert_no_reference(
-        shipping_source(app_src().join("state/translate.rs")),
+        shipping_source(app_src().join("services/mod.rs")),
         &["keyboard::", "Band::", "controls::", "Confirm"],
     );
 }

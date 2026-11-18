@@ -323,6 +323,13 @@ impl Notice {
             light: kind.color(),
         }
     }
+
+    /// The step this notice is on at `now_ms`, or `None` once its flashes have run out.
+    pub fn tick(mut self, now_ms: u32) -> Option<Self> {
+        let started = *self.started_ms.get_or_insert(now_ms);
+        self.light = self.kind.light_at(now_ms.wrapping_sub(started))?;
+        Some(self)
+    }
 }
 
 fn cycle_mode(current: LightState) -> LightState {

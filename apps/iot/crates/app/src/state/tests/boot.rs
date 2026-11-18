@@ -100,6 +100,17 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
 }
 
 #[test]
+fn the_splash_is_never_where_the_device_lands() {
+    let landed_on = landed(DeviceManager::boot(Boot {
+        boot_page: PageId::Splash,
+        ..Default::default()
+    }))
+    .state()
+    .page();
+    assert_eq!(landed_on, PageId::Ambient);
+}
+
+#[test]
 fn the_boot_page_falls_back_for_every_capability_not_wired() {
     let bare = landed(DeviceManager::new());
     let default_page = bare.state().page();

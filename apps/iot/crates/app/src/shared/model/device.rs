@@ -8,8 +8,8 @@ use iot_core::drivers::input::SwipeDirection;
 use iot_core::drivers::network::{LinkPhase, SetupHost};
 
 use super::{
-    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, PlaybackState,
-    SurfaceRole, TouchState,
+    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, NoticeKind,
+    PlaybackState, SurfaceRole, TouchState,
 };
 
 /// All state owned by the device manager: one record per domain, each living in the module
@@ -103,13 +103,20 @@ impl DeviceState {
         self.page().demand(keys)
     }
 
-    /// The page that becomes the boot page: a splash has no page to land on, and a page the
-    /// board cannot back is not somewhere it could ever arrive.
+    /// One-shot news on a lamp that can speak: a joined link, a missing one, a refusal.
+    pub fn announce(&mut self, kind: NoticeKind) {
+        if self.has_lamp() && self.backed.network {
+            self.notice = Some(Notice::new(kind));
+        }
+    }
+
+    /// The page that becomes the boot page: one the build may not come up on, or the board
+    /// cannot back, falls back to [`PageId::Ambient`].
     pub(crate) fn landed_on(page: PageId, backed: Backed) -> PageId {
-        match page {
-            PageId::Splash => PageId::Ambient,
-            page if page.is_backed(backed) => page,
-            _ => PageId::Ambient,
+        if page.bootable() && page.is_backed(backed) {
+            page
+        } else {
+            PageId::Ambient
         }
     }
 }

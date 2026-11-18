@@ -111,6 +111,15 @@ impl PlaybackState {
             }
         }
     }
+
+    /// Start a sound, refused when the board wired no output or one is already playing.
+    pub(crate) fn start(&mut self, sound: Sound, wired: bool) {
+        if !wired || self.phase != PlaybackPhase::Idle {
+            return;
+        }
+        self.sound = sound;
+        self.phase = PlaybackPhase::Playing;
+    }
 }
 
 #[cfg(test)]

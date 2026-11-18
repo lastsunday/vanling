@@ -10,11 +10,12 @@ mod tests;
 
 use iot_core::light::Rgb;
 
-use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent};
+use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent, NetworkIntent};
 use crate::shared::kit::painter::Painter;
 use crate::shared::model::{Command, DeviceState, Effects, NetworkView};
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
+use iot_core::drivers::input::{ButtonEvent, InputEvent};
 
 /// The page owns the one edit session the link never writes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -46,6 +47,16 @@ impl super::Service for NetworkPage {
 
     fn on_scan(&mut self, state: &mut DeviceState) {
         self.draft.clamp_top(state.network.len());
+    }
+}
+
+impl NetworkPage {
+    /// The setup hold is a link decision, not a page one: switching the host is offered from
+    /// anywhere the panel is not a transient.
+    pub(super) fn from_anywhere(op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+        (state.network.link.mode.is_setup()
+            && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)))
+        .then_some(BusinessIntent::Network(NetworkIntent::SwitchHost))
     }
 }
 

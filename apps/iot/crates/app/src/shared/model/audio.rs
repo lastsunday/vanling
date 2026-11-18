@@ -65,6 +65,18 @@ impl AudioState {
             _ => {}
         }
     }
+
+    /// A capture poll: the part's health and the live envelope, refused when nothing is wired.
+    pub(crate) fn observe(&mut self, sample: AudioSample, wired: bool) {
+        if !wired {
+            return;
+        }
+        self.health = match sample.fault {
+            Some(reason) => Health::Down(reason),
+            None => Health::Ready,
+        };
+        self.view.live = sample;
+    }
 }
 
 #[cfg(test)]

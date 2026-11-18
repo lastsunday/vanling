@@ -23,15 +23,15 @@ fn ap_with(ssid: &[u8], rssi: i8, last: u8) -> AccessPoint {
     }
 }
 
-/// The page as the devices hold it: the state it reads, and the pages that answer.
+/// The page as the devices hold it: the state it reads, and the services that answer.
 struct Fixture {
     state: DeviceState,
-    pages: Services,
+    services: Services,
 }
 
 impl Fixture {
     fn ask(&self, event: InputEvent) -> Option<BusinessIntent> {
-        translate(&op(event), &self.state, &self.pages)
+        translate(&op(event), &self.state, &self.services)
     }
 }
 
@@ -47,13 +47,13 @@ fn on_network() -> Fixture {
         state: with_network(state_on(PageId::Network, BREATH), |network| {
             network.aps = Some(ApList::from_ranked(&[ap(b"neighbour", -55)]));
         }),
-        pages: Services::default(),
+        services: Services::default(),
     }
 }
 
 fn typing() -> Fixture {
     let mut fixture = on_network();
-    fixture.pages = with_draft(NetworkView {
+    fixture.services = with_draft(NetworkView {
         selected: Some(ap(b"neighbour", -55)),
         entry: Some(Entry::default()),
         keyboard: true,
@@ -64,7 +64,7 @@ fn typing() -> Fixture {
 
 fn asking() -> Fixture {
     let mut fixture = on_network();
-    fixture.pages = with_draft(NetworkView {
+    fixture.services = with_draft(NetworkView {
         confirm: Some(Confirm::Forget(ap(b"neighbour", -55))),
         ..Default::default()
     });

@@ -117,6 +117,19 @@ impl Services {
         }
     }
 
+    /// The input boundary. A transient owns the panel, so the cross-page bindings yield to it;
+    /// otherwise they answer before the page does.
+    pub fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+        let here = state.page();
+        let page = self.get(here);
+        if here.is_transient() {
+            return page.bind(op, state);
+        }
+        NetworkPage::from_anywhere(op, state)
+            .or_else(|| NavService::from_anywhere(op))
+            .or_else(|| page.bind(op, state))
+    }
+
     /// Who answers which group. One arm per owner, exhaustive like [`descriptor`]: a new group
     /// does not compile until it has one. The two groups that write the same record share an
     /// arm on purpose — that is a fact about the record, not a missing distinction.

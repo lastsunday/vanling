@@ -1,4 +1,4 @@
-//! The cross-page answers of the translation table: what the splash admits, and the setup
+//! The cross-page answers of the input boundary: what the splash admits, and the setup
 //! shortcut that outranks the page's own verb.
 
 use super::*;
