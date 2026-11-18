@@ -13,11 +13,11 @@ pub use self::common::{
 };
 pub use self::lamp::LampRenderer;
 pub use self::screen::{
-    AppPainter, ScreenRenderer, diag_repaint_due, windowed_percent, windowed_rate,
+    AppPainter, ScreenRenderer, frame_repaint_due, windowed_percent, windowed_rate,
 };
 pub use self::wiring::{Renderers, wired};
 
-pub use iot_core::paint::{MODE_BREATH, MODE_OFF, MODE_SOLID};
+pub use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID};
 
 #[cfg(test)]
 mod test_support;

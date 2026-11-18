@@ -6,7 +6,7 @@ use alloc::boxed::Box;
 use esp_hal::time::Duration;
 use iot_core::drivers::camera::FrameOwner;
 use iot_core::drivers::surface::RgbLight;
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::St7789;

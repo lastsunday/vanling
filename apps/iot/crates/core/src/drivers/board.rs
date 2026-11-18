@@ -120,7 +120,7 @@ mod tests {
     use crate::drivers::input::{BUTTON_SCAN_MS, Button};
     use crate::drivers::playback::{Recovery, SpeakerFault, Tone};
     use crate::drivers::surface::{PageSurface, RgbLight, SurfaceRole};
-    use crate::paint::Rgb;
+    use crate::light::Rgb;
     use alloc::{boxed::Box, vec};
 
     struct FakeLight;

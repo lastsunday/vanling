@@ -2,7 +2,7 @@
 //! page's snapshot carries, and the tables the lamp's verbs walk.
 
 use iot_core::drivers::network::NetworkError;
-use iot_core::paint::{GROUP_CAPACITY, Rgb};
+use iot_core::light::{GROUP_CAPACITY, Rgb};
 
 use crate::shared::intent::LightAction;
 
@@ -29,7 +29,7 @@ impl Breath {
 
     /// The color this breath paints at `elapsed_ms`.
     pub fn rgb(self, elapsed_ms: u32) -> Rgb {
-        iot_core::paint::breathe(
+        iot_core::light::breathe(
             elapsed_ms,
             self.period_ms,
             self.hue_period_ms,
@@ -45,7 +45,7 @@ impl Breath {
 
     /// Backlight duty following the same envelope, never below `floor_pct`.
     pub fn backlight(self, elapsed_ms: u32, floor_pct: u8) -> u8 {
-        iot_core::paint::backlight_level(
+        iot_core::light::backlight_level(
             elapsed_ms,
             self.period_ms,
             self.min_brightness,

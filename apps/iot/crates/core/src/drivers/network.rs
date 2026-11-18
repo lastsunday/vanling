@@ -235,7 +235,7 @@ pub fn rank_aps(raw: &[AccessPoint], limit: usize) -> Vec<AccessPoint> {
 }
 
 /// The ranked list as the device state holds it: a fixed-capacity value, never the driver's
-/// `Vec`, because the state is snapshotted into every page and diagnostics.
+/// `Vec`, because the state is snapshotted into every page and frame snapshot.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ApList {
     entries: [AccessPoint; MAX_LISTED_APS],

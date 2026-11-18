@@ -3,35 +3,35 @@
 
 use core::any::Any;
 
+use crate::pages::camera::CameraPage;
 use crate::pages::paint;
-use crate::shared::diagnostics::Diagnostics;
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
+use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{PanelContext, PanelPainter, PanelTarget};
 use iot_core::ui::Canvas;
 
-const DEBUG_DIAGNOSTICS: bool = true;
+const DEBUG_OVERLAY: bool = true;
 
 pub struct AppPainter;
 
 impl PanelPainter for AppPainter {
     fn paint(&self, target: PanelTarget<'_>, context: PanelContext, snapshot: &dyn Any) {
-        let Some(diagnostics) = snapshot.downcast_ref::<Diagnostics>() else {
+        let Some(frame) = snapshot.downcast_ref::<FrameSnapshot>() else {
             return;
         };
         let canvas = Canvas::new(target.frame, target.width, target.height, target.ground);
-        let mut surface = Surface::new(
+        let mut painter = Painter::new(
             canvas,
-            diagnostics,
             context.instance,
             context.fps,
-            DEBUG_DIAGNOSTICS,
+            DEBUG_OVERLAY,
             context.spl_offset_db,
         );
         if let Some(probe) = context.stack_probe {
-            surface = surface.with_stack_probe(probe);
+            painter = painter.with_stack_probe(probe);
         }
-        paint(diagnostics.page, &mut surface);
+        paint(frame.page, frame, &mut painter);
     }
 
     fn paint_camera(
@@ -41,18 +41,17 @@ impl PanelPainter for AppPainter {
         context: PanelContext,
         snapshot: &dyn Any,
     ) {
-        let Some(diagnostics) = snapshot.downcast_ref::<Diagnostics>() else {
+        let Some(frame) = snapshot.downcast_ref::<FrameSnapshot>() else {
             return;
         };
         let canvas = Canvas::new(target.frame, target.width, target.height, target.ground);
-        let mut surface = Surface::new(
+        let mut painter = Painter::new(
             canvas,
-            diagnostics,
             context.instance,
             context.fps,
-            DEBUG_DIAGNOSTICS,
+            DEBUG_OVERLAY,
             context.spl_offset_db,
         );
-        surface.paint_camera(readout);
+        CameraPage::paint_frame(frame, &mut painter, readout);
     }
 }

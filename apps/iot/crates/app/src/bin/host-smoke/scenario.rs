@@ -129,7 +129,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     assert_eq!(
         AUDIO_RESTARTS.load(Ordering::SeqCst),
         usize::from(HOST_RESTARTS),
-        "the capture's repair count did not reach the panel's diagnostics"
+        "the capture's repair count did not reach the panel snapshot"
     );
     assert_eq!(
         AUDIO_PEAK_DB.load(Ordering::SeqCst),
@@ -138,7 +138,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     );
     assert!(
         AUDIO_DBA_LSB.load(Ordering::SeqCst) > 0,
-        "the capture's A-weighted level did not reach the panel's diagnostics"
+        "the capture's A-weighted level did not reach the panel snapshot"
     );
 
     triple_click_to(PageId::Speaker).await;

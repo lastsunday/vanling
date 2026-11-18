@@ -9,7 +9,7 @@ use crate::pages::network::view::text::{
     SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
     format_question, format_setup_notice_body, format_setup_pass, joining_body,
 };
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 use crate::shared::model::{NetworkView, SetupWait};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
 use iot_core::geometry::ControlRect;
@@ -51,29 +51,29 @@ impl<'a> Dialog<'a> {
         self
     }
 
-    fn draw(self, surface: &mut Surface<'_>) {
-        surface.fill(ControlRect {
+    fn draw(self, painter: &mut Painter<'_>) {
+        painter.fill(ControlRect {
             x: DIALOG_X,
             y: DIALOG_TOP,
             w: DIALOG_W,
             h: DIALOG_H,
         });
         let left = DIALOG_X + DIALOG_INSET;
-        surface.draw_text(self.title, left, DIALOG_TITLE_TOP);
+        painter.draw_text(self.title, left, DIALOG_TITLE_TOP);
         for (index, line) in self.lines[..self.line_count].iter().enumerate() {
-            surface.draw_text(line, left, DIALOG_BODY_TOP + index * ROW_PITCH);
+            painter.draw_text(line, left, DIALOG_BODY_TOP + index * ROW_PITCH);
         }
         let Some((keep, act)) = self.answers else {
             return;
         };
         for (choice, label) in [(DialogChoice::Keep, keep), (DialogChoice::Act, act)] {
-            surface.draw_cell(dialog_answer_box(choice), label);
+            painter.draw_cell(dialog_answer_box(choice), label);
         }
     }
 }
 
-impl Surface<'_> {
-    pub(super) fn draw_box(
+impl Painter<'_> {
+    pub(crate) fn draw_box(
         &mut self,
         draft: NetworkView,
         link: LinkStatus,

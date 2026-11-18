@@ -7,7 +7,7 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use iot_core::drivers::network::{
     AccessPoint, ApList, Credentials, JoinRequest, LinkPhase, LinkStatus, NetworkError, Ssid,
 };
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
 mod boot;
 mod business;

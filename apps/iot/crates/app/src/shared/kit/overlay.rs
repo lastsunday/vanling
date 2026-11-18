@@ -1,12 +1,13 @@
-//! The diagnostics overlay: the touch path's counters and the light's parameters, drawn
+//! The debug overlay: the touch path's counters and the light's parameters, drawn
 //! over whichever page is showing when the build asks for them.
 
 use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
+use iot_core::light::{MODE_BREATH, MODE_SOLID};
 use iot_core::overlay::Block;
-use iot_core::paint::{MODE_BREATH, MODE_SOLID};
 
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::text::{format_pair, format_u16, light_mode_word, write_u16};
+use crate::shared::snapshot::FrameSnapshot;
 
 fn direction_arrow(dir: u8) -> u8 {
     match dir {
@@ -25,10 +26,10 @@ fn gesture_glyph(kind: u8) -> u8 {
     }
 }
 
-impl Surface<'_> {
-    pub(crate) fn draw_diagnostics(&mut self, live: (u8, u8)) {
-        let touch = self.diagnostics.touch;
-        let light = self.diagnostics.lights[usize::from(self.instance)];
+impl Painter<'_> {
+    pub(crate) fn draw_overlay(&mut self, snapshot: &FrameSnapshot, live: (u8, u8)) {
+        let touch = snapshot.touch;
+        let light = snapshot.lights[usize::from(self.instance)];
         let mut buf = [0u8; 6];
 
         let counters: [(&[u8], u16); 6] = [

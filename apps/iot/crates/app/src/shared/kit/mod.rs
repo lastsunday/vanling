@@ -1,11 +1,11 @@
-//! The pixel primitives every page draws with: the surface, its widgets, and the bands that
+//! The pixel primitives every page draws with: the painter, its widgets, and the bands that
 //! more than one page draws.
 
 pub mod bands;
 pub mod overlay;
+pub mod painter;
 pub mod placement;
-pub mod surface;
 pub mod text;
 pub mod widgets;
 
-pub use self::surface::Surface;
+pub use self::painter::Painter;

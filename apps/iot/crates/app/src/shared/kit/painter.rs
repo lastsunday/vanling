@@ -1,22 +1,21 @@
-//! The portable page surface: a [`Canvas`] plus the snapshot the current page draws from.
+//! The portable page painter: a [`Canvas`] plus the surface's own draw state.
 //!
-//! The surface owns the marks, not the page match: [`paint`](crate::pages::paint) decides which
-//! page draws what.
+//! The painter owns the marks, not the frame data: [`paint`](crate::pages::paint) hands it the
+//! snapshot and decides which page draws what.
 
 use core::ops::{Deref, DerefMut};
 
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::kit::placement::{FPS_Y, PANEL_RIGHT};
 use crate::shared::kit::text::format_u16;
+use crate::shared::snapshot::FrameSnapshot;
+use iot_core::light::MODE_BREATH;
+use iot_core::light::{Rgb, brightness_of, rgb_hue};
 use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
-use iot_core::paint::MODE_BREATH;
-use iot_core::paint::{Rgb, brightness_of, rgb_hue};
 use iot_core::ui::Canvas;
 
-/// One page's drawing: the frame, the snapshot it reads, and the surface's own identity.
-pub struct Surface<'a> {
+/// One surface's draw target: the frame buffer and the settings this panel draws with.
+pub struct Painter<'a> {
     canvas: Canvas<'a>,
-    pub(crate) diagnostics: &'a Diagnostics,
     pub(crate) instance: u8,
     fps: u8,
     pub(crate) debug: bool,
@@ -24,18 +23,10 @@ pub struct Surface<'a> {
     stack_probe: Option<fn()>,
 }
 
-impl<'a> Surface<'a> {
-    pub fn new(
-        canvas: Canvas<'a>,
-        diagnostics: &'a Diagnostics,
-        instance: u8,
-        fps: u8,
-        debug: bool,
-        spl_offset_db: i16,
-    ) -> Self {
+impl<'a> Painter<'a> {
+    pub fn new(canvas: Canvas<'a>, instance: u8, fps: u8, debug: bool, spl_offset_db: i16) -> Self {
         Self {
             canvas,
-            diagnostics,
             instance,
             fps,
             debug,
@@ -44,7 +35,7 @@ impl<'a> Surface<'a> {
         }
     }
 
-    /// Hands the surface a platform-specific probe for the stack reporting. It is called at the
+    /// Hands the painter a platform-specific probe for the stack reporting. It is called at the
     /// start of the sweep, where the Audio page's two 400 B arrays and the page's own frames are
     /// all live — the deepest the paint path reaches.
     pub fn with_stack_probe(mut self, probe: fn()) -> Self {
@@ -58,8 +49,8 @@ impl<'a> Surface<'a> {
         }
     }
 
-    pub(crate) fn live(&self) -> (u8, u8) {
-        let mine = self.diagnostics.lights[usize::from(self.instance)];
+    pub(crate) fn live(&self, snapshot: &FrameSnapshot) -> (u8, u8) {
+        let mine = snapshot.lights[usize::from(self.instance)];
         if mine.mode == MODE_BREATH {
             let color = self.canvas.ground().unwrap_or(Rgb(0, 0, 0));
             (brightness_of(color), rgb_hue(color))
@@ -86,7 +77,7 @@ impl<'a> Surface<'a> {
     }
 }
 
-impl<'a> Deref for Surface<'a> {
+impl<'a> Deref for Painter<'a> {
     type Target = Canvas<'a>;
 
     fn deref(&self) -> &Self::Target {
@@ -94,7 +85,7 @@ impl<'a> Deref for Surface<'a> {
     }
 }
 
-impl<'a> DerefMut for Surface<'a> {
+impl<'a> DerefMut for Painter<'a> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.canvas
     }
@@ -118,12 +109,10 @@ mod tests {
         }
 
         let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
-        let diagnostics = Diagnostics::default();
         {
             let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, None);
-            let mut surface =
-                Surface::new(canvas, &diagnostics, 0, 60, false, 100).with_stack_probe(probe);
-            surface.draw_sweep(&[0; ENVELOPE_COLUMNS], &[0; ENVELOPE_COLUMNS], None);
+            let mut painter = Painter::new(canvas, 0, 60, false, 100).with_stack_probe(probe);
+            painter.draw_sweep(&[0; ENVELOPE_COLUMNS], &[0; ENVELOPE_COLUMNS], None);
         }
         assert_eq!(
             PROBES.load(Ordering::Relaxed),

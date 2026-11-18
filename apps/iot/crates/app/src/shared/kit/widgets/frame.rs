@@ -4,9 +4,9 @@ use iot_core::geometry::ControlRect;
 use iot_core::overlay::FONT_H;
 
 use super::label::text_left;
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 
-impl Surface<'_> {
+impl Painter<'_> {
     /// One pixel of ink around `rect`'s own edge, inside it.
     pub(crate) fn draw_frame(&mut self, rect: ControlRect) {
         let (x, y) = (rect.x as isize, rect.y as isize);

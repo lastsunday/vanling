@@ -3,13 +3,13 @@
 #[cfg(test)]
 mod tests;
 
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::text::{format_u16, sound_label};
 use crate::shared::model::{DeviceState, PlaybackPhase};
+use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 
@@ -21,9 +21,7 @@ pub(super) const CAMERA_FRAMES: bool = false;
 pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
 pub(super) const REPAINTS: super::Repaint = super::Repaint::When(playback_moved);
 
-impl super::Page for SpeakerPage {}
-
-impl super::LocalPage for SpeakerPage {
+impl super::Page for SpeakerPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
@@ -43,18 +41,12 @@ impl super::LocalPage for SpeakerPage {
             _ => BusinessIntent::Invalid,
         }
     }
-}
 
-fn playback_moved(prev: &Diagnostics, next: &Diagnostics) -> bool {
-    prev.playback != next.playback
-}
-
-impl Surface<'_> {
-    pub(crate) fn paint_speaker(&mut self) {
-        let playback = self.diagnostics.playback;
+    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
+        let playback = snapshot.playback;
         let fault = playback.health.fault();
-        self.draw_text(b"SPKR", block_x(Block::First), overlay_row_top(0));
-        self.draw_left(
+        painter.draw_text(b"SPKR", block_x(Block::First), overlay_row_top(0));
+        painter.draw_left(
             b"ST",
             match (fault, playback.phase) {
                 (Some(_), _) => b"NO OUT",
@@ -64,17 +56,17 @@ impl Surface<'_> {
             Block::First,
             1,
         );
-        self.draw_left(b"SRC", sound_label(playback.sound), Block::First, 2);
+        painter.draw_left(b"SRC", sound_label(playback.sound), Block::First, 2);
         if playback.muted {
-            self.draw_text(b"MUTE", block_x(Block::Second), overlay_row_top(1));
+            painter.draw_text(b"MUTE", block_x(Block::Second), overlay_row_top(1));
         }
-        self.draw_left(
+        painter.draw_left(
             b"PLY",
             format_u16(playback.plays, &mut [0u8; 6]),
             Block::First,
             3,
         );
-        self.draw_left(
+        painter.draw_left(
             b"DRP",
             format_u16(playback.dropped, &mut [0u8; 6]),
             Block::First,
@@ -83,14 +75,18 @@ impl Surface<'_> {
         let hint = overlay_row_top(6);
         match fault {
             Some(reason) => {
-                self.draw_text(b"TAP RETRY", block_x(Block::First), hint);
+                painter.draw_text(b"TAP RETRY", block_x(Block::First), hint);
                 let reason = reason.as_bytes();
-                self.draw_text(reason, block_x(Block::First), hint + ROW_PITCH);
+                painter.draw_text(reason, block_x(Block::First), hint + ROW_PITCH);
             }
             None => {
-                self.draw_text(b"TAP PLAY", block_x(Block::First), hint);
-                self.draw_text(b"HOLD MUTE", block_x(Block::First), hint + ROW_PITCH);
+                painter.draw_text(b"TAP PLAY", block_x(Block::First), hint);
+                painter.draw_text(b"HOLD MUTE", block_x(Block::First), hint + ROW_PITCH);
             }
         }
     }
+}
+
+fn playback_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
+    prev.playback != next.playback
 }

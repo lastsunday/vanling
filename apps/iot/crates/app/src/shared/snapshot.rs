@@ -1,11 +1,8 @@
-//! Device-level diagnostics: one snapshot fuses every subsystem the device exposes — the
-//! touch-path readout, display page, motion sample, audio envelope and one
-//! [`LightSnapshot`] per light surface — and fans out through pluggable
-//! [`DiagnosticsSink`]s.
+//! The frame snapshot: everything one frame of pages draws from, extracted together so the
+//! render layer never borrows the state it paints.
 
 use crate::shared::model::DeviceState;
-use crate::shared::model::PageSnapshot;
-use crate::shared::model::{AudioPhase, Health};
+use crate::shared::model::{AudioPhase, Health, NetworkView};
 use crate::shared::route::PageId;
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
@@ -14,10 +11,9 @@ use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 use iot_core::drivers::surface::MAX_LIGHTS;
 
-/// Capture state the Audio page draws: the phase driving the panel plus the envelope
-/// it should draw.
+/// What the Audio page draws: the phase driving the panel plus the envelope it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct AudioDiagnostics {
+pub struct AudioSnapshot {
     pub phase: AudioPhase,
     pub envelope: iot_core::drivers::audio::AudioEnvelope,
     pub elapsed_ms: u32,
@@ -29,11 +25,10 @@ pub struct AudioDiagnostics {
     pub health: Health,
 }
 
-/// Playback state the Speaker page draws: the phase the page is showing, the sound a
-/// tap would play, the mute latch, and the two tallies that make a busy finger visible —
-/// sounds started against taps that arrived over one and were therefore not heard.
+/// What the Speaker page draws: the phase, the sound a tap would play, the mute latch, and
+/// the two tallies that make a busy finger visible.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct PlaybackDiagnostics {
+pub struct PlaybackSnapshot {
     pub phase: PlaybackPhase,
     pub sound: Sound,
     pub muted: bool,
@@ -44,12 +39,12 @@ pub struct PlaybackDiagnostics {
 }
 
 impl DeviceState {
-    pub(crate) fn audio_diagnostics(&self) -> AudioDiagnostics {
+    pub(crate) fn audio_snapshot(&self) -> AudioSnapshot {
         let shown = match self.audio.phase {
             AudioPhase::Stopped => &self.audio.view.captured,
             AudioPhase::Recording | AudioPhase::Idle => &self.audio.view.live,
         };
-        AudioDiagnostics {
+        AudioSnapshot {
             phase: self.audio.phase,
             envelope: shown.envelope,
             elapsed_ms: shown.elapsed_ms,
@@ -59,8 +54,8 @@ impl DeviceState {
         }
     }
 
-    pub(crate) fn playback_diagnostics(&self) -> PlaybackDiagnostics {
-        PlaybackDiagnostics {
+    pub(crate) fn playback_snapshot(&self) -> PlaybackSnapshot {
+        PlaybackSnapshot {
             phase: self.playback.phase,
             sound: self.playback.sound,
             muted: self.playback.muted,
@@ -71,9 +66,7 @@ impl DeviceState {
     }
 }
 
-/// Breathing mode's full dimension set carried by a light snapshot so the panel can print
-/// every parameter the mode exposes; all zero outside breathing so the overlay's fixed rows
-/// still have a value to show.
+/// The breathing dimensions a light snapshot carries, zero outside breathing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct BreathSnapshot {
     pub period_ms: u16,
@@ -85,25 +78,19 @@ pub struct BreathSnapshot {
     pub saturation: u8,
 }
 
-/// The diagnostics' light snapshot — `(mode, brightness, hue)` plus the breathing
-/// dimensions — mirrors the primary hue/key material of one `state`'s light for the
-/// diagnostic digits: mode `0` off, `1` breathing, `2` solid; brightness the solid level or
-/// the breath's ceiling; hue the solid color or the breath's group head.
+/// One light's `(mode, brightness, hue)` plus its breathing dimensions: mode `0` off,
+/// `1` breathing, `2` solid.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct LightSnapshot {
     pub mode: u8,
     pub brightness: u8,
     pub hue: u8,
-    /// Breathing dimensions; all zero outside breathing.
     pub breath: BreathSnapshot,
 }
 
-/// The touch-path diagnostics drawn on a light surface, folded field by field out of
-/// [`DeviceState`](crate::shared::model::DeviceState): counter gaps between `taps` and `presses`
-/// localize dropped touches, `ghost` flags input trouble the classifier saw,
-/// `points`/`finger` carry the live per-finger readout.
+/// The touch-path counters and live points the debug overlay draws.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct TouchDiagnostics {
+pub struct TouchSnapshot {
     pub taps: u8,
     pub presses: u8,
     pub long_presses: u8,
@@ -124,35 +111,27 @@ pub struct TouchDiagnostics {
     pub chip_gesture_id: u8,
 }
 
-/// The on-surface diagnostics payload: touch-path counters/readout, display page, motion
-/// sample, and one [`LightSnapshot`] per light surface slot, fused so one diff carries the
-/// corner digits and the current page data.
+/// What each page publishes beyond the state it read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub struct Diagnostics {
-    pub touch: TouchDiagnostics,
+pub struct PageSnapshot {
+    pub network: NetworkView,
+}
+
+/// One frame's drawing data, extracted from the state so a renderer holds no reference into
+/// it. `demand` stays because the screen gates repaint and camera cadence on it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FrameSnapshot {
+    pub touch: TouchSnapshot,
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: PageId,
-    /// Where the link stands and what the last scan saw, as the network task last reported
-    /// them — copied whole rather than borrowed, so a sink holds no reference into the
-    /// state layer.
     pub link: LinkStatus,
-    /// The board's own address, for the Network page's header.
     pub mac: Option<[u8; 6]>,
     pub aps: Option<ApList>,
-    /// What each page publishes beyond the state it read: the Network edit session, the row a
-    /// passphrase is being typed for, and the last refusal.
     pub pages: PageSnapshot,
     pub motion: Option<MotionSample>,
     pub motion_counts: MotionCounts,
     pub motion_caps: MotionCapabilities,
-    pub audio: AudioDiagnostics,
-    pub playback: PlaybackDiagnostics,
-    /// Input intents the coordinator's ring had no room for, since boot.
-    pub dropped_intents: u32,
-}
-
-/// Consumer of the device diagnostic snapshot.
-pub trait DiagnosticsSink {
-    fn consume(&mut self, _diagnostics: &Diagnostics) {}
+    pub audio: AudioSnapshot,
+    pub playback: PlaybackSnapshot,
 }

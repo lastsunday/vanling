@@ -408,7 +408,13 @@ fn the_core_never_knows_the_app() {
 fn the_pixel_layer_names_no_product() {
     assert_no_reference(
         sources(&ui_src()),
-        &["iot_app", "PageId", "Diagnostics", "NetworkView", "vanling"],
+        &[
+            "iot_app",
+            "PageId",
+            "FrameSnapshot",
+            "NetworkView",
+            "vanling",
+        ],
     );
 }
 
@@ -656,7 +662,7 @@ fn the_page_table_is_a_leaf() {
         &[
             "crate::state",
             "crate::render",
-            "crate::shared::diagnostics",
+            "crate::shared::snapshot",
             "crate::pages",
         ],
     );
@@ -669,7 +675,7 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
         &[
             "crate::shared::route",
             "crate::render",
-            "crate::shared::diagnostics",
+            "crate::shared::snapshot",
             "crate::pages",
             "crate::state",
         ],
@@ -680,7 +686,7 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
 fn state_neither_draws_nor_snapshots_itself() {
     assert_no_reference(
         shipping_sources(&app_src().join("state")),
-        &["crate::render", "crate::shared::diagnostics"],
+        &["crate::render", "crate::shared::snapshot"],
     );
 }
 
@@ -722,7 +728,7 @@ fn drivers_never_reach_up() {
     let src = core_src().join("drivers");
     // The bare word names core's own `PageSurface` and `SurfaceRole::Pages`; a product page
     // can only reach a driver by naming a variant, so that is the token to forbid.
-    let upward = &["iot_app", "PageId::", "Diagnostics"];
+    let upward = &["iot_app", "PageId::", "FrameSnapshot"];
     let mut plain = Vec::new();
     let mut surface = Vec::new();
     for (path, text) in shipping_sources(&src) {
@@ -737,9 +743,9 @@ fn drivers_never_reach_up() {
 }
 
 #[test]
-fn diagnostics_snapshots_without_drawing() {
+fn the_frame_snapshot_without_drawing() {
     assert_no_reference(
-        shipping_source(app_src().join("shared/diagnostics.rs")),
+        shipping_source(app_src().join("shared/snapshot.rs")),
         &["crate::render"],
     );
 }
@@ -781,7 +787,7 @@ fn the_shared_buckets_are_the_five_the_taxonomy_names() {
     found.sort();
     assert_eq!(
         found,
-        ["diagnostics", "intent", "kit", "model", "route"],
+        ["intent", "kit", "model", "route", "snapshot"],
         "shared/ is one bucket per change reason; a new one must say why it is not a page's"
     );
 }
@@ -797,7 +803,7 @@ fn every_shared_bucket_has_two_product_readers() {
             !path.starts_with(src.join("bench")) && !path.starts_with(src.join("bin"))
         })
         .collect();
-    for bucket in ["diagnostics", "intent", "kit", "model", "route"] {
+    for bucket in ["intent", "kit", "model", "route", "snapshot"] {
         let dir = shared.join(bucket);
         let file = shared.join(format!("{bucket}.rs"));
         let own = if dir.is_dir() { dir } else { file };

@@ -8,11 +8,13 @@ mod view;
 #[cfg(test)]
 mod tests;
 
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent};
-use crate::shared::model::{Command, DeviceState, NetworkView, PageSnapshot};
+use crate::shared::kit::painter::Painter;
+use crate::shared::model::{Command, DeviceState, NetworkView};
+use crate::shared::snapshot::FrameSnapshot;
+use crate::shared::snapshot::PageSnapshot;
 
 /// The page owns the one edit session the link never writes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -47,11 +49,33 @@ impl super::Page for NetworkPage {
     fn publish(&self, out: &mut PageSnapshot) {
         out.network = self.draft;
     }
-}
 
-impl super::LocalPage for NetworkPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         controller::bind(op, state, self.draft)
+    }
+
+    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
+        let link = snapshot.link;
+        let aps = snapshot.aps;
+        let setup = snapshot.pages.network;
+        let shown_ap = if setup.keyboard {
+            setup.selected
+        } else {
+            link.ap.or(setup.selected)
+        };
+
+        controller::each_band(setup, link, |band| match band {
+            controller::Band::Header => painter.draw_header(
+                setup,
+                link,
+                shown_ap,
+                snapshot.mac,
+                aps.filter(|list| !list.is_empty()).map(|list| list.len()),
+            ),
+            controller::Band::Content => painter.draw_content(setup, link, aps),
+            controller::Band::Controls => painter.draw_strip(setup, link),
+            controller::Band::Overlay => painter.draw_box(setup, link, shown_ap, snapshot.mac),
+        });
     }
 
     fn on_hide(&mut self) {
@@ -59,7 +83,7 @@ impl super::LocalPage for NetworkPage {
     }
 }
 
-fn network_moved(prev: &Diagnostics, next: &Diagnostics) -> bool {
+fn network_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
     prev.link != next.link
         || prev.aps != next.aps
         || prev.pages != next.pages

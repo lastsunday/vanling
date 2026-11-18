@@ -151,7 +151,7 @@ impl DemandKey {
 
 /// A demand holds at most this many claims: the four devices plus the interaction path, and
 /// room for a second unit of any one of them. Fixed capacity keeps the record `Copy`, and it
-/// rides in the diagnostics snapshot, which is rebuilt and compared every frame — a map here
+/// rides in the frame snapshot, which is rebuilt and compared every frame — a map here
 /// allocated on every proposal, every snapshot and every appearance.
 const CLAIM_CAPACITY: usize = 8;
 
@@ -723,7 +723,7 @@ mod tests {
     }
 
     #[test]
-    fn every_kind_the_diagnostics_print_is_a_kind_the_override_reads() {
+    fn every_kind_the_overlay_prints_is_a_kind_the_override_reads() {
         use alloc::format;
         for kind in DemandKind::ALL {
             let term = format!("{}=off", kind.name());

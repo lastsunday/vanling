@@ -20,7 +20,7 @@ impl DeviceManager {
     /// cannot do itself.
     ///
     /// The two input halves touch different fields: the write lands in `touch`/`motion`, which
-    /// only renderers and diagnostics read, while the translation reads the page, the lights and
+    /// only renderers and the frame snapshot read, while the translation reads the page, the lights and
     /// the link. Their order is a reading order, not a dependency.
     pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
         let business = match intent {

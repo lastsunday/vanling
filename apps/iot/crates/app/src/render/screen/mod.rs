@@ -4,7 +4,7 @@ mod painter;
 mod repaint;
 
 pub use self::painter::AppPainter;
-pub use self::repaint::{diag_repaint_due, windowed_percent, windowed_rate};
+pub use self::repaint::{frame_repaint_due, windowed_percent, windowed_rate};
 
 use alloc::boxed::Box;
 use core::any::Any;
@@ -14,9 +14,9 @@ use core::pin::Pin;
 use crate::pages::{camera_frames, ground};
 use crate::render::common::ColorDriver;
 use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::model::LightState;
 use crate::shared::route::PageId;
+use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::{DemandKey, Mode};
 use iot_core::drivers::camera::{CameraSnapshot, FrameSource};
 use iot_core::drivers::surface::{PageSurface, PanelContext, PanelPainter, PanelTarget};
@@ -50,7 +50,7 @@ pub struct ScreenRenderer {
     /// The painter the product injected, and the snapshot gate it is handed.
     painter: Option<Box<dyn PanelPainter>>,
     debug: bool,
-    last_diagnostics: Option<Diagnostics>,
+    last_snapshot: Option<FrameSnapshot>,
     last_repaint_ms: u32,
     /// The cadence the last snapshot's camera claim asked for, passed through to the
     /// surface rather than read there.
@@ -62,13 +62,13 @@ impl ScreenRenderer {
         Self {
             instance,
             surface,
-            consumers: [Consumer::Surface(instance), Consumer::Diagnostics],
+            consumers: [Consumer::Surface(instance), Consumer::Screen],
             color: ColorDriver::new(),
             appearance: None,
             page: None,
             painter: None,
             debug: false,
-            last_diagnostics: None,
+            last_snapshot: None,
             last_repaint_ms: 0,
             camera_period_ms: 0,
         }
@@ -124,9 +124,9 @@ impl Renderer for ScreenRenderer {
 
     fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {
         match appearance {
-            Appearance::Diagnostics(diagnostics) => {
-                let page_changed = self.page != Some(diagnostics.page);
-                let camera = diagnostics.demand.claim(DemandKey::CAMERA);
+            Appearance::Screen(frame) => {
+                let page_changed = self.page != Some(frame.page);
+                let camera = frame.demand.claim(DemandKey::CAMERA);
                 self.camera_period_ms = camera.period_ms;
                 // Handing the buffer back belongs to this side of the boundary: a chain
                 // left running would overwrite every fill after it a row at a time, and
@@ -135,19 +135,19 @@ impl Renderer for ScreenRenderer {
                 if !camera.mode.is_collecting() {
                     self.surface.release_camera();
                 }
-                let previous = self.last_diagnostics.replace(diagnostics);
+                let previous = self.last_snapshot.replace(frame);
                 let repaint = previous.as_ref().is_none_or(|prev| {
-                    diag_repaint_due(
+                    frame_repaint_due(
                         prev.page,
                         prev,
-                        &diagnostics,
+                        &frame,
                         u64::from(now_ms.wrapping_sub(self.last_repaint_ms)),
                         self.debug,
                     )
                 });
-                self.page = Some(diagnostics.page);
+                self.page = Some(frame.page);
                 self.color
-                    .set_display(diagnostics.demand.claim(DemandKey::DISPLAY).mode);
+                    .set_display(frame.demand.claim(DemandKey::DISPLAY).mode);
                 match self.color.display() {
                     Mode::Off => {
                         self.surface.set_backlight_ceiling(0);
@@ -163,7 +163,7 @@ impl Renderer for ScreenRenderer {
                     self.color.forget();
                     self.present(now_ms);
                 }
-                if (page_changed || repaint) && self.repaint(&diagnostics, true) {
+                if (page_changed || repaint) && self.repaint(&frame, true) {
                     self.last_repaint_ms = now_ms;
                 }
                 if self.on_camera_page() {
@@ -181,10 +181,10 @@ impl Renderer for ScreenRenderer {
                 let Self {
                     surface,
                     painter,
-                    last_diagnostics,
+                    last_snapshot,
                     ..
                 } = self;
-                if let Some(snapshot) = last_diagnostics.as_ref() {
+                if let Some(snapshot) = last_snapshot.as_ref() {
                     let painter = painter.as_deref().unwrap_or(&NULL_PAINTER);
                     surface.repaint(painter, snapshot, false);
                 }
@@ -195,7 +195,7 @@ impl Renderer for ScreenRenderer {
 
     fn step(&mut self, now_ms: u32) -> Activity {
         if self.on_camera_page() {
-            let Some(snapshot) = self.last_diagnostics.as_ref() else {
+            let Some(snapshot) = self.last_snapshot.as_ref() else {
                 return Activity::TimeDriven;
             };
             let painter = self.painter.as_deref().unwrap_or(&NULL_PAINTER);
@@ -211,10 +211,10 @@ impl Renderer for ScreenRenderer {
                 let Self {
                     surface,
                     painter,
-                    last_diagnostics,
+                    last_snapshot,
                     ..
                 } = self;
-                if let Some(snapshot) = last_diagnostics.as_ref() {
+                if let Some(snapshot) = last_snapshot.as_ref() {
                     let painter = painter.as_deref().unwrap_or(&NULL_PAINTER);
                     surface.repaint(painter, snapshot, false);
                 }
@@ -237,14 +237,14 @@ fn breathing_activity(breathing: bool) -> Activity {
 mod tests {
     use super::*;
     use crate::render::light_appearance;
-    use crate::shared::diagnostics::Diagnostics;
+    use crate::shared::snapshot::FrameSnapshot;
     use crate::state::LightState;
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use iot_core::demand::{Claim, EffectiveDemand, Priority};
     use iot_core::drivers::camera::{CameraCounters, FrameAdvance, WindowGeometry};
     use iot_core::drivers::surface::RgbLight;
-    use iot_core::paint::Rgb;
+    use iot_core::light::Rgb;
 
     struct PanelState {
         fills: u32,
@@ -303,10 +303,6 @@ mod tests {
         }
     }
 
-    impl crate::shared::diagnostics::DiagnosticsSink for FakeScreen {
-        fn consume(&mut self, _diagnostics: &Diagnostics) {}
-    }
-
     impl iot_core::drivers::camera::CameraTarget for FakeScreen {
         fn paint_camera(
             &mut self,
@@ -336,10 +332,10 @@ mod tests {
             DemandKey::DISPLAY,
             Claim::new(display, 0, Priority::Primary),
         );
-        Appearance::Diagnostics(Diagnostics {
+        Appearance::Screen(FrameSnapshot {
             demand,
             page,
-            ..Diagnostics::default()
+            ..FrameSnapshot::default()
         })
     }
 
@@ -357,10 +353,10 @@ mod tests {
             DemandKey::CAMERA,
             Claim::new(Mode::Continuous, period_ms, Priority::Primary),
         );
-        Appearance::Diagnostics(Diagnostics {
+        Appearance::Screen(FrameSnapshot {
             demand,
             page,
-            ..Diagnostics::default()
+            ..FrameSnapshot::default()
         })
     }
 
@@ -585,10 +581,7 @@ mod tests {
             panel.borrow().camera,
             "a panel is what a camera can write into"
         );
-        assert_eq!(
-            r.consumers(),
-            &[Consumer::Surface(0), Consumer::Diagnostics]
-        );
+        assert_eq!(r.consumers(), &[Consumer::Surface(0), Consumer::Screen]);
     }
 
     struct NullCamera;

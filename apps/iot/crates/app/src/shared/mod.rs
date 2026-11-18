@@ -1,12 +1,12 @@
 //! Cross-page truth and vocabulary, one bucket per change reason: `model` (records), `route`
-//! (destinations), `intent` (inbound messages), `kit` (pixel primitives), `diagnostics` (the
-//! snapshot).
+//! (destinations), `intent` (inbound messages), `kit` (pixel primitives), `snapshot` (the
+//! frame and page views).
 //!
 //! A page's private state stays in the page. This is the leaf of the module graph: it may not
 //! name a layer that reads it.
 
-pub mod diagnostics;
 pub mod intent;
 pub mod kit;
 pub mod model;
 pub mod route;
+pub mod snapshot;

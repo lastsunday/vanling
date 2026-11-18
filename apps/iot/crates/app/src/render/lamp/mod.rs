@@ -20,7 +20,7 @@ impl LampRenderer {
         Self {
             instance,
             light,
-            consumers: [Consumer::Surface(instance), Consumer::Diagnostics],
+            consumers: [Consumer::Surface(instance), Consumer::Screen],
             color: ColorDriver::new(),
             appearance: None,
         }
@@ -50,9 +50,9 @@ impl Renderer for LampRenderer {
 
     fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {
         match appearance {
-            Appearance::Diagnostics(diagnostics) => {
+            Appearance::Screen(frame) => {
                 self.color
-                    .set_display(diagnostics.demand.claim(DemandKey::DISPLAY).mode);
+                    .set_display(frame.demand.claim(DemandKey::DISPLAY).mode);
                 if self.color.display() == Mode::Off {
                     self.color.stop();
                     return Activity::Idle;
@@ -83,12 +83,12 @@ impl Renderer for LampRenderer {
 mod tests {
     use super::*;
     use crate::render::light_appearance;
-    use crate::shared::diagnostics::Diagnostics;
+    use crate::shared::snapshot::FrameSnapshot;
     use crate::state::{LightState, PageId};
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use iot_core::demand::{Claim, EffectiveDemand, Mode, Priority};
-    use iot_core::paint::Rgb;
+    use iot_core::light::Rgb;
 
     struct LampState {
         writes: u32,
@@ -124,10 +124,10 @@ mod tests {
             DemandKey::DISPLAY,
             Claim::new(display, 0, Priority::Primary),
         );
-        Appearance::Diagnostics(Diagnostics {
+        Appearance::Screen(FrameSnapshot {
             demand,
             page: PageId::Network,
-            ..Diagnostics::default()
+            ..FrameSnapshot::default()
         })
     }
 

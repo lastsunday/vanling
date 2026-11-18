@@ -287,7 +287,7 @@ mod tests {
     fn the_boot_report_reaches_the_page_and_a_ready_clears_the_reason() {
         let mut manager = on_speaker();
         assert_eq!(
-            manager.state().playback_diagnostics().health,
+            manager.state().playback_snapshot().health,
             Health::Ready,
             "the page starts assuming nothing is wrong"
         );
@@ -295,13 +295,13 @@ mod tests {
             "no codec",
         )));
         assert_eq!(
-            manager.state().playback_diagnostics().health,
+            manager.state().playback_snapshot().health,
             Health::Down("no codec"),
             "the worker's boot report is what the page shows"
         );
         manager.apply_business(BusinessIntent::Playback(PlaybackAction::Ready));
         assert_eq!(
-            manager.state().playback_diagnostics().health,
+            manager.state().playback_snapshot().health,
             Health::Ready,
             "a later report clears NO OUT"
         );

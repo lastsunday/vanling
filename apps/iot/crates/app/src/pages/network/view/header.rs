@@ -12,8 +12,8 @@ use crate::pages::network::view::text::{
     format_address, format_bars, format_network_name, format_phase, format_psk, format_setup_name,
     format_window,
 };
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::placement::PANEL_RIGHT;
-use crate::shared::kit::surface::Surface;
 
 // Glyphs of the masked passphrase on the row above the keyboard: the whole row, so a draft
 // longer than it is marked rather than silently truncated.
@@ -64,8 +64,8 @@ const _: () = assert!(
     "the link's address runs into the address of the network its own row names"
 );
 
-impl Surface<'_> {
-    pub(super) fn draw_header(
+impl Painter<'_> {
+    pub(crate) fn draw_header(
         &mut self,
         draft: NetworkView,
         link: LinkStatus,
@@ -167,7 +167,6 @@ impl Surface<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::diagnostics::Diagnostics;
     use crate::shared::model::Entry;
     use alloc::vec;
     use alloc::vec::Vec;
@@ -184,11 +183,10 @@ mod tests {
 
     fn header(draft: NetworkView, link: LinkStatus, shown_ap: Option<AccessPoint>) -> Vec<u8> {
         let mut frame = vec![0u8; PANEL_COLUMNS * PANEL_ROWS * 2];
-        let diagnostics = Diagnostics::default();
         {
             let canvas = Canvas::new(&mut frame, PANEL_COLUMNS, PANEL_ROWS, None);
-            let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
-            surface.draw_header(draft, link, shown_ap, Some([0x02, 1, 2, 3, 4, 5]), Some(3));
+            let mut painter = Painter::new(canvas, 0, 60, false, 100);
+            painter.draw_header(draft, link, shown_ap, Some([0x02, 1, 2, 3, 4, 5]), Some(3));
         }
         frame
     }

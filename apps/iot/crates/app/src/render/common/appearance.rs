@@ -1,17 +1,17 @@
-//! What each light and the diagnostics overlay should look like, derived from state.
+//! What each consumer should show, derived from state.
 
-use crate::shared::diagnostics::{BreathSnapshot, Diagnostics, LightSnapshot, TouchDiagnostics};
-use crate::shared::model::{
-    Breath, DeviceState, LightState, MAX_LIGHTS, PageSnapshot, SurfaceRole,
+use crate::shared::model::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::snapshot::{
+    BreathSnapshot, FrameSnapshot, LightSnapshot, PageSnapshot, TouchSnapshot,
 };
 use iot_core::demand::EffectiveDemand;
-use iot_core::paint::{MODE_BREATH, MODE_OFF, MODE_SOLID, Rgb, rgb_hue, scale_brightness};
+use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID, Rgb, rgb_hue, scale_brightness};
 
-/// Who an appearance is for: one wired surface, or the diagnostics overlay.
+/// Who an appearance is for: one wired surface, or the page screen.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Consumer {
     Surface(u8),
-    Diagnostics,
+    Screen,
 }
 
 /// The declared appearance of the light, derived from state; breathing is the schedule, not
@@ -31,14 +31,14 @@ pub enum Appearance {
         instance: u8,
         appearance: LightAppearance,
     },
-    Diagnostics(Diagnostics),
+    Screen(FrameSnapshot),
 }
 
 impl Appearance {
     pub fn consumer(&self) -> Consumer {
         match self {
             Appearance::Surface { instance, .. } => Consumer::Surface(*instance),
-            Appearance::Diagnostics(_) => Consumer::Diagnostics,
+            Appearance::Screen(_) => Consumer::Screen,
         }
     }
 }
@@ -107,14 +107,14 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
     }
 }
 
-pub(crate) fn device_snapshot(
+pub(crate) fn frame_snapshot(
     state: &DeviceState,
     pages: PageSnapshot,
     demand: &EffectiveDemand,
-) -> Diagnostics {
-    Diagnostics {
+) -> FrameSnapshot {
+    FrameSnapshot {
         demand: *demand,
-        touch: TouchDiagnostics {
+        touch: TouchSnapshot {
             taps: state.touch.view.tap_count,
             presses: state.touch.view.press_count,
             long_presses: state.touch.view.long_press_count,
@@ -141,9 +141,8 @@ pub(crate) fn device_snapshot(
         motion: state.motion.sample,
         motion_counts: state.motion.counts,
         motion_caps: state.backed.motion_caps(),
-        audio: state.audio_diagnostics(),
-        playback: state.playback_diagnostics(),
-        dropped_intents: state.dropped_intents,
+        audio: state.audio_snapshot(),
+        playback: state.playback_snapshot(),
     }
 }
 
@@ -152,13 +151,13 @@ mod tests {
     use super::*;
     use crate::render::RenderController;
     use crate::render::test_support::*;
-    use crate::shared::diagnostics::{BreathSnapshot, LightSnapshot};
     use crate::shared::intent::{AudioIntent, BusinessIntent, NavigationIntent};
+    use crate::shared::snapshot::{BreathSnapshot, LightSnapshot};
     use crate::state::{AudioPhase, Backed, DeviceManager, PageId};
     use iot_core::demand::DemandKey;
     use iot_core::drivers::audio::{AudioEnvelope, AudioSample};
     use iot_core::drivers::network::{LinkStatus, SetupHost};
-    use iot_core::paint::{MODE_BREATH, MODE_OFF, MODE_SOLID};
+    use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID};
 
     #[test]
     fn the_board_address_reaches_the_panel_with_the_rest_of_the_header() {
@@ -166,7 +165,7 @@ mod tests {
         let mut state = state(LightState::boot());
         state.network.mac = Some(mac);
         assert_eq!(
-            device_snapshot(&state, PageSnapshot::default(), &EffectiveDemand::default()).mac,
+            frame_snapshot(&state, PageSnapshot::default(), &EffectiveDemand::default()).mac,
             Some(mac)
         );
     }
@@ -193,7 +192,7 @@ mod tests {
         };
         manager.apply_capture(poll);
         assert_eq!(
-            device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand())
+            frame_snapshot(&manager.state(), PageSnapshot::default(), manager.demand())
                 .audio
                 .phase,
             AudioPhase::Idle,
@@ -202,7 +201,7 @@ mod tests {
         manager.apply_business(BusinessIntent::Audio(AudioIntent::Start));
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         let recording =
-            device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand()).audio;
+            frame_snapshot(&manager.state(), PageSnapshot::default(), manager.demand()).audio;
         assert_eq!(recording.phase, AudioPhase::Recording);
         assert_eq!(
             recording.envelope, poll.envelope,
@@ -216,7 +215,7 @@ mod tests {
 
         manager.apply_business(BusinessIntent::Audio(AudioIntent::Stop));
         let stopped =
-            device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand()).audio;
+            frame_snapshot(&manager.state(), PageSnapshot::default(), manager.demand()).audio;
         assert_eq!(stopped.phase, AudioPhase::Stopped);
         assert_eq!(
             stopped.envelope, poll.envelope,
@@ -225,8 +224,8 @@ mod tests {
     }
 
     #[test]
-    fn the_diagnostics_projection_owns_every_state_domain() {
-        // Compile-time guard rather than a behaviour test: `device_snapshot` projects
+    fn the_frame_projection_owns_every_state_domain() {
+        // Compile-time guard rather than a behaviour test: `frame_snapshot` projects
         // `DeviceState` field by field, and a new domain must be looked at there instead of
         // silently reading as its `Default` on the panel.
         fn project_every_field(state: DeviceState) {
@@ -249,7 +248,7 @@ mod tests {
     }
 
     #[test]
-    fn press_and_frame_diagnostics_carry_coordinates() {
+    fn press_and_frame_snapshots_carry_coordinates() {
         let mut ctl = RenderController::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
@@ -264,12 +263,12 @@ mod tests {
             0,
         ));
         let state = manager.state();
-        let mut expected = diagnostics_for(state.lights[0]);
+        let mut expected = frame_for(state.lights[0]);
         expected.touch.presses = 1;
         expected.touch.points = [Some((42, 97)), None];
         assert_eq!(
             collect(&mut ctl, &state),
-            vec![Appearance::Diagnostics(expected)]
+            vec![Appearance::Screen(expected)]
         );
         let mut ctl = RenderController::new();
         let mut manager = landed();
@@ -300,17 +299,17 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Diagnostics(diagnostics) = seen[0] else {
-            panic!("first diff must carry the diagnostics");
+        let Appearance::Screen(frame) = seen[0] else {
+            panic!("first diff must carry the frame");
         };
         assert_eq!(
-            (diagnostics.touch.frames, diagnostics.touch.points[0]),
+            (frame.touch.frames, frame.touch.points[0]),
             (2, Some((9, 10)))
         );
     }
 
     #[test]
-    fn swipe_chip_and_tap_reach_the_diagnostics() {
+    fn swipe_chip_and_tap_reach_the_frame() {
         let mut ctl = RenderController::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
@@ -335,18 +334,18 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Diagnostics(diagnostics) = seen[0] else {
-            panic!("first diff must carry the diagnostics");
+        let Appearance::Screen(frame) = seen[0] else {
+            panic!("first diff must carry the frame");
         };
-        assert_eq!(diagnostics.touch.swipes, 1);
+        assert_eq!(frame.touch.swipes, 1);
         assert_eq!(
-            diagnostics.touch.last_swipe_dir,
+            frame.touch.last_swipe_dir,
             iot_core::drivers::input::SwipeDirection::Up.code()
         );
-        assert_eq!(diagnostics.touch.last_swipe_dist, 99);
-        assert_eq!(diagnostics.touch.last_gesture_origin, Some((20, 90)));
-        assert_eq!(diagnostics.touch.last_gesture_end, Some((20, 15)));
-        assert_eq!(diagnostics.touch.chip_gesture_id, 0x10);
+        assert_eq!(frame.touch.last_swipe_dist, 99);
+        assert_eq!(frame.touch.last_gesture_origin, Some((20, 90)));
+        assert_eq!(frame.touch.last_gesture_end, Some((20, 15)));
+        assert_eq!(frame.touch.chip_gesture_id, 0x10);
         let mut ctl = RenderController::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
@@ -364,13 +363,13 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Diagnostics(diagnostics) = seen[0] else {
-            panic!("first diff must carry the diagnostics");
+        let Appearance::Screen(frame) = seen[0] else {
+            panic!("first diff must carry the frame");
         };
-        assert_eq!(diagnostics.touch.taps, 1);
-        assert_eq!(diagnostics.touch.held_ms, 590);
+        assert_eq!(frame.touch.taps, 1);
+        assert_eq!(frame.touch.held_ms, 590);
         assert_eq!(
-            diagnostics.touch.last_gesture_origin,
+            frame.touch.last_gesture_origin,
             Some((5, 7)),
             "a tap reports its touch point"
         );
@@ -554,13 +553,13 @@ mod tests {
             iot_core::demand::Mode::Off
         );
 
-        let snapshot = device_snapshot(&manager.state(), PageSnapshot::default(), manager.demand());
+        let snapshot = frame_snapshot(&manager.state(), PageSnapshot::default(), manager.demand());
         assert_eq!(
             snapshot.demand.claim(DemandKey::AUDIO).mode,
             iot_core::demand::Mode::Off
         );
         assert_eq!(
-            device_snapshot(&manager.state(), PageSnapshot::default(), &quiet)
+            frame_snapshot(&manager.state(), PageSnapshot::default(), &quiet)
                 .demand
                 .claim(DemandKey::AUDIO)
                 .mode,

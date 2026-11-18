@@ -1,13 +1,14 @@
 use iot_core::drivers::motion::MotionCapabilities;
+use iot_core::light::Rgb;
 use iot_core::overlay::{Block, block_x, overlay_row_top};
-use iot_core::paint::Rgb;
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::placement::LAST_BLOCK_ROW;
-use crate::shared::kit::surface::Surface;
 use crate::shared::kit::text::format_u16;
 use crate::shared::kit::text::{NOT_AVAILABLE, format_i32, format_tenths};
 use crate::shared::model::DeviceState;
+use crate::shared::snapshot::FrameSnapshot;
 
 /// The attitude dial reads the motion sample and nothing else.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -18,39 +19,22 @@ pub(super) const CAMERA_FRAMES: bool = false;
 pub(super) const REPAINT_MS: u64 = super::REPAINT_FLOOR_MS;
 pub(super) const REPAINTS: super::Repaint = super::Repaint::Always;
 
-impl super::Page for AttitudePage {}
-
-impl super::LocalPage for AttitudePage {
+impl super::Page for AttitudePage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         super::lamp(op, state)
     }
-}
 
-const ESTIMATOR_ROWS: usize = 4;
-const MOTION_SEMANTIC_ROWS: usize = 14;
-const ATTITUDE_LAST_AXIS_ROW: usize = 15;
-
-const _: () = assert!(
-    ESTIMATOR_ROWS + MOTION_SEMANTIC_ROWS <= LAST_BLOCK_ROW + 1,
-    "the attitude page's second block runs off the bottom of the panel"
-);
-const _: () = assert!(
-    ATTITUDE_LAST_AXIS_ROW <= LAST_BLOCK_ROW,
-    "the attitude page's first block runs off the bottom of the panel"
-);
-
-impl Surface<'_> {
-    pub(crate) fn paint_attitude(&mut self) {
-        self.draw_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
-        let Some(sample) = self.diagnostics.motion else {
-            self.draw_left(b"ERR", b"WAIT", Block::First, 1);
+    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
+        painter.draw_text(b"ATTITUDE", block_x(Block::First), overlay_row_top(0));
+        let Some(sample) = snapshot.motion else {
+            painter.draw_left(b"ERR", b"WAIT", Block::First, 1);
             return;
         };
         if !sample.valid {
-            self.draw_left(b"ERR", b"READ", Block::First, 1);
+            painter.draw_left(b"ERR", b"READ", Block::First, 1);
             return;
         }
-        self.draw_horizon(&sample);
+        painter.draw_horizon(&sample);
 
         const BLOCKS: [(u8, usize); 5] = [(b'A', 1), (b'M', 4), (b'G', 7), (b'D', 10), (b'R', 13)];
         for &(prefix, first_row) in &BLOCKS {
@@ -63,7 +47,7 @@ impl Surface<'_> {
                     b'D' => format_tenths(sample.gyro_dps_x10[axis], &mut buf),
                     _ => format_tenths(i32::from(sample.tilt_deg_x10[axis]), &mut buf),
                 };
-                self.draw_left(
+                painter.draw_left(
                     &[prefix, b'0' + axis as u8],
                     value,
                     Block::First,
@@ -71,32 +55,32 @@ impl Surface<'_> {
                 );
             }
         }
-        self.draw_left(
+        painter.draw_left(
             b"ST",
             format_u16(u16::from(sample.status), &mut [0; 6]),
             Block::Second,
             0,
         );
-        self.draw_left(
+        painter.draw_left(
             b"LR",
             format_i32(sample.gravity_deviation_mg, &mut [0; 12]),
             Block::Second,
             1,
         );
-        self.draw_left(
+        painter.draw_left(
             b"SR",
             format_i32(sample.shake_residual_mg, &mut [0; 12]),
             Block::Second,
             2,
         );
-        self.draw_left(
+        painter.draw_left(
             b"TR",
             format_i32(sample.tap_residual_mg, &mut [0; 12]),
             Block::Second,
             3,
         );
-        let counts = self.diagnostics.motion_counts;
-        let caps = self.diagnostics.motion_caps;
+        let counts = snapshot.motion_counts;
+        let caps = snapshot.motion_caps;
         let rows: [(&[u8], MotionCapabilities, u16); MOTION_SEMANTIC_ROWS] = [
             (b"TAP".as_slice(), MotionCapabilities::TAP, counts.taps),
             (
@@ -156,7 +140,20 @@ impl Surface<'_> {
             } else {
                 NOT_AVAILABLE
             };
-            self.draw_left(label, value, Block::Second, ESTIMATOR_ROWS + index);
+            painter.draw_left(label, value, Block::Second, ESTIMATOR_ROWS + index);
         }
     }
 }
+
+const ESTIMATOR_ROWS: usize = 4;
+const MOTION_SEMANTIC_ROWS: usize = 14;
+const ATTITUDE_LAST_AXIS_ROW: usize = 15;
+
+const _: () = assert!(
+    ESTIMATOR_ROWS + MOTION_SEMANTIC_ROWS <= LAST_BLOCK_ROW + 1,
+    "the attitude page's second block runs off the bottom of the panel"
+);
+const _: () = assert!(
+    ATTITUDE_LAST_AXIS_ROW <= LAST_BLOCK_ROW,
+    "the attitude page's first block runs off the bottom of the panel"
+);

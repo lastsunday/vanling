@@ -3,8 +3,8 @@
 //! record reads [`NetworkState`] and never writes it, so a report from the worker cannot land
 //! in a page field and a page edit cannot change what the radio said.
 //!
-//! The type lives beside the other shared records because [`PageSnapshot`](super::PageSnapshot)
-//! carries it; the one instance belongs to the page.
+//! The type lives beside the other shared records because the frame snapshot carries it; the
+//! one instance belongs to the page.
 
 use crate::shared::intent::Key;
 use crate::shared::intent::NetworkPageIntent;

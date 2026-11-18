@@ -1,6 +1,5 @@
 //! The records more than one page reads: what the workers write and the render loop observes,
-//! plus the aggregates that compose them. The pages' published view lives here too, so the
-//! snapshot the renderers diff can name it without naming a page.
+//! plus the aggregates that compose them.
 //!
 //! Records only: nothing here paints, drives a pin or opens a file, so every record compiles
 //! for a host test with no board attached.
@@ -22,8 +21,6 @@ mod motion;
 mod network;
 
 mod network_view;
-
-mod page;
 
 mod playback;
 
@@ -48,8 +45,6 @@ pub use self::motion::MotionState;
 pub use self::network::NetworkState;
 
 pub use self::network_view::{Entry, LIST_ROWS, NetworkView, SetupWait};
-
-pub use self::page::PageSnapshot;
 
 pub use iot_core::drivers::network::NetworkCommand;
 

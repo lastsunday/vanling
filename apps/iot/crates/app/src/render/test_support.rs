@@ -1,10 +1,11 @@
 //! Fixtures shared by the render layer's tests.
 
-use crate::render::common::device_snapshot;
+use crate::render::common::frame_snapshot;
 use crate::render::{Appearance, LightAppearance, RenderController};
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, NavigationIntent};
-use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, PageSnapshot};
+use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS};
+use crate::shared::snapshot::FrameSnapshot;
+use crate::shared::snapshot::PageSnapshot;
 use crate::state::DeviceManager;
 use iot_core::demand::EffectiveDemand;
 
@@ -44,8 +45,8 @@ pub(super) fn landed() -> DeviceManager {
     manager
 }
 
-pub(super) fn diagnostics_for(light: LightState) -> Diagnostics {
-    device_snapshot(
+pub(super) fn frame_for(light: LightState) -> FrameSnapshot {
+    frame_snapshot(
         &state(light),
         PageSnapshot::default(),
         &EffectiveDemand::default(),
@@ -59,7 +60,7 @@ pub(super) fn light_appearances(seen: Vec<Appearance>) -> Vec<(u8, LightAppearan
                 instance,
                 appearance,
             } => Some((instance, appearance)),
-            Appearance::Diagnostics(_) => None,
+            Appearance::Screen(_) => None,
         })
         .collect()
 }

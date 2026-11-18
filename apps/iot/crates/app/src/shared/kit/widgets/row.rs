@@ -4,10 +4,10 @@
 use iot_core::drivers::audio::spl;
 use iot_core::overlay::{Block, block_value_x, block_x, level_columns, overlay_row_top};
 
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::text::format_i32;
 
-impl Surface<'_> {
+impl Painter<'_> {
     /// A label and its value on one row of `block`.
     pub(crate) fn draw_left(&mut self, label: &[u8], value: &[u8], block: Block, row: usize) {
         let top = overlay_row_top(row);

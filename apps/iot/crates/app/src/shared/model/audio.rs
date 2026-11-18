@@ -126,13 +126,13 @@ mod tests {
         lost.fault = Some("the codec did not answer on I2C");
         manager.apply_capture(lost);
         assert_eq!(
-            manager.state().audio_diagnostics().health,
+            manager.state().audio_snapshot().health,
             Health::Down("the codec did not answer on I2C"),
             "a fault reaches the page instead of dropping the part"
         );
         manager.apply_capture(loud(1_000));
         assert_eq!(
-            manager.state().audio_diagnostics().health,
+            manager.state().audio_snapshot().health,
             Health::Ready,
             "the next clean sample clears it, so the page can leave NO IN"
         );

@@ -6,7 +6,7 @@ use core::future::Future;
 use core::pin::Pin;
 
 use crate::drivers::camera::{CameraSnapshot, CameraTarget};
-use crate::paint::Rgb;
+use crate::light::Rgb;
 
 /// The frame a board hands to the product's painter: the bytes it owns, and the colour the
 /// light already put under them. Nothing here names a page or a snapshot type.

@@ -1,8 +1,8 @@
 //! The product's pages, one vertical slice each: a page and what it owns live in one file or
 //! one directory, and that is the unit of cohesion.
 //!
-//! [`Page`] is what every client shares; [`LocalPage`] is what the client showing the page
-//! answers. A new page names itself here and the compiler lists the rest.
+//! [`Page`] is what the app asks a page: apply an intent, publish its view, bind a gesture,
+//! paint its picture. A new page names itself here and the compiler lists the rest.
 
 pub mod ambient;
 pub mod attitude;
@@ -13,13 +13,14 @@ pub mod network;
 pub mod speaker;
 pub mod splash;
 
-use crate::shared::diagnostics::Diagnostics;
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
-use crate::shared::kit::surface::Surface;
-use crate::shared::model::{Command, DeviceState, PageSnapshot};
+use crate::shared::kit::painter::Painter;
+use crate::shared::model::{Command, DeviceState};
 use crate::shared::route::PageId;
+use crate::shared::snapshot::FrameSnapshot;
+use crate::shared::snapshot::PageSnapshot;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
 use self::ambient::AmbientPage;
 use self::attitude::AttitudePage;
@@ -30,21 +31,23 @@ use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 
-/// What every client of a page shares: the intent it applies, the view it publishes. Both
-/// default to nothing, so a page implements only what it owns.
+/// What the app asks a page: the intent it applies, the view it publishes, what one gesture
+/// means, its picture, and when it becomes or stops being current.
 pub trait Page {
     fn apply(&mut self, _intent: &BusinessIntent, _state: &DeviceState) -> Option<Command> {
         None
     }
 
     fn publish(&self, _out: &mut PageSnapshot) {}
-}
 
-/// What a page answers for the client showing it: what one gesture means, and when it becomes
-/// or stops being current. The hooks run on every board, display or not.
-pub trait LocalPage: Page {
     /// What one gesture means on this page.
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
+
+    /// The page's picture, drawn from the frame snapshot. `where Self: Sized` keeps
+    /// `&dyn Page` dyn-compatible for the gesture table.
+    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>)
+    where
+        Self: Sized;
 
     /// The page is now the current one. Also runs at boot, for the page the splash lands on.
     fn on_show(&mut self) {}
@@ -69,7 +72,7 @@ pub struct PageSet {
 
 impl PageSet {
     /// The page a route names, for the local gesture table.
-    pub fn get(&self, page: PageId) -> &dyn LocalPage {
+    pub fn get(&self, page: PageId) -> &dyn Page {
         match page {
             PageId::Ambient => &self.ambient,
             PageId::Attitude => &self.attitude,
@@ -110,7 +113,7 @@ impl PageSet {
         self.get_mut(page).on_hide();
     }
 
-    fn get_mut(&mut self, page: PageId) -> &mut dyn LocalPage {
+    fn get_mut(&mut self, page: PageId) -> &mut dyn Page {
         match page {
             PageId::Ambient => &mut self.ambient,
             PageId::Attitude => &mut self.attitude,
@@ -124,26 +127,26 @@ impl PageSet {
     }
 }
 
-/// The least wall time between diagnostics-driven repaints, before a page raises it: a repaint
+/// The least wall time between snapshot-driven repaints, before a page raises it: a repaint
 /// ships the whole frame down one blocking transfer (~15 ms), and the live pages would
 /// otherwise repaint every snapshot.
 pub const REPAINT_FLOOR_MS: u64 = 40;
 
-/// When a diagnostics drift earns a repaint, as each page declares it.
+/// When a frame drift earns a repaint, as each page declares it.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Repaint {
-    /// The page's changes arrive outside diagnostics.
+    /// The page's changes arrive outside the frame snapshot.
     Never,
     /// Every step, snapshot or not.
     Always,
     /// Only while the debug overlay is up, which is the page's only drawing.
     Overlay,
     /// When the page's own snapshot fields moved.
-    When(fn(&Diagnostics, &Diagnostics) -> bool),
+    When(fn(&FrameSnapshot, &FrameSnapshot) -> bool),
 }
 
 impl Repaint {
-    fn due(self, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
+    fn due(self, prev: &FrameSnapshot, next: &FrameSnapshot, overlay: bool) -> bool {
         match self {
             Self::Never => false,
             Self::Always => true,
@@ -155,19 +158,19 @@ impl Repaint {
 
 /// Paints the page, plus the debug badge every page but the camera carries: camera frames
 /// arrive outside this dispatch, so that page paints its own badge.
-pub fn paint(page: PageId, surface: &mut Surface<'_>) {
+pub fn paint(page: PageId, snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
     match page {
-        PageId::Splash => surface.paint_splash(),
-        PageId::Attitude => surface.paint_attitude(),
-        PageId::Audio => surface.paint_audio(),
-        PageId::Speaker => surface.paint_speaker(),
-        PageId::Camera => camera::paint(surface),
-        PageId::Network => surface.paint_network(),
-        PageId::Env => surface.paint_env(),
-        PageId::Ambient => surface.paint_ambient(),
+        PageId::Splash => SplashPage::paint(snapshot, painter),
+        PageId::Attitude => AttitudePage::paint(snapshot, painter),
+        PageId::Audio => AudioPage::paint(snapshot, painter),
+        PageId::Speaker => SpeakerPage::paint(snapshot, painter),
+        PageId::Camera => CameraPage::paint(snapshot, painter),
+        PageId::Network => NetworkPage::paint(snapshot, painter),
+        PageId::Env => EnvPage::paint(snapshot, painter),
+        PageId::Ambient => AmbientPage::paint(snapshot, painter),
     }
-    if surface.debug && page != PageId::Camera {
-        surface.draw_fps();
+    if painter.debug && page != PageId::Camera {
+        painter.draw_fps();
     }
 }
 
@@ -200,7 +203,7 @@ pub fn camera_frames(page: PageId) -> bool {
     }
 }
 
-/// The least wall time this page waits between diagnostics-driven repaints.
+/// The least wall time this page waits between snapshot-driven repaints.
 pub fn repaint_step_ms(page: PageId) -> u64 {
     match page {
         PageId::Splash => splash::REPAINT_MS,
@@ -214,8 +217,13 @@ pub fn repaint_step_ms(page: PageId) -> u64 {
     }
 }
 
-/// Whether this pair of diagnostics snapshots earns a repaint.
-pub fn repaints_on(page: PageId, prev: &Diagnostics, next: &Diagnostics, overlay: bool) -> bool {
+/// Whether this pair of frame snapshots earns a repaint.
+pub fn repaints_on(
+    page: PageId,
+    prev: &FrameSnapshot,
+    next: &FrameSnapshot,
+    overlay: bool,
+) -> bool {
     let repaint = match page {
         PageId::Splash => splash::REPAINTS,
         PageId::Attitude => attitude::REPAINTS,

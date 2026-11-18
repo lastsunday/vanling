@@ -7,7 +7,7 @@ use iot_core::overlay::{
     overlay_row_top,
 };
 
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::text::format_i32;
 
 const SCOPE_DECIBEL_FLOOR: i16 = iot_core::drivers::audio::SCOPE_FLOOR_DECIBELS as i16;
@@ -114,7 +114,7 @@ fn format_span(buf: &mut [u8; 12]) -> &[u8] {
     &buf[..len]
 }
 
-impl Surface<'_> {
+impl Painter<'_> {
     // The meter: a logarithmic band, each column's A-weighted sustained level
     // solid and its peak dithered outside it. The sweep uses the readout's own
     // filter, so a low-frequency codec floor draws quiet. Drawing inverts, so
@@ -123,7 +123,7 @@ impl Surface<'_> {
     // land on the same decibel grid as the ruler.
     //
     // The columns and the clip age arrive as values rather than as a borrow of
-    // the envelope: the envelope is borrowed from the surface's snapshot, so
+    // the envelope: the envelope is borrowed from the painter's snapshot, so
     // holding it across the `&mut self` draws would either copy 1.6 KB onto the
     // stack or fail to borrow. The two arrays are 400 B each and are the sweep's
     // working set either way.

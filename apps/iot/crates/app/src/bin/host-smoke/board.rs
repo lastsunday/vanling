@@ -5,7 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 
 use embassy_time::{Duration, Timer};
-use iot_app::shared::diagnostics::Diagnostics;
+use iot_app::shared::snapshot::FrameSnapshot;
 use iot_app::state::{PageId, PlaybackPhase};
 use iot_core::config::MotionConfig;
 use iot_core::demand::{ClockSink, DemandKey, DemandKind, Speed, SpeedTable};
@@ -26,7 +26,7 @@ use iot_core::drivers::motion::{
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
 use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
 pub(super) static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());
 
@@ -205,10 +205,10 @@ impl PageSurface for HostLight {
         snapshot: &dyn core::any::Any,
         _force: bool,
     ) -> bool {
-        let Some(diagnostics) = snapshot.downcast_ref::<Diagnostics>() else {
+        let Some(frame) = snapshot.downcast_ref::<FrameSnapshot>() else {
             return false;
         };
-        self.consume(diagnostics);
+        self.consume(frame);
         false
     }
 }
@@ -290,48 +290,38 @@ impl CameraTarget for HostLight {
 }
 
 impl HostLight {
-    fn consume(&mut self, diagnostics: &Diagnostics) {
-        self.page = Some(diagnostics.page);
-        PAGES.lock().unwrap().push(diagnostics.page);
+    fn consume(&mut self, frame: &FrameSnapshot) {
+        self.page = Some(frame.page);
+        PAGES.lock().unwrap().push(frame.page);
         AUDIO_COLUMNS.fetch_max(
-            usize::from(diagnostics.audio.envelope.committed()),
+            usize::from(frame.audio.envelope.committed()),
             Ordering::SeqCst,
         );
-        AUDIO_RESTARTS.fetch_max(usize::from(diagnostics.audio.restarts), Ordering::SeqCst);
+        AUDIO_RESTARTS.fetch_max(usize::from(frame.audio.restarts), Ordering::SeqCst);
         AUDIO_PEAK_DB.fetch_max(
-            isize::from(dbfs(diagnostics.audio.envelope.loudest())),
+            isize::from(dbfs(frame.audio.envelope.loudest())),
             Ordering::SeqCst,
         );
-        AUDIO_DBA_LSB.fetch_max(usize::from(diagnostics.audio.dba_lsb), Ordering::SeqCst);
-        NETWORK_APS.fetch_max(
-            diagnostics.aps.map_or(0, |list| list.len()),
-            Ordering::SeqCst,
-        );
+        AUDIO_DBA_LSB.fetch_max(usize::from(frame.audio.dba_lsb), Ordering::SeqCst);
+        NETWORK_APS.fetch_max(frame.aps.map_or(0, |list| list.len()), Ordering::SeqCst);
         NETWORK_TYPED.fetch_max(
-            diagnostics
-                .pages
-                .network
-                .entry
-                .map_or(0, |entry| entry.len()),
+            frame.pages.network.entry.map_or(0, |entry| entry.len()),
             Ordering::SeqCst,
         );
         NETWORK_SAVED.fetch_max(
-            diagnostics.aps.map_or(0, |list| {
+            frame.aps.map_or(0, |list| {
                 (0..list.len())
                     .filter(|&index| list.is_saved(index))
                     .count()
             }),
             Ordering::SeqCst,
         );
-        PLAYBACK_PLAYS.fetch_max(usize::from(diagnostics.playback.plays), Ordering::SeqCst);
-        PLAYBACK_DROPPED.fetch_max(usize::from(diagnostics.playback.dropped), Ordering::SeqCst);
-        if diagnostics.playback.muted {
+        PLAYBACK_PLAYS.fetch_max(usize::from(frame.playback.plays), Ordering::SeqCst);
+        PLAYBACK_DROPPED.fetch_max(usize::from(frame.playback.dropped), Ordering::SeqCst);
+        if frame.playback.muted {
             PLAYBACK_EVER_MUTED.store(true, Ordering::SeqCst);
         }
-        PLAYBACK_PHASES
-            .lock()
-            .unwrap()
-            .push(diagnostics.playback.phase);
+        PLAYBACK_PHASES.lock().unwrap().push(frame.playback.phase);
     }
 }
 

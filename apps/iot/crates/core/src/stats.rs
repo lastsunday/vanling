@@ -1,4 +1,4 @@
-//! Whole-window arithmetic the board's frame accounting and the product's diagnostics share.
+//! Whole-window arithmetic the board's frame accounting and the product's overlay share.
 
 /// Repaint rate (frames per second) over one window, `0` for an empty or degenerate window.
 pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {

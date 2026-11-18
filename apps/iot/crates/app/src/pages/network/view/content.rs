@@ -7,8 +7,8 @@ use crate::pages::network::view::text::{
     HIDE_LABEL, NETWORK_NAME_GLYPHS, format_bars, format_network_name, key_label,
 };
 use crate::shared::intent::{Key, MAX_CANDIDATES};
+use crate::shared::kit::painter::Painter;
 use crate::shared::kit::placement::PANEL_RIGHT;
-use crate::shared::kit::surface::Surface;
 use crate::shared::kit::widgets::label::text_left;
 use crate::shared::model::{Entry, NetworkView};
 use iot_core::drivers::network::{ApList, LinkStatus, SSID_BYTES};
@@ -58,8 +58,8 @@ enum Mark {
     Candidate(usize),
 }
 
-impl Surface<'_> {
-    pub(super) fn draw_content(
+impl Painter<'_> {
+    pub(crate) fn draw_content(
         &mut self,
         draft: NetworkView,
         link: LinkStatus,

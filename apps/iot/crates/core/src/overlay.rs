@@ -1,4 +1,4 @@
-//! Where the on-panel diagnostics overlay puts each block of text.
+//! Where the on-panel debug overlay puts each block of text.
 
 /// The panel the layout below is built for, in panel columns/rows.
 pub const PANEL_COLUMNS: usize = 320;
@@ -22,11 +22,11 @@ pub const GLYPH_PITCH: usize = FONT_W + OVERLAY_GAP;
 /// Rows one glyph cell occupies, matching the 5x8 font the panel draws with: seven rows of
 /// cap and x-height, and the one descender row the cell has.
 pub const FONT_H: usize = 8;
-/// Vertical gap between diagnostics rows.
+/// Vertical gap between overlay rows.
 pub const OVERLAY_ROW_GAP: usize = 5;
-/// Distance between the top edges of adjacent diagnostics rows.
+/// Distance between the top edges of adjacent overlay rows.
 pub const ROW_PITCH: usize = FONT_H + OVERLAY_ROW_GAP;
-/// Top edge of the first diagnostics row, in panel rows.
+/// Top edge of the first overlay row, in panel rows.
 pub const OVERLAY_Y: usize = 8;
 
 /// The top edge of `row`, in panel rows.

@@ -3,7 +3,7 @@
 use iot_core::geometry::ControlRect;
 use iot_core::overlay::{FONT_H, GLYPH_PITCH, OVERLAY_GAP};
 
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 
 /// The panel width of a run of glyphs: the gap after the last one is not ink.
 pub(crate) fn text_width(text: &[u8]) -> usize {
@@ -15,7 +15,7 @@ pub(crate) fn text_left(rect: ControlRect, text: &[u8]) -> usize {
     rect.x + rect.w.saturating_sub(text_width(text)) / 2
 }
 
-impl Surface<'_> {
+impl Painter<'_> {
     /// Draws `text` over a filled block: the run the finger is on.
     pub(crate) fn draw_marked(&mut self, text: &[u8], left: usize, top: usize) {
         let (right, bottom) = (left + text_width(text), top + FONT_H);

@@ -1,8 +1,8 @@
 //! The pixels a page is drawn into, and the only marks there are.
 
 use crate::geometry::ControlRect;
+use crate::light::{Rgb, invert_rgb565, rgb565};
 use crate::overlay::{CONTENT_BOTTOM, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP};
-use crate::paint::{Rgb, invert_rgb565, rgb565};
 
 use super::font::FONT;
 
@@ -220,13 +220,13 @@ mod tests {
         for pixel in bytes.as_chunks_mut::<2>().0 {
             pixel.copy_from_slice(&ground);
         }
-        let mut canvas = Canvas::new(&mut bytes, WIDTH, TALL, Some(GROUND));
         for x in 6..12 {
             let offset = (10 * WIDTH + x) * 2;
             bytes[offset..offset + 2].copy_from_slice(&ink);
         }
         bytes[((10 * WIDTH) + 1) * 2..((10 * WIDTH) + 1) * 2 + 2].copy_from_slice(&ink);
 
+        let mut canvas = Canvas::new(&mut bytes, WIDTH, TALL, Some(GROUND));
         canvas.fill(ControlRect {
             x: 4,
             y: 8,

@@ -36,7 +36,7 @@ fn input_alone_never_moves_the_light() {
 }
 
 #[test]
-fn off_tap_full_path_records_diagnostics_and_keeps_off() {
+fn off_tap_full_path_records_the_frame_and_keeps_off() {
     let mut manager = DeviceManager::new();
     manager.apply_to(0, LightState::Off);
     let op = tap();
@@ -50,7 +50,7 @@ fn off_tap_full_path_records_diagnostics_and_keeps_off() {
 }
 
 #[test]
-fn off_swipe_full_path_records_diagnostics_and_keeps_off() {
+fn off_swipe_full_path_records_the_frame_and_keeps_off() {
     let mut manager = DeviceManager::new();
     manager.apply_to(0, LightState::Off);
     let op = swipe();

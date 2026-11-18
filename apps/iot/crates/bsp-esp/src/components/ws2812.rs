@@ -4,7 +4,7 @@ use esp_hal::rmt::TxChannelCreator;
 use esp_hal::time::Rate;
 use esp_hal_smartled::{RmtSmartLeds, WS2812_TIMING, color_order};
 use iot_core::drivers::surface::RgbLight;
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 use smart_leds::{RGB8, SmartLedsWrite};
 
 /// RMT base clock the WS2812 timing table is calibrated against; the RMT peripheral on the

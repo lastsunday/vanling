@@ -1,13 +1,14 @@
 //! The central judge: diffs successive state snapshots and reports only what moved.
 
-use crate::shared::diagnostics::Diagnostics;
-use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, PageSnapshot, SurfaceRole};
+use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::snapshot::FrameSnapshot;
+use crate::shared::snapshot::PageSnapshot;
 use alloc::boxed::Box;
 use core::future::Future;
 use core::pin::Pin;
 use iot_core::demand::EffectiveDemand;
 
-use super::appearance::{Appearance, Consumer, device_snapshot, light_appearance, status_lights};
+use super::appearance::{Appearance, Consumer, frame_snapshot, light_appearance, status_lights};
 
 /// How a renderer wants to be driven after an appearance sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -38,12 +39,12 @@ pub trait Renderer {
 /// reports only the appearances that changed, via a callback the render layer fans out to
 /// matching renderers.
 pub struct RenderController {
-    last: Option<Box<Snapshot>>,
+    last: Option<Box<Synced>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Snapshot {
-    diagnostics: Diagnostics,
+struct Synced {
+    frame: FrameSnapshot,
     lights: [LightState; MAX_LIGHTS],
 }
 
@@ -55,7 +56,7 @@ impl RenderController {
     /// Diff `state` against the last snapshot, invoking `notify` per changed consumer; the
     /// first call reports every known consumer.
     ///
-    /// What each consumer shows is selected from the state first — the diagnostics the screen
+    /// What each consumer shows is selected from the state first — the frame the screen
     /// reads, the appearance one surface reads — and only the consumers whose selection moved
     /// are notified. A renderer therefore never receives an appearance it would have to throw
     /// away, and the state is written once at the end, after the selections are compared.
@@ -66,11 +67,11 @@ impl RenderController {
         demand: &EffectiveDemand,
         mut notify: impl FnMut(Appearance),
     ) -> bool {
-        let next = Snapshot {
-            diagnostics: device_snapshot(state, pages, demand),
+        let next = Synced {
+            frame: frame_snapshot(state, pages, demand),
             lights: status_lights(state),
         };
-        let diagnostics_moved = self.last.as_deref() != Some(&next);
+        let frame_moved = self.last.as_deref() != Some(&next);
         let surfaces: [bool; MAX_LIGHTS] = core::array::from_fn(|instance| {
             state.surface_roles[instance] != SurfaceRole::Absent
                 && self
@@ -79,9 +80,9 @@ impl RenderController {
                     .is_none_or(|last| last.lights[instance] != next.lights[instance])
         });
         // The screen draws the lights as well as the page, so a surface moving is also a
-        // diagnostics move; the reverse is not true, and that is what this selection keeps.
-        if diagnostics_moved || surfaces.iter().any(|moved| *moved) {
-            notify(Appearance::Diagnostics(next.diagnostics));
+        // frame move; the reverse is not true, and that is what this selection keeps.
+        if frame_moved || surfaces.iter().any(|moved| *moved) {
+            notify(Appearance::Screen(next.frame));
         }
         for (instance, moved) in surfaces.iter().enumerate() {
             if *moved {
@@ -91,7 +92,7 @@ impl RenderController {
                 });
             }
         }
-        let changed = diagnostics_moved || surfaces.iter().any(|moved| *moved);
+        let changed = frame_moved || surfaces.iter().any(|moved| *moved);
         if changed {
             match &mut self.last {
                 Some(last) => **last = next,
@@ -112,7 +113,7 @@ impl RenderController {
                     last.lights[usize::from(DeviceState::light_index(instance))],
                 ),
             },
-            Consumer::Diagnostics => Appearance::Diagnostics(last.diagnostics),
+            Consumer::Screen => Appearance::Screen(last.frame),
         })
     }
 }
@@ -128,7 +129,7 @@ mod tests {
     use super::*;
     use crate::render::LightAppearance;
     use crate::render::test_support::*;
-    use iot_core::paint::Rgb;
+    use iot_core::light::Rgb;
 
     #[test]
     fn first_sync_reports_boot_then_silence() {
@@ -147,7 +148,7 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                Appearance::Diagnostics(diagnostics_for(LightState::boot())),
+                Appearance::Screen(frame_for(LightState::boot())),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Breathing(BOOT_BREATH)
@@ -196,7 +197,7 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &off),
             vec![
-                Appearance::Diagnostics(diagnostics_for(LightState::Off)),
+                Appearance::Screen(frame_for(LightState::Off)),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off
@@ -239,7 +240,7 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &target),
             vec![
-                Appearance::Diagnostics(diagnostics_for(target.lights[0])),
+                Appearance::Screen(frame_for(target.lights[0])),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(1, 2, 3))
@@ -257,7 +258,7 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &recolored),
             vec![
-                Appearance::Diagnostics(diagnostics_for(recolored.lights[0])),
+                Appearance::Screen(frame_for(recolored.lights[0])),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Color(Rgb(9, 9, 9))
@@ -280,10 +281,10 @@ mod tests {
             group_len: 3,
         }));
         let seen = collect(&mut ctl, &second);
-        assert_eq!(seen.len(), 3, "diagnostics ride along with the light diff");
+        assert_eq!(seen.len(), 3, "the frame rides along with the light diff");
         assert!(matches!(
             seen[0],
-            Appearance::Diagnostics(t) if t == diagnostics_for(second.lights[0])
+            Appearance::Screen(t) if t == frame_for(second.lights[0])
         ));
         assert!(matches!(
             seen[1],
@@ -349,8 +350,8 @@ mod tests {
             })
         );
         assert!(matches!(
-            ctl.current(Consumer::Diagnostics),
-            Some(Appearance::Diagnostics(_))
+            ctl.current(Consumer::Screen),
+            Some(Appearance::Screen(_))
         ));
         assert_eq!(
             ctl.current(Consumer::Surface(9)),
@@ -362,7 +363,7 @@ mod tests {
     }
 
     #[test]
-    fn diff_carries_diagnostics_before_surfaces_in_wiring_order() {
+    fn diff_carries_the_frame_before_surfaces_in_wiring_order() {
         let mut ctl = RenderController::new();
         let two = DeviceState {
             lights: [
@@ -378,7 +379,7 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                Appearance::Diagnostics(device_snapshot(
+                Appearance::Screen(frame_snapshot(
                     &two,
                     PageSnapshot::default(),
                     &EffectiveDemand::default()
@@ -393,8 +394,8 @@ mod tests {
                 },
             ]
         );
-        let Appearance::Diagnostics(d) = seen[0] else {
-            panic!("first diff must carry the diagnostics");
+        let Appearance::Screen(d) = seen[0] else {
+            panic!("first diff must carry the frame");
         };
         assert_eq!(d.lights.len(), MAX_LIGHTS);
         assert_eq!(d.lights[0].mode, 0);
@@ -414,7 +415,7 @@ mod tests {
         assert_eq!(
             collect(&mut ctl, &changed),
             vec![
-                Appearance::Diagnostics(device_snapshot(
+                Appearance::Screen(frame_snapshot(
                     &changed,
                     PageSnapshot::default(),
                     &EffectiveDemand::default()
@@ -424,12 +425,12 @@ mod tests {
                     appearance: LightAppearance::Color(Rgb(1, 2, 3)),
                 },
             ],
-            "only the moved surface and the diagnostics it carries are emitted"
+            "only the moved surface and the frame it carries are emitted"
         );
     }
 
     #[test]
-    fn diagnostics_change_emits_both_fields_before_light() {
+    fn frame_change_emits_both_fields_before_light() {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::boot()));
         let mut changed = state(LightState::Off);
@@ -437,7 +438,7 @@ mod tests {
         changed.touch.view.press_count = 9;
         changed.touch.view.long_press_count = 1;
         changed.touch.view.held_ms = 590;
-        let mut expected = diagnostics_for(LightState::Off);
+        let mut expected = frame_for(LightState::Off);
         expected.touch.taps = 7;
         expected.touch.presses = 9;
         expected.touch.long_presses = 1;
@@ -446,7 +447,7 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                Appearance::Diagnostics(expected),
+                Appearance::Screen(expected),
                 Appearance::Surface {
                     instance: 0,
                     appearance: LightAppearance::Off
@@ -460,26 +461,26 @@ mod tests {
     }
 
     #[test]
-    fn diagnostics_diff_only_sets_the_shifted_field() {
+    fn frame_diff_only_sets_the_shifted_field() {
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut ghost = state(LightState::Off);
         ghost.touch.view.ghost_count = 3;
-        let mut expected = diagnostics_for(LightState::Off);
+        let mut expected = frame_for(LightState::Off);
         expected.touch.ghost = 3;
         assert_eq!(
             collect(&mut ctl, &ghost),
-            vec![Appearance::Diagnostics(expected)]
+            vec![Appearance::Screen(expected)]
         );
         let mut ctl = RenderController::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut presses = state(LightState::Off);
         presses.touch.view.press_count = 1;
-        let mut expected = diagnostics_for(LightState::Off);
+        let mut expected = frame_for(LightState::Off);
         expected.touch.presses = 1;
         assert_eq!(
             collect(&mut ctl, &presses),
-            vec![Appearance::Diagnostics(expected)]
+            vec![Appearance::Screen(expected)]
         );
     }
 }

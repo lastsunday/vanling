@@ -8,10 +8,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::pages::{camera_frames, ground, paint};
-use crate::shared::diagnostics::Diagnostics;
-use crate::shared::kit::surface::Surface;
+use crate::shared::kit::painter::Painter;
 use crate::shared::route::PageId;
-use iot_core::paint::Rgb;
+use crate::shared::snapshot::FrameSnapshot;
+use iot_core::light::Rgb;
 use iot_core::ui::Canvas;
 
 const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
@@ -19,14 +19,14 @@ const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;
 
 fn render(page: PageId, debug: bool) -> Vec<u8> {
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
-    let diagnostics = Diagnostics {
+    let snapshot = FrameSnapshot {
         page,
-        ..Diagnostics::default()
+        ..FrameSnapshot::default()
     };
     {
         let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, ground(page));
-        let mut surface = Surface::new(canvas, &diagnostics, 0, 60, debug, 100);
-        paint(page, &mut surface);
+        let mut painter = Painter::new(canvas, 0, 60, debug, 100);
+        paint(page, &snapshot, &mut painter);
     }
     frame
 }
@@ -102,14 +102,10 @@ fn every_page_paints_something_and_does_it_the_same_way_twice() {
 #[test]
 fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
     let mut expected = render(PageId::Camera, false);
-    let diagnostics = Diagnostics {
-        page: PageId::Camera,
-        ..Diagnostics::default()
-    };
     {
         let canvas = Canvas::new(&mut expected, WIDTH, HEIGHT, None);
-        let mut surface = Surface::new(canvas, &diagnostics, 0, 60, false, 100);
-        surface.draw_fps();
+        let mut painter = Painter::new(canvas, 0, 60, false, 100);
+        painter.draw_fps();
     }
     assert_eq!(render(PageId::Camera, true), expected);
 }

@@ -71,7 +71,7 @@ const LCD_HEIGHT: u16 = 240;
 const _: () = assert!(
     LCD_WIDTH as usize == iot_core::overlay::PANEL_COLUMNS
         && LCD_HEIGHT as usize == iot_core::overlay::PANEL_ROWS,
-    "the panel this board mounts is not the shape the diagnostics layout is written for"
+    "the panel this board mounts is not the shape the overlay layout is written for"
 );
 
 const PCA9557_RETRY_ATTEMPTS: u8 = 5;

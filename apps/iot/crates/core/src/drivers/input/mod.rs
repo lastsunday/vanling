@@ -990,7 +990,7 @@ impl PollEntry {
         self.key
     }
 
-    /// The name the source behind this entry answers to in diagnostics.
+    /// The name the source behind this entry answers to in the overlay.
     pub fn name(&self) -> &'static str {
         self.source.name()
     }

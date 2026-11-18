@@ -2,7 +2,7 @@
 
 use alloc::boxed::Box;
 
-use crate::paint::Rgb;
+use crate::light::Rgb;
 
 /// What one call to [`FrameSource::advance`] found.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

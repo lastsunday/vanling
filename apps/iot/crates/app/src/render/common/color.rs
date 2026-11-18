@@ -4,7 +4,7 @@ use crate::render::LightAppearance;
 use crate::shared::model::Breath;
 use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
-use iot_core::paint::Rgb;
+use iot_core::light::Rgb;
 
 /// What one painted appearance is: nothing, one colour, or a breath that keeps moving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
