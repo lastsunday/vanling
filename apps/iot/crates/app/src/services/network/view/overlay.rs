@@ -1,11 +1,11 @@
 //! The overlay band: the confirmation, the setup announcement, and the join box.
 
-use crate::pages::network::controller::{ControlKind, answers, confirm_verb};
-use crate::pages::network::layout::{
+use crate::services::network::controller::{ControlKind, answers, confirm_verb};
+use crate::services::network::layout::{
     DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP, DIALOG_TOP, DIALOG_W,
     DIALOG_X, DialogChoice, dialog_answer_box,
 };
-use crate::pages::network::view::text::{
+use crate::services::network::view::text::{
     SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
     format_question, format_setup_notice_body, format_setup_pass, joining_body,
 };

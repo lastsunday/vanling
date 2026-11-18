@@ -8,7 +8,7 @@ use crate::shared::kit::bands::WAVE_TOP;
 use crate::shared::kit::painter::Painter;
 use crate::shared::kit::placement::PANEL_RIGHT;
 use crate::shared::kit::text::{format_dba, format_i32, format_u16};
-use crate::shared::model::{AudioPhase, DeviceState};
+use crate::shared::model::{AudioPhase, Command, DeviceState, Effects};
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::audio::{dbfs, spl};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
@@ -17,10 +17,21 @@ use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AudioPage;
 
-impl super::Service for AudioPage {}
+impl super::Service for AudioPage {
+    fn apply(
+        &mut self,
+        intent: &BusinessIntent,
+        state: &mut DeviceState,
+    ) -> (Option<Command>, Effects) {
+        if let BusinessIntent::Audio(intent) = intent {
+            state.audio.apply(*intent, state.backed.audio);
+        }
+        (None, Effects::default())
+    }
+}
 
 impl super::LocalPage for AudioPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
             | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
@@ -29,7 +40,7 @@ impl super::LocalPage for AudioPage {
                 } else {
                     AudioIntent::Start
                 };
-                BusinessIntent::Audio(intent)
+                Some(BusinessIntent::Audio(intent))
             }
             InputEvent::Button(ButtonEvent::DoubleClick) => {
                 state.light_intent(op, LightAction::Step)
@@ -41,7 +52,7 @@ impl super::LocalPage for AudioPage {
             InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
                 state.light_swipe(op, direction)
             }
-            _ => BusinessIntent::Invalid,
+            _ => None,
         }
     }
 

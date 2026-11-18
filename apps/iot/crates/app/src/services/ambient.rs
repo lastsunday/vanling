@@ -12,7 +12,7 @@ pub struct AmbientPage;
 impl super::Service for AmbientPage {}
 
 impl super::LocalPage for AmbientPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         super::lamp(op, state)
     }
 

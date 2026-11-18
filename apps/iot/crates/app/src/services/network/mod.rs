@@ -12,7 +12,7 @@ use iot_core::light::Rgb;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent};
 use crate::shared::kit::painter::Painter;
-use crate::shared::model::{Command, DeviceState, NetworkView};
+use crate::shared::model::{Command, DeviceState, Effects, NetworkView};
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
 
@@ -23,27 +23,34 @@ pub struct NetworkPage {
 }
 
 impl super::Service for NetworkPage {
-    fn apply(&mut self, intent: &BusinessIntent, state: &DeviceState) -> Option<Command> {
+    fn apply(
+        &mut self,
+        intent: &BusinessIntent,
+        state: &mut DeviceState,
+    ) -> (Option<Command>, Effects) {
         match intent {
-            BusinessIntent::Link(LinkIntent::Status(status)) => {
-                self.draft.on_link(*status);
-                None
+            BusinessIntent::Link(intent) => {
+                if let LinkIntent::Status(status) = intent {
+                    self.draft.on_link(*status);
+                }
+                (None, state.network.apply(*intent))
             }
-            BusinessIntent::NetworkPage(intent) => {
+            BusinessIntent::Network(intent) => (
                 self.draft
-                    .apply(*intent, &state.network, state.has_display())
-            }
-            BusinessIntent::Scan => {
-                self.draft.clamp_top(state.network.len());
-                None
-            }
-            _ => None,
+                    .apply(*intent, &state.network, state.has_display()),
+                Effects::default(),
+            ),
+            _ => (None, Effects::default()),
         }
+    }
+
+    fn on_scan(&mut self, state: &mut DeviceState) {
+        self.draft.clamp_top(state.network.len());
     }
 }
 
 impl super::LocalPage for NetworkPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         controller::bind(op, state, self.draft)
     }
 

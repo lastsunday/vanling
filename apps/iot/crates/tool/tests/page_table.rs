@@ -1,7 +1,7 @@
 //! The route table is written by hand, and this test holds the parts the compiler cannot.
 //!
 //! `route()` is an exhaustive match, so a variant without a row does not compile, and so are
-//! the answers a page gives in `app/src/pages/mod.rs`. What is *not* compiler-checked is that
+//! the answers a page gives in `app/src/services/mod.rs`. What is *not* compiler-checked is that
 //! `ALL` lists every variant, that a page is either bootable or transient, and that a page
 //! still has a view module. This test reads the table as source and checks those edges, so a
 //! half-added page fails here rather than on a bench.
@@ -199,8 +199,8 @@ fn a_page_that_cannot_be_booted_says_why() {
 
 #[test]
 fn every_page_has_a_view() {
-    let dispatch = read("apps/iot/crates/app/src/pages/mod.rs");
-    let page_root = repo_root().join("apps/iot/crates/app/src/pages");
+    let dispatch = read("apps/iot/crates/app/src/services/mod.rs");
+    let service_root = repo_root().join("apps/iot/crates/app/src/services");
     for row in rows(&source()) {
         assert!(
             dispatch.contains(&format!("PageId::{}", row.variant)),
@@ -209,15 +209,15 @@ fn every_page_has_a_view() {
         );
         assert!(
             dispatch.contains(&format!("{}Page", row.variant)),
-            "{} has no type in `PageSet`; adding a page names it there and the compiler lists \
+            "{} has no type in `Services`; adding a page names it there and the compiler lists \
              the rest",
             row.variant
         );
         let candidates = [
-            page_root.join(format!("{}.rs", row.path)),
-            page_root.join(&row.path).join("mod.rs"),
-            page_root.join(&row.path).join("view.rs"),
-            page_root.join(&row.path).join("view/mod.rs"),
+            service_root.join(format!("{}.rs", row.path)),
+            service_root.join(&row.path).join("mod.rs"),
+            service_root.join(&row.path).join("view.rs"),
+            service_root.join(&row.path).join("view/mod.rs"),
         ];
         assert!(
             candidates.iter().any(|path| path.exists()),

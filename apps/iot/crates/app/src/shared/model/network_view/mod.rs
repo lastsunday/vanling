@@ -7,7 +7,7 @@
 //! one instance belongs to the page.
 
 use crate::shared::intent::Key;
-use crate::shared::intent::NetworkPageIntent;
+use crate::shared::intent::NetworkIntent;
 use iot_core::drivers::network::{
     AccessPoint, JoinRequest, LinkPhase, LinkStatus, NetworkError, NetworkMode, SetupHost, Ssid,
 };
@@ -84,32 +84,32 @@ impl NetworkView {
     /// the caller hands to the runtime. The link is read, never written.
     pub(crate) fn apply(
         &mut self,
-        intent: NetworkPageIntent,
+        intent: NetworkIntent,
         link: &NetworkState,
         has_display: bool,
     ) -> Option<Command> {
         match intent {
-            NetworkPageIntent::Key { key, at_ms } => self.apply_key(key, at_ms),
-            NetworkPageIntent::Choose(ap) => self.pick_row(ap, link),
-            NetworkPageIntent::AskForget(ap) => {
+            NetworkIntent::Key { key, at_ms } => self.apply_key(key, at_ms),
+            NetworkIntent::Choose(ap) => self.pick_row(ap, link),
+            NetworkIntent::AskForget(ap) => {
                 self.hold_row(ap, link);
                 None
             }
-            NetworkPageIntent::Scroll { rows } => {
+            NetworkIntent::Scroll { rows } => {
                 self.scroll(rows, link);
                 None
             }
-            NetworkPageIntent::NoCopy(ssid) => {
+            NetworkIntent::NoCopy(ssid) => {
                 self.no_copy(ssid);
                 None
             }
-            NetworkPageIntent::Leave => self.leave_link(link, has_display),
-            NetworkPageIntent::Answer(confirm) => self.answer(confirm, link),
-            NetworkPageIntent::CloseSetup => self.close_setup(link),
-            NetworkPageIntent::SwitchHost => self.switch_host(link, has_display),
-            NetworkPageIntent::ScanNow => self.scan_now(link),
-            NetworkPageIntent::SetOpenAccessPoint(open) => self.set_open(open, link),
-            NetworkPageIntent::Dismiss => {
+            NetworkIntent::Leave => self.leave_link(link, has_display),
+            NetworkIntent::Answer(confirm) => self.answer(confirm, link),
+            NetworkIntent::CloseSetup => self.close_setup(link),
+            NetworkIntent::SwitchHost => self.switch_host(link, has_display),
+            NetworkIntent::ScanNow => self.scan_now(link),
+            NetworkIntent::SetOpenAccessPoint(open) => self.set_open(open, link),
+            NetworkIntent::Dismiss => {
                 self.confirm = None;
                 None
             }

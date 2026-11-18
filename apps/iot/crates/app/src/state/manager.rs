@@ -3,7 +3,7 @@
 
 use alloc::vec::Vec;
 
-use crate::pages::PageSet;
+use crate::services::Services;
 use crate::shared::model::{Backed, DeviceState, MAX_LIGHTS, PlaybackState, SurfaceRole};
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand, Override};
@@ -32,7 +32,7 @@ pub struct Boot {
 #[cfg_attr(test, derive(Clone))]
 pub struct DeviceManager {
     pub(super) state: DeviceState,
-    pub(super) pages: PageSet,
+    pub(super) services: Services,
     pub(super) demand: DemandPolicy,
 }
 
@@ -54,12 +54,12 @@ impl DeviceManager {
             surface_roles: boot.surface_roles,
             ..DeviceState::default()
         };
-        let mut pages = PageSet::default();
-        pages.enter(state.page());
+        let mut services = Services::default();
+        services.enter(state.page());
         Self {
             demand: DemandPolicy::boot(&state, boot.demand_keys, boot.overrides),
             state,
-            pages,
+            services,
         }
     }
 
@@ -73,9 +73,9 @@ impl DeviceManager {
         &self.state
     }
 
-    /// The page instances: the render loop publishes their view, and the tests walk them.
-    pub fn pages(&self) -> &PageSet {
-        &self.pages
+    /// The service instances: the render loop publishes their view, and the tests walk them.
+    pub fn services(&self) -> &Services {
+        &self.services
     }
 
     /// Folds the intent ring's running drop count into the snapshot the panel draws. Read once

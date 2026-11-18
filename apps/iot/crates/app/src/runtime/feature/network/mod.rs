@@ -4,7 +4,7 @@
 use alloc::boxed::Box;
 use core::cell::Cell;
 
-use crate::shared::intent::{BusinessIntent, Intent, LinkIntent, NetworkPageIntent};
+use crate::shared::intent::{BusinessIntent, Intent, LinkIntent, NetworkIntent};
 use embassy_futures::join::join;
 use embassy_net::driver::{Driver, HardwareAddress};
 use embassy_net::{Config, StackResources};
@@ -215,8 +215,8 @@ impl LinkWatch {
         );
         self.ctx
             .bus
-            .send(Intent::Business(BusinessIntent::NetworkPage(
-                NetworkPageIntent::NoCopy(ssid),
+            .send(Intent::Business(BusinessIntent::Network(
+                NetworkIntent::NoCopy(ssid),
             )))
             .await;
     }

@@ -18,9 +18,9 @@ use iot_core::drivers::surface::WiredSurface;
 
 mod assets;
 pub mod bench;
-pub mod pages;
 pub mod render;
 pub mod runtime;
+pub mod services;
 pub mod shared;
 pub mod state;
 

@@ -1,7 +1,7 @@
 //! Where the bench's finger lands: the cells and rows the panel draws, as coordinates.
 
-use crate::pages::network::layout;
-use crate::pages::network::layout::DialogChoice;
+use crate::services::network::layout;
+use crate::services::network::layout::DialogChoice;
 use crate::shared::intent::Key;
 
 use super::BAND_X;

@@ -42,8 +42,7 @@ impl NetworkState {
     }
 
     /// Fold one status report in and say what it is worth hearing: the first of two rings
-    /// wins, because a ring over a sounding one is a drop. The page reacts to the same report
-    /// through [`NetworkView::on_link`](super::NetworkView::on_link); nothing here writes it.
+    /// wins, because a ring over a sounding one is a drop.
     fn report(&mut self, status: LinkStatus) -> Effects {
         let sound = if status.mode.is_setup() && !self.link.mode.is_setup() {
             Some(Sound::Rise)

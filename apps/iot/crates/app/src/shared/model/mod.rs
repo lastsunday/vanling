@@ -34,7 +34,7 @@ pub use self::command::Command;
 
 pub use self::device::DeviceState;
 
-pub(crate) use self::effects::Effects;
+pub use self::effects::Effects;
 
 pub use self::health::Health;
 

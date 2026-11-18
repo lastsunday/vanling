@@ -6,7 +6,7 @@ mod tests;
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
 use crate::shared::kit::painter::Painter;
 use crate::shared::kit::text::{format_u16, sound_label};
-use crate::shared::model::{DeviceState, PlaybackPhase};
+use crate::shared::model::{Command, DeviceState, Effects, PlaybackPhase};
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
@@ -14,26 +14,37 @@ use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SpeakerPage;
 
-impl super::Service for SpeakerPage {}
+impl super::Service for SpeakerPage {
+    fn apply(
+        &mut self,
+        intent: &BusinessIntent,
+        state: &mut DeviceState,
+    ) -> (Option<Command>, Effects) {
+        if let BusinessIntent::Playback(action) = intent {
+            state.playback.apply(*action, state.backed.playback);
+        }
+        (None, Effects::default())
+    }
+}
 
 impl super::LocalPage for SpeakerPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
             | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-                BusinessIntent::Playback(PlaybackAction::Next)
+                Some(BusinessIntent::Playback(PlaybackAction::Next))
             }
             InputEvent::Button(ButtonEvent::LongPress)
-            | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-                BusinessIntent::Playback(PlaybackAction::SetMuted(!state.playback.muted))
-            }
+            | InputEvent::Gesture(GestureEvent::LongPress { .. }) => Some(
+                BusinessIntent::Playback(PlaybackAction::SetMuted(!state.playback.muted)),
+            ),
             InputEvent::Button(ButtonEvent::DoubleClick) => {
                 state.light_intent(op, LightAction::Step)
             }
             InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
                 state.light_swipe(op, direction)
             }
-            _ => BusinessIntent::Invalid,
+            _ => None,
         }
     }
 

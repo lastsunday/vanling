@@ -113,7 +113,7 @@ mod tests {
     use crate::runtime::feature::input::IntentBus;
     use crate::runtime::workers::Network;
     use crate::shared::intent::{
-        BusinessIntent, Intent, LightAction, LinkIntent, NetworkPageIntent,
+        BusinessIntent, Intent, LightAction, LinkIntent, NavigationIntent, NetworkIntent,
     };
     use crate::state::{Backed, Boot, DeviceManager, LightState, NetworkCommand};
     use iot_core::drivers::network::{LinkPhase, LinkStatus};
@@ -147,11 +147,11 @@ mod tests {
     }
 
     fn scan() -> Intent {
-        Intent::Business(BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow))
+        Intent::Business(BusinessIntent::Network(NetworkIntent::ScanNow))
     }
 
     fn leave() -> Intent {
-        Intent::Business(BusinessIntent::NetworkPage(NetworkPageIntent::Leave))
+        Intent::Business(BusinessIntent::Network(NetworkIntent::Leave))
     }
 
     #[test]
@@ -169,8 +169,12 @@ mod tests {
             log: Rc::clone(&log),
         });
 
-        let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
-        let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Navigation(
+            NavigationIntent::NextPage,
+        )));
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Navigation(
+            NavigationIntent::NextPage,
+        )));
         schedule.process_intents(&bus, &mut manager);
         schedule.tick(&mut manager, 0);
 
@@ -253,14 +257,18 @@ mod tests {
         let mut schedule = Schedule::new();
         for _ in 0..crate::runtime::feature::input::INTENT_SLOTS {
             assert!(
-                bus.try_send(Intent::Business(BusinessIntent::Invalid))
-                    .is_ok(),
+                bus.try_send(Intent::Business(BusinessIntent::Navigation(
+                    NavigationIntent::NextPage
+                )))
+                .is_ok(),
                 "the ring takes a full pass"
             );
         }
         assert!(
-            bus.try_send(Intent::Business(BusinessIntent::Invalid))
-                .is_err(),
+            bus.try_send(Intent::Business(BusinessIntent::Navigation(
+                NavigationIntent::NextPage
+            )))
+            .is_err(),
             "the full ring refuses the next one"
         );
 

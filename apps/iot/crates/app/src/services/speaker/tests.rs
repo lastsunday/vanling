@@ -20,28 +20,28 @@ fn long_press_gesture() -> InputEvent {
 #[test]
 fn a_tap_plays_and_a_long_press_mutes() {
     assert_eq!(
-        translate(&op(tap_gesture(0)), &on_speaker(), &PageSet::default()),
-        BusinessIntent::Playback(PlaybackAction::Next)
+        translate(&op(tap_gesture(0)), &on_speaker(), &Services::default()),
+        Some(BusinessIntent::Playback(PlaybackAction::Next))
     );
     assert_eq!(
         translate(
             &op(long_press_gesture()),
             &on_speaker(),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Playback(PlaybackAction::SetMuted(true))
+        Some(BusinessIntent::Playback(PlaybackAction::SetMuted(true)))
     );
     assert_eq!(
         translate(
             &op(InputEvent::Button(ButtonEvent::Click)),
             &on_speaker(),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Playback(PlaybackAction::Next)
+        Some(BusinessIntent::Playback(PlaybackAction::Next))
     );
     assert_eq!(
-        translate(&op(long_press_event()), &on_speaker(), &PageSet::default()),
-        BusinessIntent::Playback(PlaybackAction::SetMuted(true))
+        translate(&op(long_press_event()), &on_speaker(), &Services::default()),
+        Some(BusinessIntent::Playback(PlaybackAction::SetMuted(true)))
     );
 }
 
@@ -68,9 +68,9 @@ fn the_page_never_moves_a_light() {
         translate(
             &op(InputEvent::Button(ButtonEvent::TripleClick)),
             &on_speaker(),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Navigation(NavigationIntent::NextPage)
+        Some(BusinessIntent::Navigation(NavigationIntent::NextPage))
     );
 }
 
@@ -91,8 +91,8 @@ fn a_finished_play_is_never_recognized_from_an_event() {
         long_press_gesture(),
     ] {
         assert_ne!(
-            translate(&op(event), &on_speaker(), &PageSet::default()),
-            BusinessIntent::Playback(PlaybackAction::Finished),
+            translate(&op(event), &on_speaker(), &Services::default()),
+            Some(BusinessIntent::Playback(PlaybackAction::Finished)),
             "{event:?} must not fake a driver report"
         );
     }

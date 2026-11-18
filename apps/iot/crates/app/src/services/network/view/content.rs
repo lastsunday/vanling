@@ -1,9 +1,9 @@
 //! The Content band: the scan list, or the key grid while the page is typing.
 
-use crate::pages::network::layout;
-use crate::pages::network::layout::{LIST_ROW_H, LIST_ROWS, LIST_TOP, band_lines_top};
-use crate::pages::network::view::header::BARS_GLYPHS;
-use crate::pages::network::view::text::{
+use crate::services::network::layout;
+use crate::services::network::layout::{LIST_ROW_H, LIST_ROWS, LIST_TOP, band_lines_top};
+use crate::services::network::view::header::BARS_GLYPHS;
+use crate::services::network::view::text::{
     HIDE_LABEL, NETWORK_NAME_GLYPHS, format_bars, format_network_name, key_label,
 };
 use crate::shared::intent::{Key, MAX_CANDIDATES};

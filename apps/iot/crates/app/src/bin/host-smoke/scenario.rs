@@ -6,7 +6,7 @@ use embassy_time::{Duration, Timer};
 use iot_app::runtime::feature::input::IntentBus;
 use iot_app::runtime::workers::Network;
 use iot_app::shared::intent::Key;
-use iot_app::shared::intent::{BusinessIntent, Confirm, Intent, LinkIntent, NetworkPageIntent};
+use iot_app::shared::intent::{BusinessIntent, Confirm, Intent, LinkIntent, NetworkIntent};
 use iot_app::shared::model::PALETTE;
 use iot_app::state::{NetworkCommand, PageId};
 use iot_core::drivers::audio::dbfs;
@@ -291,9 +291,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     send(
         bus,
-        BusinessIntent::NetworkPage(NetworkPageIntent::Choose(
-            list.get(0).expect("a row to pick"),
-        )),
+        BusinessIntent::Network(NetworkIntent::Choose(list.get(0).expect("a row to pick"))),
     )
     .await;
     Timer::after(Duration::from_millis(100)).await;
@@ -308,7 +306,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     ] {
         send(
             bus,
-            BusinessIntent::NetworkPage(NetworkPageIntent::Key { key, at_ms }),
+            BusinessIntent::Network(NetworkIntent::Key { key, at_ms }),
         )
         .await;
         at_ms += 100;
@@ -326,7 +324,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     send(
         bus,
-        BusinessIntent::NetworkPage(NetworkPageIntent::Key {
+        BusinessIntent::Network(NetworkIntent::Key {
             key: Key::Connect,
             at_ms,
         }),
@@ -388,7 +386,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "a marked list published through the link never reached the panel's snapshot"
     );
 
-    send(bus, BusinessIntent::NetworkPage(NetworkPageIntent::ScanNow)).await;
+    send(bus, BusinessIntent::Network(NetworkIntent::ScanNow)).await;
     attempts = 0;
     let mut scanned = false;
     while !scanned && attempts < 100 {
@@ -407,7 +405,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     send(
         bus,
-        BusinessIntent::NetworkPage(NetworkPageIntent::AskForget(
+        BusinessIntent::Network(NetworkIntent::AskForget(
             list.get(0).expect("a row to ask about"),
         )),
     )
@@ -415,7 +413,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     Timer::after(Duration::from_millis(100)).await;
     send(
         bus,
-        BusinessIntent::NetworkPage(NetworkPageIntent::Answer(Confirm::Forget(
+        BusinessIntent::Network(NetworkIntent::Answer(Confirm::Forget(
             list.get(0).expect("the row the question named"),
         ))),
     )

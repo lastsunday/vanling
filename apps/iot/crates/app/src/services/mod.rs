@@ -1,23 +1,24 @@
-//! The product's pages, one vertical slice each: a page and what it owns live in one file or
-//! one directory, and that is the unit of cohesion.
+//! The product's services, one vertical slice each: a page or the device's own service and what
+//! it owns live in one file or one directory, and that is the unit of cohesion.
 //!
-//! [`Service`] is the half every operating platform shares: a business intent comes in, the
-//! page answers. [`LocalPage`] is the face the local panel and buttons see: what a gesture
-//! means, the view the frame snapshot carries, the picture, and how it fills the panel. A new
-//! page names itself here and the compiler lists the rest.
+//! [`Service`] is what every operating platform shares: a business intent comes in, its one
+//! owner answers. [`LocalPage`] is the face the local panel and buttons see: what a gesture
+//! means, the view the frame snapshot carries, the picture, and how it fills the panel.
 
 pub mod ambient;
 pub mod attitude;
 pub mod audio;
 pub mod camera;
 pub mod env;
+pub mod light;
+pub mod nav;
 pub mod network;
 pub mod speaker;
 pub mod splash;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
 use crate::shared::kit::painter::Painter;
-use crate::shared::model::{Command, DeviceState};
+use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
@@ -29,22 +30,31 @@ use self::attitude::AttitudePage;
 use self::audio::AudioPage;
 use self::camera::CameraPage;
 use self::env::EnvPage;
+use self::light::LightService;
+use self::nav::NavService;
 use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 
-/// The page's service: what a business intent means, shared by every operating platform.
+/// One intent's owner: its own record settles first, then the answer says what the rest of the
+/// device owes.
 pub trait Service {
-    /// Claims a business intent and answers with what the model cannot do itself.
-    fn apply(&mut self, _intent: &BusinessIntent, _state: &DeviceState) -> Option<Command> {
-        None
+    fn apply(
+        &mut self,
+        _intent: &BusinessIntent,
+        _state: &mut DeviceState,
+    ) -> (Option<Command>, Effects) {
+        (None, Effects::default())
     }
+
+    /// A scan round landed in the link record; a service that mirrors it clamps here.
+    fn on_scan(&mut self, _state: &mut DeviceState) {}
 }
 
 /// The page as the local panel and buttons see it.
 pub trait LocalPage: Service {
-    /// What one gesture means on this page.
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent;
+    /// What one gesture means on this page. `None` when it means nothing.
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent>;
 
     /// Hands the page's private UI state to the frame snapshot the local painter draws from.
     fn publish(&self, _out: &mut PageSnapshot) {}
@@ -68,10 +78,12 @@ pub trait LocalPage: Service {
     fn on_hide(&mut self) {}
 }
 
-/// The pages this build has, one instance each. Closed on purpose: the compiler checks every
-/// question against the same eight fields, and no page is reached through a page-specific name.
+/// Every service this build has: one instance each, the pages plus the device's own two.
+/// Closed on purpose: the dispatch table is the one place an intent meets its owner.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct PageSet {
+pub struct Services {
+    nav: NavService,
+    light: LightService,
     ambient: AmbientPage,
     attitude: AttitudePage,
     audio: AudioPage,
@@ -82,7 +94,15 @@ pub struct PageSet {
     env: EnvPage,
 }
 
-impl PageSet {
+/// The dispatch key: a page the panel can stop on, or one of the device's own services.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ServiceId {
+    Page(PageId),
+    Navigation,
+    Light,
+}
+
+impl Services {
     /// The page a route names, for the local gesture table.
     pub fn get(&self, page: PageId) -> &dyn LocalPage {
         match page {
@@ -97,15 +117,50 @@ impl PageSet {
         }
     }
 
-    /// Lets the pages claim the intent one of them owns; the first claim wins, and a page that
-    /// does not own the group answers `None`.
-    pub fn apply(&mut self, intent: &BusinessIntent, state: &DeviceState) -> Option<Command> {
-        for page in PageId::ALL {
-            if let Some(command) = self.get_mut(page).apply(intent, state) {
-                return Some(command);
+    /// Who answers which group. One arm per owner, exhaustive like [`descriptor`]: a new group
+    /// does not compile until it has one. The two groups that write the same record share an
+    /// arm on purpose — that is a fact about the record, not a missing distinction.
+    pub fn apply(
+        &mut self,
+        intent: &BusinessIntent,
+        state: &mut DeviceState,
+    ) -> (Option<Command>, Effects) {
+        match intent {
+            BusinessIntent::Navigation(_) => {
+                self.service_mut(ServiceId::Navigation).apply(intent, state)
             }
+            BusinessIntent::Light { .. } => self.service_mut(ServiceId::Light).apply(intent, state),
+            BusinessIntent::Link(_) | BusinessIntent::Network(_) => self
+                .service_mut(ServiceId::Page(PageId::Network))
+                .apply(intent, state),
+            BusinessIntent::Audio(_) => self
+                .service_mut(ServiceId::Page(PageId::Audio))
+                .apply(intent, state),
+            BusinessIntent::Playback(_) => self
+                .service_mut(ServiceId::Page(PageId::Speaker))
+                .apply(intent, state),
         }
-        None
+    }
+
+    pub fn on_scan(&mut self, state: &mut DeviceState) {
+        self.service_mut(ServiceId::Page(PageId::Network))
+            .on_scan(state);
+    }
+
+    /// Every service has an answer here, including the two the panel never shows.
+    fn service_mut(&mut self, id: ServiceId) -> &mut dyn Service {
+        match id {
+            ServiceId::Page(PageId::Ambient) => &mut self.ambient,
+            ServiceId::Page(PageId::Attitude) => &mut self.attitude,
+            ServiceId::Page(PageId::Audio) => &mut self.audio,
+            ServiceId::Page(PageId::Speaker) => &mut self.speaker,
+            ServiceId::Page(PageId::Camera) => &mut self.camera,
+            ServiceId::Page(PageId::Network) => &mut self.network,
+            ServiceId::Page(PageId::Splash) => &mut self.splash,
+            ServiceId::Page(PageId::Env) => &mut self.env,
+            ServiceId::Navigation => &mut self.nav,
+            ServiceId::Light => &mut self.light,
+        }
     }
 
     /// The pages' published view, for the one snapshot every renderer draws from.
@@ -250,8 +305,9 @@ pub fn paint(page: PageId, snapshot: &FrameSnapshot, painter: &mut Painter<'_>) 
     }
 }
 
-/// The lamp's table, for the pages whose only verb is the light.
-fn lamp(op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+/// The lamp's table, for the pages whose only verb is the light. `None` when the gesture means
+/// nothing there.
+fn lamp(op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
     match op.event {
         InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
             state.light_intent(op, LightAction::NextColor { forward: true })
@@ -264,7 +320,7 @@ fn lamp(op: &InputIntent, state: &DeviceState) -> BusinessIntent {
         InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
             state.light_swipe(op, direction)
         }
-        _ => BusinessIntent::Invalid,
+        _ => None,
     }
 }
 

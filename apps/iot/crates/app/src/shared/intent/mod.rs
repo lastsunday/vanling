@@ -48,21 +48,17 @@ impl InputIntent {
     }
 }
 
-/// What the device must act on, grouped by the domain that owns the answer. The manager
-/// routes one arm per domain; each domain matches its own group exhaustively, so a new
-/// variant cannot be left unanswered and the manager never learns a domain's own variants.
+/// What the device must act on, grouped by the record it writes. The dispatch table routes one
+/// arm per group to its one owner; the owner matches its own group exhaustively, so a new
+/// variant cannot be left unanswered and no other service learns a domain's variants.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BusinessIntent {
-    /// Nothing the panel asked for survived translation.
-    Invalid,
     /// Where the device goes: the boot splash, the page cycle, the setup request.
     Navigation(NavigationIntent),
     /// What the radio reports. Written by the worker, never by a finger.
     Link(LinkIntent),
-    /// A scan round landed: the link keeps the list and every page reads it.
-    Scan,
-    /// What a finger asks of the Network page.
-    NetworkPage(NetworkPageIntent),
+    /// What a finger asks of the network record: the draft, the list, the box.
+    Network(NetworkIntent),
     Audio(AudioIntent),
     Playback(PlaybackAction),
     /// One light surface and the verb it is asked for. The instance is routing, not part of
@@ -82,10 +78,10 @@ pub enum NavigationIntent {
     RequestSetup,
 }
 
-/// What the panel's fingers ask of the Network page: the draft, the list, the box. The link
+/// What the panel's fingers ask of the network record: the draft, the list, the box. The link
 /// is not asked anything here — the page turns these into [`NetworkCommand`]s.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NetworkPageIntent {
+pub enum NetworkIntent {
     NoCopy(Ssid),
     Key { key: Key, at_ms: u32 },
     Choose(AccessPoint),

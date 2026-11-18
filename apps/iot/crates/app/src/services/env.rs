@@ -13,8 +13,8 @@ pub struct EnvPage;
 impl super::Service for EnvPage {}
 
 impl super::LocalPage for EnvPage {
-    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> BusinessIntent {
-        BusinessIntent::Invalid
+    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+        None
     }
 
     fn paint(_snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {

@@ -8,10 +8,10 @@ pub(crate) use self::slot::Slot;
 
 use alloc::vec::Vec;
 
-use crate::pages::network::controller::Band;
-use crate::pages::network::layout;
-use crate::pages::network::layout::DialogChoice;
-use crate::pages::network::layout::LIST_ROWS;
+use crate::services::network::controller::Band;
+use crate::services::network::layout;
+use crate::services::network::layout::DialogChoice;
+use crate::services::network::layout::LIST_ROWS;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::Key;
 use crate::shared::intent::{Intent, recognize};
@@ -85,7 +85,7 @@ impl PanelBench {
 
     pub fn step(&mut self, manager: &DeviceManager, bus: &IntentBus) {
         let state = manager.state_ref();
-        let view = manager.pages().snapshot().network;
+        let view = manager.services().snapshot().network;
         self.read_parts(state, &view);
         if self.touches.is_none() {
             let Some((ssid, psk)) = ssid().zip(psk()) else {
@@ -257,7 +257,7 @@ impl PanelBench {
 
     fn walk(&mut self, manager: &DeviceManager, bus: &IntentBus) {
         let state = manager.state_ref();
-        let view = manager.pages().snapshot().network;
+        let view = manager.services().snapshot().network;
         self.passes = self.passes.saturating_add(1);
         match self.act {
             Act::TapRowUnderLink => {

@@ -11,9 +11,9 @@ use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::pages::descriptor;
 use crate::render::common::ColorDriver;
 use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
+use crate::services::descriptor;
 use crate::shared::model::LightState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;

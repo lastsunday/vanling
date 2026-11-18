@@ -304,10 +304,10 @@ fn char_end(bytes: &[u8], i: usize) -> usize {
     }
 }
 
-/// Every `.rs` under a page, except the page dispatch and the golden tests, which speak
+/// Every `.rs` under a service, except the dispatch and the golden tests, which speak
 /// for the whole product on purpose.
-fn page_sources() -> Vec<(PathBuf, String, String)> {
-    let root = app_src().join("pages");
+fn service_sources() -> Vec<(PathBuf, String, String)> {
+    let root = app_src().join("services");
     sources(&root)
         .into_iter()
         .filter_map(|(path, text)| {
@@ -331,7 +331,7 @@ fn the_network_never_reaches_the_presentation() {
     assert_no_reference(
         sources(&app_src().join("runtime/feature/network")),
         &[
-            "crate::pages",
+            "crate::services",
             "crate::render",
             "crate::runtime::coordinator",
         ],
@@ -341,7 +341,7 @@ fn the_network_never_reaches_the_presentation() {
 #[test]
 fn the_presentation_never_reaches_the_radio() {
     let src = app_src();
-    let mut files = sources(&src.join("pages"));
+    let mut files = sources(&src.join("services"));
     files.extend(sources(&src.join("render")));
     files.extend(sources(&src.join("runtime/feature/playback")));
     files.extend(sources(&src.join("runtime/coordinator")));
@@ -419,9 +419,9 @@ fn the_pixel_layer_names_no_product() {
 }
 
 #[test]
-fn a_page_does_not_import_another_page() {
-    let prefix = "crate::pages::";
-    for (path, name, text) in page_sources() {
+fn a_service_does_not_import_another_service() {
+    let prefix = "crate::services::";
+    for (path, name, text) in service_sources() {
         let text = without_comments(&text);
         let mut rest = text.as_str();
         while let Some(at) = rest.find(prefix) {
@@ -432,7 +432,7 @@ fn a_page_does_not_import_another_page() {
                 .collect();
             assert!(
                 other.is_empty() || other == name,
-                "{} reaches crate::pages::{other}; a page's directory is its own slice",
+                "{} reaches crate::services::{other}; a service's directory is its own slice",
                 path.display()
             );
         }
@@ -445,7 +445,7 @@ fn the_kit_names_no_page() {
     assert_no_reference(
         shipping_sources(&app_src().join("shared/kit")),
         &[
-            "crate::pages",
+            "crate::services",
             "PageId",
             "NetworkView",
             "Entry",
@@ -491,7 +491,7 @@ fn the_worker_handles_never_reach_a_worker() {
         sources(&app_src().join("runtime/workers")),
         &[
             "crate::runtime::feature",
-            "crate::pages",
+            "crate::services",
             "crate::render",
             "crate::runtime::coordinator",
         ],
@@ -509,7 +509,7 @@ fn nothing_below_the_entry_names_the_runtime() {
         "runtime/feature",
         "runtime/workers",
         "render",
-        "pages",
+        "services",
         "state",
         "shared",
     ] {
@@ -663,7 +663,7 @@ fn the_page_table_is_a_leaf() {
             "crate::state",
             "crate::render",
             "crate::shared::snapshot",
-            "crate::pages",
+            "crate::services",
         ],
     );
 }
@@ -676,7 +676,7 @@ fn intents_name_what_is_asked_and_not_what_answers_it() {
             "crate::shared::route",
             "crate::render",
             "crate::shared::snapshot",
-            "crate::pages",
+            "crate::services",
             "crate::state",
         ],
     );
@@ -703,14 +703,14 @@ fn the_state_read_side_stays_a_reader() {
     // make the half that only reads depend on the half that answers.
     for (path, text) in shipping_source(app_src().join("state/manager.rs")) {
         let mut rest = text.as_str();
-        while let Some(at) = rest.find("crate::pages") {
+        while let Some(at) = rest.find("crate::services") {
             rest = &rest[at..];
             assert!(
-                rest.starts_with("crate::pages::PageSet"),
+                rest.starts_with("crate::services::Services"),
                 "{} reaches {rest:.40}; the read side may name only the container",
                 path.display()
             );
-            rest = &rest["crate::pages".len()..];
+            rest = &rest["crate::services".len()..];
         }
     }
 }
@@ -759,7 +759,7 @@ fn shared_never_reaches_up() {
         shipping_sources(&app_src().join("shared")),
         &[
             "crate::state",
-            "crate::pages",
+            "crate::services",
             "crate::render",
             "crate::runtime",
         ],
@@ -822,9 +822,9 @@ fn every_shared_bucket_has_two_product_readers() {
 /// A page draws and translates; it does not run the device. Naming the state layer would put
 /// the aggregate back above it, which is the cycle the split removed.
 #[test]
-fn pages_never_reach_up() {
+fn services_never_reach_up() {
     assert_no_reference(
-        shipping_sources(&app_src().join("pages")),
+        shipping_sources(&app_src().join("services")),
         &["crate::state", "crate::render", "crate::runtime"],
     );
 }
@@ -847,7 +847,7 @@ fn the_lamp_never_reaches_the_panel() {
     assert_no_reference(
         shipping_sources(&app_src().join("render/lamp")),
         &[
-            "crate::pages",
+            "crate::services",
             "crate::render::screen",
             "policy",
             "painter",
@@ -866,7 +866,7 @@ fn what_every_surface_shares_knows_no_surface() {
         &[
             "crate::render::screen",
             "crate::render::lamp",
-            "crate::pages",
+            "crate::services",
         ],
     );
 }

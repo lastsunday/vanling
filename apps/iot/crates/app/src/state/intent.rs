@@ -2,12 +2,9 @@
 //!
 //! Systems write, renderers read.
 
-use crate::shared::intent::{BusinessIntent, InputIntent, Intent, NavigationIntent};
-use crate::shared::model::{
-    Command, Effects, Health, NetworkCommand, Notice, NoticeKind, PlaybackPhase,
-};
-use crate::shared::route::PageId;
-use crate::state::{DeviceManager, DeviceState};
+use crate::shared::intent::{BusinessIntent, InputIntent, Intent};
+use crate::shared::model::{Command, Effects, Health, Notice, NoticeKind, PlaybackPhase};
+use crate::state::DeviceManager;
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
@@ -26,7 +23,7 @@ impl DeviceManager {
         let business = match intent {
             Intent::Input(op) => {
                 self.apply_input(op);
-                translate(&op, self.state_ref(), &self.pages)
+                translate(&op, self.state_ref(), &self.services)?
             }
             Intent::Business(business) => business,
         };
@@ -49,49 +46,20 @@ impl DeviceManager {
         }
     }
 
-    /// Route one business intent to the domain that owns it, and answer with what that domain
-    /// asked the runtime for — `None` when nothing outside the core is needed. Each domain
-    /// matches its own group, so this match knows the groups and never the variants inside
-    /// them. The pages see the same intent afterwards, so a page can claim a group the state
-    /// does not own.
+    /// One business intent, one owner: the owner settles its record and says what the device
+    /// still owes. The page turn and the demand stay here — they read the stack the owner just
+    /// moved, which is the manager's to hold.
     pub fn apply_business(&mut self, intent: BusinessIntent) -> Option<Command> {
         let leaving = self.state.page();
-        let command = match intent {
-            BusinessIntent::Invalid => None,
-            BusinessIntent::Navigation(intent) => self.apply_navigation(intent),
-            BusinessIntent::Link(intent) => {
-                let effects = self.state.network.apply(intent);
-                self.apply_effects(effects);
-                None
-            }
-            BusinessIntent::Scan => None,
-            BusinessIntent::NetworkPage(_) => None,
-            BusinessIntent::Audio(intent) => {
-                self.state.audio.apply(intent, self.state.backed.audio);
-                None
-            }
-            BusinessIntent::Playback(action) => {
-                self.state
-                    .playback
-                    .apply(action, self.state.backed.playback);
-                None
-            }
-            BusinessIntent::Light { instance, action } => {
-                let index = usize::from(DeviceState::light_index(instance));
-                if let Some(next) = self.state.lights[index].apply(action) {
-                    self.state.lights[index] = next;
-                }
-                None
-            }
-        };
-        let arrived = self.state.page();
-        if arrived != leaving {
-            self.pages.leave(leaving);
-            self.pages.enter(arrived);
+        let (command, effects) = self.services.apply(&intent, &mut self.state);
+        self.apply_effects(effects);
+        let landed = self.state.page();
+        if landed != leaving {
+            self.services.leave(leaving);
+            self.services.enter(landed);
         }
-        let from_pages = self.pages.apply(&intent, &self.state);
         self.settle_demand();
-        command.or(from_pages)
+        command
     }
 
     /// A scan round landed: the link keeps the list everyone reads, and the page's scroll
@@ -101,7 +69,7 @@ impl DeviceManager {
             return;
         }
         self.state.network.set_scan(list);
-        self.apply_business(BusinessIntent::Scan);
+        self.services.on_scan(&mut self.state);
     }
 
     pub fn apply_capture(&mut self, sample: AudioSample) {
@@ -136,49 +104,6 @@ impl DeviceManager {
         if let Some(kind) = effects.notice {
             self.announce(kind);
         }
-    }
-
-    /// The device's own transitions, which read the wiring, the link and the boot page
-    /// together. A landing answers with the boot decision the runtime cannot observe, on the
-    /// same return path as every other command.
-    fn apply_navigation(&mut self, intent: NavigationIntent) -> Option<Command> {
-        match intent {
-            NavigationIntent::NextPage => {
-                self.state.nav.advance(self.state.backed);
-                None
-            }
-            NavigationIntent::RequestSetup => {
-                if self.state.page() == PageId::Splash {
-                    self.state.setup_requested = true;
-                }
-                None
-            }
-            NavigationIntent::SplashOver => self.land_after_splash(),
-        }
-    }
-
-    fn land_after_splash(&mut self) -> Option<Command> {
-        if self.state.page() != PageId::Splash {
-            return None;
-        }
-        let setup = self.state.setup_requested;
-        self.state.nav.pop();
-        if setup && self.state.backed.network {
-            self.state.nav.go(PageId::Network, self.state.backed);
-        }
-        // A device that boots with nothing to join has nothing to say after the splash
-        // except that: one amber burst, then the page's own light. A hold that asked for
-        // setup is not this — the access point is the answer to it, and the mode has its own
-        // colour.
-        if !setup
-            && self.state.backed.network
-            && !self.state.network.link.saved
-            && !self.state.network.link.mode.is_setup()
-            && self.state.network.note_offline_once()
-        {
-            self.announce(NoticeKind::Offline);
-        }
-        Some(Command::Network(NetworkCommand::SplashOver { setup }))
     }
 
     fn ring(&mut self, sound: Sound) {

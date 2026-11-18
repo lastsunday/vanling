@@ -133,7 +133,7 @@ Fidelity is pinned by tests, not by this comment: every entry and every interpol
 
 `PLY` and `DRP` are two numbers because they answer two questions — "did it make a sound" and "did it hear me". A page that combined them into one tally could not tell a quiet speaker from a busy finger.
 
-The Speaker page has no animation: its `Descriptor::repaints_on` (`pages/speaker`) compares nothing but the
+The Speaker page has no animation: its `Descriptor::repaints_on` (`services/speaker`) compares nothing but the
 playback diagnostics and ignores the overlay. Its phase flips twice per play, and both flips come
 from intents (so both bring a fresh diagnostics).
 

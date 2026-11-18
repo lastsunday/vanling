@@ -41,15 +41,13 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
 
     tap_band(&mut manager, 0);
     assert_eq!(manager.network_view().selected, Some(ap(b"a")));
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Key {
         key: Key::Cancel,
         at_ms: 1,
     }));
 
     assert_eq!(manager.network_view().list_top, 0);
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-        rows: 1,
-    }));
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
     assert_eq!(
         manager.network_view().list_top,
         1,
@@ -62,31 +60,23 @@ fn the_list_slides_a_row_at_a_time_and_a_band_means_the_row_it_shows() {
         "and the first band now holds the second network"
     );
     for _ in 0..(8 - LIST_ROWS) {
-        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-            rows: 1,
-        }));
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
     }
     assert_eq!(
         manager.network_view().list_top,
         (8 - LIST_ROWS) as u8,
         "eight rows through a three-row window stop five rows down"
     );
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-        rows: 1,
-    }));
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
     assert_eq!(
         manager.network_view().list_top,
         (8 - LIST_ROWS) as u8,
         "and the end of the list is as far as it goes"
     );
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-        rows: -1,
-    }));
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: -1 }));
     assert_eq!(manager.network_view().list_top, (8 - LIST_ROWS - 1) as u8);
     for _ in 0..8 {
-        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-            rows: -1,
-        }));
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: -1 }));
     }
     assert_eq!(
         manager.network_view().list_top,
@@ -138,9 +128,7 @@ fn a_scan_that_shrank_pulls_the_list_back_to_its_own_end() {
     let eight: Vec<AccessPoint> = (0..8).map(|n| ap(&[b'a' + n as u8])).collect();
     manager.apply_scan(ApList::from_ranked(&eight));
     manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-        rows: 1,
-    }));
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 }));
     assert_eq!(manager.network_view().list_top, 1);
 
     manager.apply_scan(ApList::from_ranked(&[ap(b"a"), ap(b"b")]));

@@ -52,8 +52,15 @@ fn a_light_write_replaces_state_and_snapshot() {
     );
     manager.apply_to(7, LightState::Off);
     assert_eq!(manager.light_state_at(1), LightState::Off);
-    manager.apply_business(BusinessIntent::Invalid);
-    assert_eq!(manager.light_state(), solid, "an invalid intent is a no-op");
+    manager.apply_business(BusinessIntent::Light {
+        instance: 1,
+        action: LightAction::Step,
+    });
+    assert_eq!(
+        manager.light_state(),
+        solid,
+        "a verb for the other surface leaves this one alone"
+    );
 }
 
 #[test]

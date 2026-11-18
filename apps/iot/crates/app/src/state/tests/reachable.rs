@@ -15,7 +15,7 @@
 //! a field left out that a move reads would merge two states the page tells apart.
 
 use super::*;
-use crate::pages::network::layout::{self, DialogChoice};
+use crate::services::network::layout::{self, DialogChoice};
 use crate::shared::intent::Confirm;
 use crate::shared::intent::Key;
 use crate::shared::model::SetupWait;
@@ -173,8 +173,8 @@ fn band_y(band: usize) -> u16 {
 fn applied(manager: &mut DeviceManager, event: InputEvent) -> Option<Command> {
     let operation = op(event);
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state(), manager.pages());
-    manager.apply_business(business)
+    let business = translate(&operation, &manager.state(), manager.services());
+    business.and_then(|intent| manager.apply_business(intent))
 }
 
 fn tap_at(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
@@ -469,8 +469,7 @@ fn carry_out(manager: &mut DeviceManager, command: NetworkCommand) {
             }) {
                 associated(manager);
             } else {
-                manager
-                    .apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::NoCopy(ssid)));
+                manager.apply_business(BusinessIntent::Network(NetworkIntent::NoCopy(ssid)));
             }
         }
         NetworkCommand::Leave => {

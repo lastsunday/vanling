@@ -2,7 +2,7 @@
 //! shortcut that outranks the page's own verb.
 
 use super::*;
-use crate::shared::intent::NetworkPageIntent;
+use crate::shared::intent::NetworkIntent;
 use iot_core::drivers::network::{LinkPhase, LinkStatus, NetworkMode, SetupHost};
 
 fn connected(state: DeviceState) -> DeviceState {
@@ -27,8 +27,8 @@ fn in_setup(state: DeviceState) -> DeviceState {
 fn the_splash_page_is_where_the_button_asks_for_setup_mode() {
     let booting = state_on(PageId::Splash, LightState::Off);
     assert_eq!(
-        translate(&op(long_press_event()), &booting, &PageSet::default()),
-        BusinessIntent::Navigation(NavigationIntent::RequestSetup)
+        translate(&op(long_press_event()), &booting, &Services::default()),
+        Some(BusinessIntent::Navigation(NavigationIntent::RequestSetup))
     );
 }
 
@@ -49,8 +49,8 @@ fn the_splash_page_answers_nothing_but_the_hold() {
         }),
     ] {
         assert_eq!(
-            translate(&op(event), &booting, &PageSet::default()),
-            BusinessIntent::Invalid,
+            translate(&op(event), &booting, &Services::default()),
+            None,
             "{event:?} on the splash"
         );
     }
@@ -58,9 +58,9 @@ fn the_splash_page_answers_nothing_but_the_hold() {
         translate(
             &op(long_press_event()),
             &connected(booting),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Navigation(NavigationIntent::RequestSetup)
+        Some(BusinessIntent::Navigation(NavigationIntent::RequestSetup))
     );
 }
 
@@ -70,12 +70,12 @@ fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
         translate(
             &op(long_press_event()),
             &connected(state_on(PageId::Ambient, LightState::Off)),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Light {
+        Some(BusinessIntent::Light {
             instance: 0,
             action: LightAction::Cycle,
-        }
+        })
     );
 }
 
@@ -85,8 +85,8 @@ fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
         translate(
             &op(long_press_event()),
             &in_setup(state_on(PageId::Ambient, LightState::Off)),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::NetworkPage(NetworkPageIntent::SwitchHost)
+        Some(BusinessIntent::Network(NetworkIntent::SwitchHost))
     );
 }

@@ -46,7 +46,7 @@ pub fn each_band<F: FnMut(Band)>(draft: NetworkView, link: LinkStatus, mut draw:
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::pages::network::layout;
+    use crate::services::network::layout;
     use crate::shared::intent::Confirm;
     use crate::shared::model::{Entry, SetupWait};
     use alloc::vec;

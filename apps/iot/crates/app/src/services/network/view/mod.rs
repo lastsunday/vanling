@@ -5,9 +5,9 @@ mod header;
 mod overlay;
 mod text;
 
-use crate::pages::network::controller as page_controls;
-use crate::pages::network::layout;
-use crate::pages::network::view::text::control_label;
+use crate::services::network::controller as page_controls;
+use crate::services::network::layout;
+use crate::services::network::view::text::control_label;
 use crate::shared::kit::painter::Painter;
 use crate::shared::model::NetworkView;
 use iot_core::drivers::network::LinkStatus;

@@ -1,13 +1,13 @@
 //! The page golden table: every page, with the debug badge on and off, is one fingerprint.
 //!
-//! The dispatch under test is [`paint`](crate::pages::paint), so a page whose view moved still
+//! The dispatch under test is [`paint`](crate::services::paint), so a page whose view moved still
 //! has to draw exactly the picture the table recorded. Regenerate only for an intended pixel
 //! change.
 
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::pages::{descriptor, paint};
+use crate::services::{descriptor, paint};
 use crate::shared::kit::painter::Painter;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;

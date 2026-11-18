@@ -17,8 +17,8 @@ fn two_lights() -> DeviceState {
     }
 }
 
-fn lamp_intent(event: InputEvent, current: &DeviceState) -> BusinessIntent {
-    translate(&recognize(event, 0), current, &PageSet::default())
+fn lamp_intent(event: InputEvent, current: &DeviceState) -> Option<BusinessIntent> {
+    translate(&recognize(event, 0), current, &Services::default())
 }
 
 #[test]
@@ -40,10 +40,10 @@ fn a_button_asks_for_one_verb_per_click() {
     ] {
         assert_eq!(
             lamp_intent(event, &ambient),
-            BusinessIntent::Light {
+            Some(BusinessIntent::Light {
                 instance: 0,
                 action,
-            },
+            }),
             "{event:?}"
         );
     }
@@ -54,17 +54,17 @@ fn a_touch_asks_the_panel_surface() {
     let ambient = state(BREATH);
     assert_eq!(
         lamp_intent(tap_gesture(0), &ambient),
-        BusinessIntent::Light {
+        Some(BusinessIntent::Light {
             instance: 0,
             action: LightAction::NextColor { forward: true },
-        }
+        })
     );
     assert_eq!(
-        translate(&long_press(), &ambient, &PageSet::default()),
-        BusinessIntent::Light {
+        translate(&long_press(), &ambient, &Services::default()),
+        Some(BusinessIntent::Light {
             instance: 0,
             action: LightAction::Cycle,
-        }
+        })
     );
     for (direction, action) in [
         (
@@ -80,10 +80,10 @@ fn a_touch_asks_the_panel_surface() {
     ] {
         assert_eq!(
             lamp_intent(swipe_event(direction), &ambient),
-            BusinessIntent::Light {
+            Some(BusinessIntent::Light {
                 instance: 0,
                 action,
-            },
+            }),
             "{direction:?}"
         );
     }
@@ -99,7 +99,7 @@ fn a_diagonal_swipe_asks_for_nothing() {
     ] {
         assert_eq!(
             lamp_intent(swipe_event(direction), &state(BREATH)),
-            BusinessIntent::Invalid,
+            None,
             "{direction:?} has no axis"
         );
     }
@@ -117,16 +117,16 @@ fn off_answers_only_the_cycle() {
     ] {
         assert_eq!(
             lamp_intent(event, &off),
-            BusinessIntent::Invalid,
+            None,
             "{event:?} has nothing to move"
         );
     }
     assert_eq!(
-        translate(&long_press(), &off, &PageSet::default()),
-        BusinessIntent::Light {
+        translate(&long_press(), &off, &Services::default()),
+        Some(BusinessIntent::Light {
             instance: 0,
             action: LightAction::Cycle,
-        }
+        })
     );
 }
 
@@ -136,24 +136,24 @@ fn a_button_drives_its_own_surface_and_clamps() {
         translate(
             &recognize(InputEvent::Button(ButtonEvent::Click), 1),
             &two_lights(),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Light {
+        Some(BusinessIntent::Light {
             instance: 1,
             action: LightAction::NextColor { forward: true },
-        },
+        }),
         "each button drives the surface its wiring order names"
     );
     assert_eq!(
         translate(
             &recognize(InputEvent::Button(ButtonEvent::DoubleClick), 7),
             &two_lights(),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Light {
+        Some(BusinessIntent::Light {
             instance: 1,
             action: LightAction::Step,
-        },
+        }),
         "out-of-range sources clamp to the last surface"
     );
 }
@@ -161,8 +161,8 @@ fn a_button_drives_its_own_surface_and_clamps() {
 #[test]
 fn a_tap_only_touches_the_first_surface() {
     assert_eq!(
-        translate(&tap(), &two_lights(), &PageSet::default()),
-        BusinessIntent::Invalid,
+        translate(&tap(), &two_lights(), &Services::default()),
+        None,
         "the panel's surface is off, and a tap never reaches the second one"
     );
 }

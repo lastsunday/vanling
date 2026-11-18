@@ -15,12 +15,12 @@ pub struct SplashPage;
 impl super::Service for SplashPage {}
 
 impl super::LocalPage for SplashPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> BusinessIntent {
+    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
         match op.event {
             InputEvent::Button(ButtonEvent::LongPress) => {
-                BusinessIntent::Navigation(NavigationIntent::RequestSetup)
+                Some(BusinessIntent::Navigation(NavigationIntent::RequestSetup))
             }
-            _ => BusinessIntent::Invalid,
+            _ => None,
         }
     }
 

@@ -8,7 +8,7 @@ use iot_core::overlay::{
 };
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 
-use crate::pages::network::view::text::{
+use crate::services::network::view::text::{
     format_address, format_bars, format_network_name, format_phase, format_psk, format_setup_name,
     format_window,
 };

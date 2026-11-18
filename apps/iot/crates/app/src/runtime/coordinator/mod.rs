@@ -39,7 +39,7 @@ pub async fn run_loop(
         schedule.tick(manager, wall_ms);
         let active = renderers.tick(
             manager.state_ref(),
-            manager.pages().snapshot(),
+            manager.services().snapshot(),
             manager.demand(),
             pacing.frame_ms(),
         ) || manager.notice_active();

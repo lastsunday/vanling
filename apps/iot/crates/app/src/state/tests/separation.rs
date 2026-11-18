@@ -22,11 +22,11 @@ fn input_alone_never_moves_the_light() {
     };
     manager.apply_to(0, target);
     assert_eq!(manager.light_state(), target);
-    manager.apply_business(BusinessIntent::Invalid);
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
     assert_eq!(
         manager.light_state(),
         target,
-        "an invalid intent is a no-op"
+        "a business move leaves the light where it was"
     );
     assert_eq!(
         manager.state().touch.view.tap_count,
@@ -41,9 +41,11 @@ fn off_tap_full_path_records_the_frame_and_keeps_off() {
     manager.apply_to(0, LightState::Off);
     let op = tap();
     manager.apply_input(op);
-    let business = translate(&op, &manager.state(), manager.pages());
-    manager.apply_business(business);
-    assert_eq!(business, BusinessIntent::Invalid);
+    let business = translate(&op, &manager.state(), manager.services());
+    if let Some(business) = business {
+        manager.apply_business(business);
+    }
+    assert_eq!(business, None);
     assert_eq!(manager.light_state(), LightState::Off);
     assert_eq!(manager.state().touch.view.tap_count, 1);
     assert_eq!(manager.state().touch.view.last_gesture_origin, Some((1, 2)));
@@ -55,9 +57,11 @@ fn off_swipe_full_path_records_the_frame_and_keeps_off() {
     manager.apply_to(0, LightState::Off);
     let op = swipe();
     manager.apply_input(op);
-    let business = translate(&op, &manager.state(), manager.pages());
-    manager.apply_business(business);
-    assert_eq!(business, BusinessIntent::Invalid);
+    let business = translate(&op, &manager.state(), manager.services());
+    if let Some(business) = business {
+        manager.apply_business(business);
+    }
+    assert_eq!(business, None);
     assert_eq!(manager.light_state(), LightState::Off);
     assert_eq!(manager.state().touch.view.swipe_count, 1);
     assert_eq!(

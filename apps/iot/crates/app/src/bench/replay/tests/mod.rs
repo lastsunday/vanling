@@ -2,7 +2,7 @@
 
 use super::*;
 use crate::shared::intent::Layer;
-use crate::shared::intent::{BusinessIntent, LinkIntent, NavigationIntent, NetworkPageIntent};
+use crate::shared::intent::{BusinessIntent, LinkIntent, NavigationIntent, NetworkIntent};
 use crate::shared::model::NetworkView;
 use crate::state::{Backed, Boot, Command, NetworkCommand};
 use iot_core::drivers::network::{
@@ -182,9 +182,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         .aps
         .and_then(|list| list.get(0))
         .expect("the row the bench's scan published");
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Choose(
-        picked,
-    )));
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Choose(picked)));
     assert!(
         manager.network_view().keyboard,
         "the pick is there to begin with"

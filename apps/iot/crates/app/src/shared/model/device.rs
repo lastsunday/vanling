@@ -54,20 +54,21 @@ impl DeviceState {
         instance.min((MAX_LIGHTS - 1) as u8)
     }
 
-    /// What one input asks of the lamp, or `Invalid` when that surface has nothing to move.
-    pub fn light_intent(&self, op: &InputIntent, action: LightAction) -> BusinessIntent {
+    /// What one input asks of the lamp, or `None` when that surface has nothing to move.
+    pub fn light_intent(&self, op: &InputIntent, action: LightAction) -> Option<BusinessIntent> {
         let instance = Self::light_index(op.surface());
-        if !self.lights[usize::from(instance)].can(action) {
-            return BusinessIntent::Invalid;
-        }
-        BusinessIntent::Light { instance, action }
+        self.lights[usize::from(instance)]
+            .can(action)
+            .then_some(BusinessIntent::Light { instance, action })
     }
 
     /// The lamp's answer to a swipe: a diagonal has no axis, so it asks for nothing.
-    pub fn light_swipe(&self, op: &InputIntent, direction: SwipeDirection) -> BusinessIntent {
-        LightAction::from_swipe(direction).map_or(BusinessIntent::Invalid, |action| {
-            self.light_intent(op, action)
-        })
+    pub fn light_swipe(
+        &self,
+        op: &InputIntent,
+        direction: SwipeDirection,
+    ) -> Option<BusinessIntent> {
+        LightAction::from_swipe(direction).and_then(|action| self.light_intent(op, action))
     }
 
     /// Whether any wired surface draws the pages and puts the questions on them.

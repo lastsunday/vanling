@@ -16,7 +16,7 @@ pub struct AttitudePage;
 impl super::Service for AttitudePage {}
 
 impl super::LocalPage for AttitudePage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> BusinessIntent {
+    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         super::lamp(op, state)
     }
 

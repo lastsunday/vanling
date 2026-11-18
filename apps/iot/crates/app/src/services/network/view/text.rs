@@ -1,8 +1,8 @@
 //! Network, setup and question text: the words the link's readings become.
 
-use crate::pages::network::controller::{ControlKind, confirm_verb};
-use crate::pages::network::layout::LIST_ROWS;
-use crate::pages::network::layout::{DIALOG_ANSWER_W, DIALOG_GLYPHS, ToolbarCell, toolbar_cell};
+use crate::services::network::controller::{ControlKind, confirm_verb};
+use crate::services::network::layout::LIST_ROWS;
+use crate::services::network::layout::{DIALOG_ANSWER_W, DIALOG_GLYPHS, ToolbarCell, toolbar_cell};
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{Key, Layer};
 use crate::shared::model::Entry;

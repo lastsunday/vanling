@@ -19,8 +19,8 @@ fn one_input_intent_is_the_two_steps_it_replaces() {
     let command = direct.apply_intent(Intent::Input(operation));
 
     manual.apply_input(operation);
-    let action = translate(&operation, manual.state_ref(), manual.pages());
-    let expected = manual.apply_business(action);
+    let action = translate(&operation, manual.state_ref(), manual.services());
+    let expected = action.and_then(|intent| manual.apply_business(intent));
 
     assert_eq!(
         command, expected,

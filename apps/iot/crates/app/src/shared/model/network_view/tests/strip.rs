@@ -125,7 +125,7 @@ fn a_question_about_the_link_does_not_outlive_the_link() {
         "a link that is gone takes its own question with it"
     );
     assert_eq!(
-        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Leave)),
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::Leave)),
         None
     );
 }
@@ -148,9 +148,7 @@ fn a_scan_round_ends_the_strips_wait() {
 fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     let mut manager = on_network_page();
     assert_eq!(
-        manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Scroll {
-            rows: 1
-        })),
+        manager.apply_business(BusinessIntent::Network(NetworkIntent::Scroll { rows: 1 })),
         None,
         "an intent that asks the radio for nothing answers with nothing"
     );

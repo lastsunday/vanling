@@ -1,6 +1,6 @@
 //! The portable page painter: a [`Canvas`] plus the surface's own draw state.
 //!
-//! The painter owns the marks, not the frame data: [`paint`](crate::pages::paint) hands it the
+//! The painter owns the marks, not the frame data: [`paint`](crate::services::paint) hands it the
 //! snapshot and decides which page draws what.
 
 use core::ops::{Deref, DerefMut};

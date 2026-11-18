@@ -1,5 +1,5 @@
 pub(crate) use super::*;
-pub(crate) use crate::pages::PageSet;
+pub(crate) use crate::services::Services;
 pub(crate) use crate::shared::intent::{
     BusinessIntent, InputIntent, Intent, LightAction, NavigationIntent,
 };
@@ -32,7 +32,7 @@ impl DeviceManager {
 
     /// What the Network page publishes, for a test that walks the page's edits.
     pub(crate) fn network_view(&self) -> NetworkView {
-        self.pages().snapshot().network
+        self.services().snapshot().network
     }
 
     /// A derivation from the held keys, to pin the cache to what the page claims.
@@ -187,8 +187,8 @@ pub(crate) fn target(event: InputEvent, current: LightState) -> Option<LightActi
 }
 
 pub(crate) fn target_in(event: InputEvent, current: &DeviceState) -> Option<LightAction> {
-    match translate(&op(event), current, &PageSet::default()) {
-        BusinessIntent::Light { action, .. } => Some(action),
+    match translate(&op(event), current, &Services::default()) {
+        Some(BusinessIntent::Light { action, .. }) => Some(action),
         _ => None,
     }
 }

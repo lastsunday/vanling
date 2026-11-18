@@ -1,12 +1,12 @@
 //! When a frame drift earns a full-frame repaint.
 
-use crate::pages::descriptor;
+use crate::services::descriptor;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::{DemandKey, Mode};
 
 #[cfg(test)]
-use crate::pages::REPAINT_FLOOR_MS;
+use crate::services::REPAINT_FLOOR_MS;
 
 pub fn frame_repaint_due(
     page: PageId,

@@ -1,6 +1,6 @@
 use super::*;
-use crate::pages::network::layout;
-use crate::pages::network::layout::LIST_ROWS;
+use crate::services::network::layout;
+use crate::services::network::layout::LIST_ROWS;
 use crate::shared::intent::*;
 use crate::shared::intent::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
 use crate::state::test_support::*;
@@ -75,8 +75,8 @@ fn tap_on_at(manager: &mut DeviceManager, x: u16, y: u16, at_ms: u32) -> Option<
         at_ms,
     }));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state(), manager.pages());
-    manager.apply_business(business)
+    let business = translate(&operation, &manager.state(), manager.services());
+    business.and_then(|intent| manager.apply_business(intent))
 }
 
 fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
@@ -89,10 +89,7 @@ fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
 }
 
 fn key_at(manager: &mut DeviceManager, key: Key, at_ms: u32) -> Option<Command> {
-    manager.apply_business(BusinessIntent::NetworkPage(NetworkPageIntent::Key {
-        key,
-        at_ms,
-    }))
+    manager.apply_business(BusinessIntent::Network(NetworkIntent::Key { key, at_ms }))
 }
 
 fn key(manager: &mut DeviceManager, key: Key) -> Option<Command> {
@@ -152,8 +149,8 @@ fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
         distance_px: (layout::LIST_ROW_H * 2) as u16,
     }));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state(), manager.pages());
-    manager.apply_business(business)
+    let business = translate(&operation, &manager.state(), manager.services());
+    business.and_then(|intent| manager.apply_business(intent))
 }
 
 fn tap_strip(manager: &mut DeviceManager) -> Option<Command> {
@@ -181,8 +178,8 @@ fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
         held_ms: u16::from(FINGER_LONG_PRESS) + 20,
     }));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state(), manager.pages());
-    manager.apply_business(business)
+    let business = translate(&operation, &manager.state(), manager.services());
+    business.and_then(|intent| manager.apply_business(intent))
 }
 
 fn tap_answer(manager: &mut DeviceManager, choice: layout::DialogChoice) -> Option<Command> {
@@ -210,8 +207,8 @@ fn link_at(manager: &mut DeviceManager, phase: LinkPhase, ssid: &[u8]) {
 fn long_press_the_button(manager: &mut DeviceManager) -> Option<Command> {
     let operation = op(InputEvent::Button(ButtonEvent::LongPress));
     manager.apply_input(operation);
-    let business = translate(&operation, &manager.state(), manager.pages());
-    manager.apply_business(business)
+    let business = translate(&operation, &manager.state(), manager.services());
+    business.and_then(|intent| manager.apply_business(intent))
 }
 
 fn setup_mode(manager: &mut DeviceManager, cancellable: bool) {

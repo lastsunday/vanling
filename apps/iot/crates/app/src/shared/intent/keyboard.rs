@@ -1,5 +1,5 @@
 //! The key grid's vocabulary: what a key is, what each layer types, and how long a key stays
-//! open for its next candidate. The boxes and hit test live in `pages/network/layout`, which
+//! open for its next candidate. The boxes and hit test live in `services/network/layout`, which
 //! reads this vocabulary and never the other way round.
 
 /// The ten character keys: the nine the digit block holds and the zero beside the controls.

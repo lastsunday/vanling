@@ -563,15 +563,19 @@ mod tests {
         let bus = IntentBus::new();
         for _ in 0..INTENT_SLOTS {
             assert!(
-                bus.try_send(Intent::Business(BusinessIntent::Invalid))
-                    .is_ok(),
+                bus.try_send(Intent::Business(BusinessIntent::Navigation(
+                    NavigationIntent::NextPage
+                )))
+                .is_ok(),
                 "the empty ring takes a full pass"
             );
         }
 
         assert!(
-            bus.try_send(Intent::Business(BusinessIntent::Invalid))
-                .is_err(),
+            bus.try_send(Intent::Business(BusinessIntent::Navigation(
+                NavigationIntent::NextPage
+            )))
+            .is_err(),
             "the full ring refuses the next one"
         );
         assert_eq!(
@@ -581,7 +585,9 @@ mod tests {
         );
 
         bus.dropped.store(u32::MAX, Ordering::Relaxed);
-        let _ = bus.try_send(Intent::Business(BusinessIntent::Invalid));
+        let _ = bus.try_send(Intent::Business(BusinessIntent::Navigation(
+            NavigationIntent::NextPage,
+        )));
         assert_eq!(
             bus.dropped_count(),
             u32::MAX,
@@ -600,13 +606,17 @@ mod tests {
         let bus = IntentBus::new();
         for _ in 0..INTENT_SLOTS {
             assert!(
-                bus.try_send(Intent::Business(BusinessIntent::Invalid))
-                    .is_ok(),
+                bus.try_send(Intent::Business(BusinessIntent::Navigation(
+                    NavigationIntent::NextPage
+                )))
+                .is_ok(),
                 "the ring takes a full pass"
             );
         }
 
-        let mut waiting = Box::pin(bus.send(Intent::Business(BusinessIntent::Invalid)));
+        let mut waiting = Box::pin(bus.send(Intent::Business(BusinessIntent::Navigation(
+            NavigationIntent::NextPage,
+        ))));
         assert!(
             poll_once(waiting.as_mut()).is_pending(),
             "a full ring must wait, not refuse"

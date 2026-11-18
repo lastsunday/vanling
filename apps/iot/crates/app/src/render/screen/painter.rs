@@ -3,8 +3,8 @@
 
 use core::any::Any;
 
-use crate::pages::camera::CameraPage;
-use crate::pages::paint;
+use crate::services::camera::CameraPage;
+use crate::services::paint;
 use crate::shared::kit::painter::Painter;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::camera::CameraSnapshot;

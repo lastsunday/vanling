@@ -11,9 +11,9 @@ fn a_button_click_on_the_audio_page_records_and_elsewhere_moves_the_color() {
         translate(
             &click,
             &state_on(PageId::Audio, BREATH),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Audio(AudioIntent::Start),
+        Some(BusinessIntent::Audio(AudioIntent::Start)),
         "on the audio page the button is the record control, the same as the tap"
     );
     let color = BusinessIntent::Light {
@@ -22,8 +22,8 @@ fn a_button_click_on_the_audio_page_records_and_elsewhere_moves_the_color() {
     };
     for page in [PageId::Ambient, PageId::Attitude, PageId::Camera] {
         assert_eq!(
-            translate(&click, &state_on(page, BREATH), &PageSet::default()),
-            color,
+            translate(&click, &state_on(page, BREATH), &Services::default()),
+            Some(color),
             "{page:?} is not a control page, so the colour still walks"
         );
     }
@@ -36,14 +36,14 @@ fn a_tap_on_the_audio_page_records_and_elsewhere_moves_the_color() {
         translate(
             &op(tap),
             &state_on(PageId::Audio, BREATH),
-            &PageSet::default()
+            &Services::default()
         ),
-        BusinessIntent::Audio(AudioIntent::Start),
+        Some(BusinessIntent::Audio(AudioIntent::Start)),
         "on the audio page the tap is the record control"
     );
     assert_eq!(
-        translate(&op(tap), &state(LightState::Off), &PageSet::default()),
-        BusinessIntent::Invalid
+        translate(&op(tap), &state(LightState::Off), &Services::default()),
+        None
     );
     assert_eq!(
         target_in(tap, &state_on(PageId::Attitude, BREATH)),
