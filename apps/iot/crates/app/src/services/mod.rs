@@ -46,9 +46,6 @@ pub trait Service {
     ) -> (Option<Command>, Effects) {
         (None, Effects::default())
     }
-
-    /// A scan round landed in the link record; a service that mirrors it clamps here.
-    fn on_scan(&mut self, _state: &mut DeviceState) {}
 }
 
 /// The page as the local panel and buttons see it.
@@ -153,11 +150,6 @@ impl Services {
                 .service_mut(ServiceId::Page(PageId::Speaker))
                 .apply(intent, state),
         }
-    }
-
-    pub fn on_scan(&mut self, state: &mut DeviceState) {
-        self.service_mut(ServiceId::Page(PageId::Network))
-            .on_scan(state);
     }
 
     /// Every service has an answer here, including the two the panel never shows.

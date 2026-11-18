@@ -101,6 +101,8 @@ pub enum NetworkIntent {
 pub enum LinkIntent {
     Status(LinkStatus),
     Mac([u8; 6]),
+    /// A scan round landed; the record already holds the list, so this is only the notice.
+    Scan,
 }
 
 /// The Audio page's one transition: a recording starts, or the one in progress stops and

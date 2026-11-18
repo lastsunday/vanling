@@ -31,10 +31,13 @@ impl super::Service for NetworkPage {
     ) -> (Option<Command>, Effects) {
         match intent {
             BusinessIntent::Link(intent) => {
-                if let LinkIntent::Status(status) = intent {
-                    self.draft.on_link(*status);
+                let effects = state.network.apply(*intent);
+                match intent {
+                    LinkIntent::Status(status) => self.draft.on_link(*status),
+                    LinkIntent::Mac(_) => {}
+                    LinkIntent::Scan => self.draft.clamp_top(state.network.len()),
                 }
-                (None, state.network.apply(*intent))
+                (None, effects)
             }
             BusinessIntent::Network(intent) => (
                 self.draft
@@ -43,10 +46,6 @@ impl super::Service for NetworkPage {
             ),
             _ => (None, Effects::default()),
         }
-    }
-
-    fn on_scan(&mut self, state: &mut DeviceState) {
-        self.draft.clamp_top(state.network.len());
     }
 }
 

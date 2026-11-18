@@ -2,7 +2,7 @@
 //!
 //! Systems write, renderers read.
 
-use crate::shared::intent::{BusinessIntent, InputIntent, Intent};
+use crate::shared::intent::{BusinessIntent, InputIntent, Intent, LinkIntent};
 use crate::shared::model::{Command, Effects};
 use crate::state::DeviceManager;
 use iot_core::drivers::audio::AudioSample;
@@ -59,14 +59,14 @@ impl DeviceManager {
         command
     }
 
-    /// A scan round landed: the link keeps the list everyone reads, and the page's scroll
-    /// clamps to it.
+    /// A scan round landed: the record keeps the list, and the page clamps its draft to it as
+    /// any other link report.
     pub fn apply_scan(&mut self, list: ApList) {
         if !self.state.backed.network {
             return;
         }
         self.state.network.set_scan(list);
-        self.services.on_scan(&mut self.state);
+        let _ = self.apply_business(BusinessIntent::Link(LinkIntent::Scan));
     }
 
     pub fn apply_capture(&mut self, sample: AudioSample) {

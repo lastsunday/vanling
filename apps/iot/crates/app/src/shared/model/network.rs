@@ -38,6 +38,7 @@ impl NetworkState {
                 self.mac = Some(mac);
                 Effects::default()
             }
+            LinkIntent::Scan => Effects::default(),
         }
     }
 
