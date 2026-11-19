@@ -1,16 +1,16 @@
-//! The lamp's renderer: a colour, and nothing a panel would add on top of it.
+//! The lamp's renderer: a colour, and nothing a screen would add on top of it.
 
 use alloc::boxed::Box;
 
-use crate::render::common::ColorDriver;
-use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
-use iot_core::demand::{DemandKey, Mode};
+use crate::render::engine::ColorDriver;
+use crate::render::{Activity, Appearance, LightAppearance, Renderer, Topic};
+use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
 
 pub struct LampRenderer {
     instance: u8,
     light: Box<dyn RgbLight>,
-    consumers: [Consumer; 2],
+    topics: [Topic; 2],
     color: ColorDriver,
     appearance: Option<LightAppearance>,
 }
@@ -20,7 +20,7 @@ impl LampRenderer {
         Self {
             instance,
             light,
-            consumers: [Consumer::Surface(instance), Consumer::Screen],
+            topics: [Topic::Surface(instance), Topic::Display],
             color: ColorDriver::new(),
             appearance: None,
         }
@@ -33,40 +33,31 @@ impl LampRenderer {
         // A lamp has no repaint throttle of its own: any colour difference is worth writing.
         self.color.show(&mut *self.light, 0, declared, now_ms);
     }
-
-    fn activity(&self) -> Activity {
-        if self.color.breathing() {
-            Activity::TimeDriven
-        } else {
-            Activity::Idle
-        }
-    }
 }
 
 impl Renderer for LampRenderer {
-    fn consumers(&self) -> &[Consumer] {
-        &self.consumers
+    fn topics(&self) -> &[Topic] {
+        &self.topics
     }
 
-    fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {
+    fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Activity {
         match appearance {
-            Appearance::Screen(frame) => {
-                self.color
-                    .set_display(frame.demand.claim(DemandKey::DISPLAY).mode);
-                if self.color.display() == Mode::Off {
+            Appearance::Display(mode) => {
+                self.color.set_display(mode);
+                if mode == Mode::Off {
                     self.color.stop();
-                    return Activity::Idle;
                 }
-                self.activity()
+                self.color.activity()
             }
-            Appearance::Surface {
-                instance,
-                appearance,
-            } => {
+            Appearance::Surface { instance, light } => {
                 debug_assert_eq!(instance, self.instance);
-                self.appearance = Some(appearance);
+                self.appearance = Some(light);
                 self.present(now_ms);
-                self.activity()
+                self.color.activity()
+            }
+            Appearance::Frame(_) => {
+                debug_assert!(false, "the lamp reads the gate, not the frame");
+                Activity::Idle
             }
         }
     }
@@ -83,11 +74,9 @@ impl Renderer for LampRenderer {
 mod tests {
     use super::*;
     use crate::render::light_appearance;
-    use crate::shared::snapshot::FrameSnapshot;
-    use crate::state::{LightState, PageId};
+    use crate::state::LightState;
     use alloc::rc::Rc;
     use core::cell::RefCell;
-    use iot_core::demand::{Claim, EffectiveDemand, Mode, Priority};
     use iot_core::light::Rgb;
 
     struct LampState {
@@ -118,30 +107,21 @@ mod tests {
         }
     }
 
-    fn display(display: Mode) -> Appearance {
-        let mut demand = EffectiveDemand::default();
-        demand.set(
-            DemandKey::DISPLAY,
-            Claim::new(display, 0, Priority::Primary),
-        );
-        Appearance::Screen(FrameSnapshot {
-            demand,
-            page: PageId::Network,
-            ..FrameSnapshot::default()
-        })
+    fn gate(mode: Mode) -> Appearance<'static> {
+        Appearance::Display(mode)
     }
 
-    fn breathing() -> Appearance {
+    fn breathing() -> Appearance<'static> {
         Appearance::Surface {
             instance: 0,
-            appearance: light_appearance(LightState::boot()),
+            light: light_appearance(LightState::boot()),
         }
     }
 
-    fn color(color: Rgb) -> Appearance {
+    fn color(color: Rgb) -> Appearance<'static> {
         Appearance::Surface {
             instance: 0,
-            appearance: LightAppearance::Color(color),
+            light: LightAppearance::Color(color),
         }
     }
 
@@ -154,10 +134,7 @@ mod tests {
     #[test]
     fn a_breathing_lamp_keeps_stepping() {
         let (mut r, lamp) = renderer();
-        assert_eq!(
-            r.on_appearance(display(Mode::Continuous), 0),
-            Activity::Idle
-        );
+        assert_eq!(r.on_appearance(gate(Mode::Continuous), 0), Activity::Idle);
         assert_eq!(r.on_appearance(breathing(), 0), Activity::TimeDriven);
         assert_eq!(lamp.borrow().writes, 1);
         assert_eq!(r.step(1_000), Activity::TimeDriven);
@@ -182,7 +159,7 @@ mod tests {
         let (mut r, lamp) = renderer();
         let off = Appearance::Surface {
             instance: 0,
-            appearance: LightAppearance::Off,
+            light: LightAppearance::Off,
         };
         assert_eq!(r.on_appearance(off, 0), Activity::Idle);
         assert_eq!(lamp.borrow().color, Rgb(0, 0, 0));
@@ -193,7 +170,7 @@ mod tests {
     #[test]
     fn a_lamp_under_a_dark_display_writes_nothing() {
         let (mut r, lamp) = renderer();
-        r.on_appearance(display(Mode::Off), 0);
+        r.on_appearance(gate(Mode::Off), 0);
         assert_eq!(r.on_appearance(color(Rgb(255, 0, 0)), 0), Activity::Idle);
         assert_eq!(
             lamp.borrow().writes,
@@ -206,11 +183,11 @@ mod tests {
     fn a_lamp_does_not_ground_itself_for_a_page() {
         let (mut r, lamp) = renderer();
         r.on_appearance(color(Rgb(10, 20, 30)), 0);
-        r.on_appearance(display(Mode::Continuous), 0);
+        r.on_appearance(gate(Mode::Continuous), 0);
         assert_eq!(
             lamp.borrow().color,
             Rgb(10, 20, 30),
-            "the network page is black on a panel, not on an LED"
+            "the network page is black on a screen, not on an LED"
         );
     }
 }

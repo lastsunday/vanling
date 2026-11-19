@@ -140,7 +140,7 @@ mod tests {
             &mut self,
             _now_ms: u64,
             _period_ms: u32,
-            _painter: &dyn crate::drivers::surface::PanelPainter,
+            _painter: &dyn crate::drivers::surface::ScreenPainter,
             _snapshot: &dyn core::any::Any,
         ) -> bool {
             false
@@ -149,7 +149,16 @@ mod tests {
         fn attach_camera(&mut self, _camera: Box<dyn crate::drivers::camera::FrameSource + Send>) {}
     }
 
-    impl PageSurface for FakePage {}
+    impl PageSurface for FakePage {
+        fn repaint(
+            &mut self,
+            _painter: &dyn crate::drivers::surface::ScreenPainter,
+            _snapshot: &dyn core::any::Any,
+            _force: bool,
+        ) -> bool {
+            false
+        }
+    }
 
     struct FakeButton;
 

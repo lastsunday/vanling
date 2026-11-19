@@ -467,7 +467,7 @@ fn the_worker_handles_compile_without_the_radio() {
         !lines[at.saturating_sub(1)..at]
             .iter()
             .any(|line| line.trim_start().starts_with("#[cfg")),
-        "the handles are the panel/worker boundary; gating them on wifi removes them from the host build"
+        "the handles are the bench/worker boundary; gating them on wifi removes them from the host build"
     );
 
     let feature = std::fs::read_to_string(app_src().join("runtime/feature/mod.rs"))
@@ -550,7 +550,7 @@ fn context_types_live_only_at_boundaries() {
         found,
         [
             "apps/iot/crates/app/src/runtime/feature/network/mod.rs: NetCtx",
-            "apps/iot/crates/core/src/drivers/surface.rs: PanelContext",
+            "apps/iot/crates/core/src/drivers/surface.rs: ScreenContext",
         ],
         "a context's fields are fixed by the boundary it crosses, not by its caller"
     );
@@ -569,7 +569,7 @@ fn a_bundle_is_built_where_it_is_owned() {
         ("Io", &["apps/iot/crates/app/src/lib.rs"]),
         ("NetCtx", &["apps/iot/crates/app/src/main.rs"]),
         (
-            "PanelContext",
+            "ScreenContext",
             &["apps/iot/crates/bsp-esp/src/virtual_components/screen/paint.rs"],
         ),
         (
@@ -839,11 +839,11 @@ fn render_never_reaches_up() {
     );
 }
 
-/// A lamp paints one colour. Anything a panel adds on top of that colour, or a page to paint
-/// at all, means the lamp slice reached into the panel instead of staying on its own side of
+/// A lamp paints one colour. Anything a screen adds on top of that colour, or a page to paint
+/// at all, means the lamp slice reached into the screen instead of staying on its own side of
 /// the split.
 #[test]
-fn the_lamp_never_reaches_the_panel() {
+fn the_lamp_never_reaches_the_screen() {
     assert_no_reference(
         shipping_sources(&app_src().join("render/lamp")),
         &[
@@ -862,7 +862,7 @@ fn the_lamp_never_reaches_the_panel() {
 #[test]
 fn what_every_surface_shares_knows_no_surface() {
     assert_no_reference(
-        shipping_sources(&app_src().join("render/common")),
+        shipping_sources(&app_src().join("render/engine")),
         &[
             "crate::render::screen",
             "crate::render::lamp",

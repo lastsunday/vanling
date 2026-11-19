@@ -18,13 +18,13 @@ use iot_core::drivers::surface::WiredSurface;
 
 mod assets;
 pub mod bench;
-pub mod render;
+pub(crate) mod render;
 pub mod runtime;
 pub mod services;
 pub mod shared;
 pub mod state;
 
-use render::wired;
+use render::wire;
 use runtime::Runtime;
 use runtime::coordinator::{
     CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
@@ -242,7 +242,7 @@ where
         log::info!("[CAM] no camera wired, the Camera page stays dark");
     }
 
-    let (renderers, surface_roles) = wired(surfaces, camera);
+    let (renderers, surface_roles) = wire(surfaces, camera);
     let mut manager = Box::new(DeviceManager::boot(Boot {
         backed,
         demand_keys: backed.demand_keys(),

@@ -1,55 +1,36 @@
-//! The panel's renderer: pages over the colour, the backlight, and the camera feed.
+//! The screen's renderer: pages over the colour, the backlight, and the camera feed.
 
 mod painter;
 mod repaint;
 
 pub use self::painter::AppPainter;
-pub use self::repaint::{frame_repaint_due, windowed_percent, windowed_rate};
+
+use self::repaint::repaint_due;
 
 use alloc::boxed::Box;
 use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::render::common::ColorDriver;
-use crate::render::{Activity, Appearance, Consumer, LightAppearance, Renderer};
+use crate::render::engine::ColorDriver;
+use crate::render::{Activity, Appearance, LightAppearance, Renderer, Topic};
 use crate::services::descriptor;
 use crate::shared::model::LightState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::{DemandKey, Mode};
-use iot_core::drivers::camera::{CameraSnapshot, FrameSource};
-use iot_core::drivers::surface::{PageSurface, PanelContext, PanelPainter, PanelTarget};
-
-/// Used by tests and by a surface whose product injected no painter: the colour path still
-/// runs, and no page ink is added.
-struct NullPainter;
-
-impl PanelPainter for NullPainter {
-    fn paint(&self, _target: PanelTarget<'_>, _context: PanelContext, _snapshot: &dyn Any) {}
-
-    fn paint_camera(
-        &self,
-        _target: PanelTarget<'_>,
-        _readout: CameraSnapshot,
-        _context: PanelContext,
-        _snapshot: &dyn Any,
-    ) {
-    }
-}
-
-static NULL_PAINTER: NullPainter = NullPainter;
+use iot_core::drivers::camera::FrameSource;
+use iot_core::drivers::surface::{PageSurface, ScreenPainter};
 
 pub struct ScreenRenderer {
     instance: u8,
     surface: Box<dyn PageSurface>,
-    consumers: [Consumer; 2],
+    topics: [Topic; 2],
     color: ColorDriver,
     appearance: Option<LightAppearance>,
     page: Option<PageId>,
-    /// The painter the product injected, and the snapshot gate it is handed.
-    painter: Option<Box<dyn PanelPainter>>,
-    debug: bool,
+    painter: Box<dyn ScreenPainter>,
+    overlay: bool,
     last_snapshot: Option<FrameSnapshot>,
     last_repaint_ms: u32,
     /// The cadence the last snapshot's camera claim asked for, passed through to the
@@ -58,41 +39,32 @@ pub struct ScreenRenderer {
 }
 
 impl ScreenRenderer {
-    pub fn new(instance: u8, surface: Box<dyn PageSurface>) -> Self {
+    pub fn new(
+        instance: u8,
+        surface: Box<dyn PageSurface>,
+        painter: Box<dyn ScreenPainter>,
+        overlay: bool,
+    ) -> Self {
         Self {
             instance,
             surface,
-            consumers: [Consumer::Surface(instance), Consumer::Screen],
+            topics: [Topic::Surface(instance), Topic::Frame],
             color: ColorDriver::new(),
             appearance: None,
             page: None,
-            painter: None,
-            debug: false,
+            painter,
+            overlay,
             last_snapshot: None,
             last_repaint_ms: 0,
             camera_period_ms: 0,
         }
     }
 
-    pub fn with_painter(mut self, painter: Box<dyn PanelPainter>, debug: bool) -> Self {
-        self.painter = Some(painter);
-        self.debug = debug;
-        self
-    }
-
     pub fn with_camera(mut self, camera: Box<dyn FrameSource + Send>) -> Self {
         self.surface.attach_camera(camera);
-        self.page = None;
         self
     }
 
-    fn repaint(&mut self, snapshot: &dyn Any, force: bool) -> bool {
-        let painter = self.painter.as_deref().unwrap_or(&NULL_PAINTER);
-        self.surface.repaint(painter, snapshot, force)
-    }
-}
-
-impl ScreenRenderer {
     fn present(&mut self, now_ms: u32) {
         let Some(declared) = self.appearance else {
             return;
@@ -103,93 +75,96 @@ impl ScreenRenderer {
             self.surface.set_backlight(100);
             return;
         }
-        let lit = self.color.show(&mut *self.surface, step, declared, now_ms);
+        let shown = self.color.show(&mut *self.surface, step, declared, now_ms);
         self.surface
-            .set_backlight(lit.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
+            .set_backlight(shown.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
+    }
+
+    fn paint_last(&mut self) {
+        if let Some(snapshot) = self.last_snapshot.as_ref() {
+            self.surface.repaint(&*self.painter, snapshot, false);
+        }
     }
 
     fn on_camera_page(&self) -> bool {
         self.page
             .is_some_and(|page| descriptor(page).camera_frames())
     }
+
+    fn on_frame(&mut self, frame: &FrameSnapshot, now_ms: u32) -> Activity {
+        let page_changed = self.page != Some(frame.page);
+        let camera = frame.demand.claim(DemandKey::CAMERA);
+        self.camera_period_ms = camera.period_ms;
+        // Handing the buffer back belongs to this side of the boundary: a chain left
+        // running would overwrite every fill after it a row at a time, and the surface
+        // cannot tell a demand the page withdrew from one an application never made.
+        if !camera.mode.is_collecting() {
+            self.surface.release_camera();
+        }
+        let previous = self.last_snapshot.replace(*frame);
+        let repaint = previous.as_ref().is_none_or(|prev| {
+            repaint_due(
+                prev.page,
+                prev,
+                frame,
+                u64::from(now_ms.wrapping_sub(self.last_repaint_ms)),
+                self.overlay,
+            )
+        });
+        self.page = Some(frame.page);
+        self.color
+            .set_display(frame.demand.claim(DemandKey::DISPLAY).mode);
+        match self.color.display() {
+            Mode::Off => {
+                self.surface.set_backlight_ceiling(0);
+                self.color.stop();
+                return Activity::Idle;
+            }
+            Mode::OnChange => self
+                .surface
+                .set_backlight_ceiling(LightState::BACKLIGHT_FLOOR_PCT),
+            Mode::Continuous => self.surface.set_backlight_ceiling(100),
+        }
+        if page_changed {
+            self.color.forget();
+            self.present(now_ms);
+        }
+        if (page_changed || repaint) && self.repaint(frame, true) {
+            self.last_repaint_ms = now_ms;
+        }
+        if self.on_camera_page() {
+            return Activity::TimeDriven;
+        }
+        self.color.activity()
+    }
+
+    fn repaint(&mut self, snapshot: &dyn Any, force: bool) -> bool {
+        self.surface.repaint(&*self.painter, snapshot, force)
+    }
 }
 
 impl Renderer for ScreenRenderer {
-    fn consumers(&self) -> &[Consumer] {
-        &self.consumers
+    fn topics(&self) -> &[Topic] {
+        &self.topics
     }
 
     fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
         self.surface.flush()
     }
 
-    fn on_appearance(&mut self, appearance: Appearance, now_ms: u32) -> Activity {
+    fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Activity {
         match appearance {
-            Appearance::Screen(frame) => {
-                let page_changed = self.page != Some(frame.page);
-                let camera = frame.demand.claim(DemandKey::CAMERA);
-                self.camera_period_ms = camera.period_ms;
-                // Handing the buffer back belongs to this side of the boundary: a chain
-                // left running would overwrite every fill after it a row at a time, and
-                // the surface cannot tell a demand the page withdrew from one an
-                // application never made.
-                if !camera.mode.is_collecting() {
-                    self.surface.release_camera();
-                }
-                let previous = self.last_snapshot.replace(frame);
-                let repaint = previous.as_ref().is_none_or(|prev| {
-                    frame_repaint_due(
-                        prev.page,
-                        prev,
-                        &frame,
-                        u64::from(now_ms.wrapping_sub(self.last_repaint_ms)),
-                        self.debug,
-                    )
-                });
-                self.page = Some(frame.page);
-                self.color
-                    .set_display(frame.demand.claim(DemandKey::DISPLAY).mode);
-                match self.color.display() {
-                    Mode::Off => {
-                        self.surface.set_backlight_ceiling(0);
-                        self.color.stop();
-                        return Activity::Idle;
-                    }
-                    Mode::OnChange => self
-                        .surface
-                        .set_backlight_ceiling(LightState::BACKLIGHT_FLOOR_PCT),
-                    Mode::Continuous => self.surface.set_backlight_ceiling(100),
-                }
-                if page_changed {
-                    self.color.forget();
-                    self.present(now_ms);
-                }
-                if (page_changed || repaint) && self.repaint(&frame, true) {
-                    self.last_repaint_ms = now_ms;
-                }
-                if self.on_camera_page() {
-                    return Activity::TimeDriven;
-                }
-                breathing_activity(self.color.breathing())
-            }
-            Appearance::Surface {
-                instance,
-                appearance,
-            } => {
+            Appearance::Frame(frame) => self.on_frame(frame, now_ms),
+            Appearance::Surface { instance, light } => {
                 debug_assert_eq!(instance, self.instance);
-                self.appearance = Some(appearance);
+                self.appearance = Some(light);
                 self.present(now_ms);
-                let Self {
-                    surface,
-                    painter,
-                    last_snapshot,
-                    ..
-                } = self;
-                if let Some(snapshot) = last_snapshot.as_ref() {
-                    let painter = painter.as_deref().unwrap_or(&NULL_PAINTER);
-                    surface.repaint(painter, snapshot, false);
-                }
-                breathing_activity(self.color.breathing())
+                self.paint_last();
+                self.color.activity()
+            }
+            Appearance::Display(_) => {
+                debug_assert!(false, "the screen reads the gate from its frame");
+                Activity::Idle
             }
         }
     }
@@ -199,38 +174,22 @@ impl Renderer for ScreenRenderer {
             let Some(snapshot) = self.last_snapshot.as_ref() else {
                 return Activity::TimeDriven;
             };
-            let painter = self.painter.as_deref().unwrap_or(&NULL_PAINTER);
-            self.surface
-                .paint_camera(u64::from(now_ms), self.camera_period_ms, painter, snapshot);
+            self.surface.paint_camera(
+                u64::from(now_ms),
+                self.camera_period_ms,
+                &*self.painter,
+                snapshot,
+            );
             return Activity::TimeDriven;
         }
         let step = self.surface.repaint_step();
-        match self.color.step(&mut *self.surface, step, now_ms) {
-            Some(lit) => {
-                self.surface
-                    .set_backlight(lit.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
-                let Self {
-                    surface,
-                    painter,
-                    last_snapshot,
-                    ..
-                } = self;
-                if let Some(snapshot) = last_snapshot.as_ref() {
-                    let painter = painter.as_deref().unwrap_or(&NULL_PAINTER);
-                    surface.repaint(painter, snapshot, false);
-                }
-                Activity::TimeDriven
-            }
-            None => Activity::Idle,
-        }
-    }
-}
-
-fn breathing_activity(breathing: bool) -> Activity {
-    if breathing {
+        let Some(shown) = self.color.step(&mut *self.surface, step, now_ms) else {
+            return Activity::Idle;
+        };
+        self.surface
+            .set_backlight(shown.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
+        self.paint_last();
         Activity::TimeDriven
-    } else {
-        Activity::Idle
     }
 }
 
@@ -243,11 +202,28 @@ mod tests {
     use alloc::rc::Rc;
     use core::cell::RefCell;
     use iot_core::demand::{Claim, EffectiveDemand, Priority};
-    use iot_core::drivers::camera::{CameraCounters, FrameAdvance, WindowGeometry};
-    use iot_core::drivers::surface::RgbLight;
+    use iot_core::drivers::camera::{
+        CameraCounters, CameraSnapshot, FrameAdvance, FrameSource, WindowGeometry,
+    };
+    use iot_core::drivers::surface::{RgbLight, ScreenContext, ScreenTarget};
     use iot_core::light::Rgb;
 
-    struct PanelState {
+    struct NullPainter;
+
+    impl ScreenPainter for NullPainter {
+        fn paint(&self, _target: ScreenTarget<'_>, _context: ScreenContext, _snapshot: &dyn Any) {}
+
+        fn paint_camera(
+            &self,
+            _target: ScreenTarget<'_>,
+            _readout: CameraSnapshot,
+            _context: ScreenContext,
+            _snapshot: &dyn Any,
+        ) {
+        }
+    }
+
+    struct ScreenState {
         fills: u32,
         color: Rgb,
         backlight: u8,
@@ -258,11 +234,11 @@ mod tests {
         camera: bool,
     }
 
-    struct FakeScreen(Rc<RefCell<PanelState>>);
+    struct FakeScreen(Rc<RefCell<ScreenState>>);
 
     impl FakeScreen {
         fn new() -> Self {
-            Self(Rc::new(RefCell::new(PanelState {
+            Self(Rc::new(RefCell::new(ScreenState {
                 fills: 0,
                 color: Rgb(0, 0, 0),
                 backlight: 100,
@@ -274,33 +250,42 @@ mod tests {
             })))
         }
 
-        fn handle(&self) -> Rc<RefCell<PanelState>> {
+        fn handle(&self) -> Rc<RefCell<ScreenState>> {
             Rc::clone(&self.0)
         }
     }
 
     impl RgbLight for FakeScreen {
         fn set_rgb(&mut self, color: Rgb) {
-            let mut panel = self.0.borrow_mut();
-            panel.fills += 1;
-            panel.color = color;
+            let mut screen = self.0.borrow_mut();
+            screen.fills += 1;
+            screen.color = color;
         }
     }
 
     impl PageSurface for FakeScreen {
         fn set_backlight(&mut self, level_pct: u8) {
-            let mut panel = self.0.borrow_mut();
-            panel.backlight = level_pct.min(panel.ceiling);
+            let mut screen = self.0.borrow_mut();
+            screen.backlight = level_pct.min(screen.ceiling);
         }
 
         fn set_backlight_ceiling(&mut self, level_pct: u8) {
-            let mut panel = self.0.borrow_mut();
-            panel.ceiling = level_pct;
-            panel.backlight = panel.backlight.min(level_pct);
+            let mut screen = self.0.borrow_mut();
+            screen.ceiling = level_pct;
+            screen.backlight = screen.backlight.min(level_pct);
         }
 
         fn repaint_step(&self) -> u8 {
             0
+        }
+
+        fn repaint(
+            &mut self,
+            _painter: &dyn ScreenPainter,
+            _snapshot: &dyn Any,
+            _force: bool,
+        ) -> bool {
+            false
         }
     }
 
@@ -309,12 +294,12 @@ mod tests {
             &mut self,
             _now_ms: u64,
             period_ms: u32,
-            _painter: &dyn PanelPainter,
+            _painter: &dyn ScreenPainter,
             _snapshot: &dyn Any,
         ) -> bool {
-            let mut panel = self.0.borrow_mut();
-            panel.camera_paints += 1;
-            panel.camera_period = period_ms;
+            let mut screen = self.0.borrow_mut();
+            screen.camera_paints += 1;
+            screen.camera_period = period_ms;
             true
         }
 
@@ -327,24 +312,24 @@ mod tests {
         }
     }
 
-    fn panel_on(page: PageId, display: Mode) -> Appearance {
+    fn frame_on(page: PageId, display: Mode) -> FrameSnapshot {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
             Claim::new(display, 0, Priority::Primary),
         );
-        Appearance::Screen(FrameSnapshot {
+        FrameSnapshot {
             demand,
             page,
             ..FrameSnapshot::default()
-        })
+        }
     }
 
-    fn panel_asked(display: Mode) -> Appearance {
-        panel_on(PageId::Ambient, display)
+    fn frame_asked(display: Mode) -> FrameSnapshot {
+        frame_on(PageId::Ambient, display)
     }
 
-    fn panel_collecting(page: PageId, period_ms: u32) -> Appearance {
+    fn frame_collecting(page: PageId, period_ms: u32) -> FrameSnapshot {
         let mut demand = EffectiveDemand::default();
         demand.set(
             DemandKey::DISPLAY,
@@ -354,46 +339,49 @@ mod tests {
             DemandKey::CAMERA,
             Claim::new(Mode::Continuous, period_ms, Priority::Primary),
         );
-        Appearance::Screen(FrameSnapshot {
+        FrameSnapshot {
             demand,
             page,
             ..FrameSnapshot::default()
-        })
-    }
-
-    fn ambient_breath(instance: u8) -> Appearance {
-        Appearance::Surface {
-            instance,
-            appearance: light_appearance(LightState::boot()),
         }
     }
 
-    fn renderer() -> (ScreenRenderer, Rc<RefCell<PanelState>>) {
+    fn ambient_breath(instance: u8) -> Appearance<'static> {
+        Appearance::Surface {
+            instance,
+            light: light_appearance(LightState::boot()),
+        }
+    }
+
+    fn renderer() -> (ScreenRenderer, Rc<RefCell<ScreenState>>) {
         let screen = FakeScreen::new();
-        let panel = screen.handle();
-        (ScreenRenderer::new(0, Box::new(screen)), panel)
+        let state = screen.handle();
+        (
+            ScreenRenderer::new(0, Box::new(screen), Box::new(NullPainter), true),
+            state,
+        )
     }
 
     #[test]
-    fn a_lit_panel_keeps_breathing_on_a_page_that_never_settles() {
-        let (mut r, panel) = renderer();
+    fn a_lit_screen_keeps_breathing_on_a_page_that_never_settles() {
+        let (mut r, screen) = renderer();
         assert_eq!(
-            r.on_appearance(panel_asked(Mode::Continuous), 0),
+            r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 0),
             Activity::Idle,
-            "the first appearance only tells the panel what it is for"
+            "the first appearance only tells the screen what it is for"
         );
         assert_eq!(r.on_appearance(ambient_breath(0), 0), Activity::TimeDriven);
         r.step(1_000);
         r.step(1_100);
-        assert!(panel.borrow().fills > 0, "a lit panel keeps painting");
+        assert!(screen.borrow().fills > 0, "a lit screen keeps painting");
     }
 
     #[test]
-    fn an_unlit_panel_ships_nothing_from_any_consumer() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_asked(Mode::Off), 0);
-        assert_eq!(panel.borrow().ceiling, 0, "and its backlight is off");
-        let fills_before = panel.borrow().fills;
+    fn an_unlit_screen_ships_nothing_from_any_topic() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::Off)), 0);
+        assert_eq!(screen.borrow().ceiling, 0, "and its backlight is off");
+        let fills_before = screen.borrow().fills;
 
         r.on_appearance(ambient_breath(0), 0);
         r.step(1_000);
@@ -401,42 +389,42 @@ mod tests {
         r.on_appearance(
             Appearance::Surface {
                 instance: 0,
-                appearance: LightAppearance::Color(Rgb(255, 0, 0)),
+                light: LightAppearance::Color(Rgb(255, 0, 0)),
             },
             1_200,
         );
 
         assert_eq!(
-            panel.borrow().fills,
+            screen.borrow().fills,
             fills_before,
             "the breathing loop and the colour change both leave through the same gate"
         );
-        assert_eq!(panel.borrow().backlight, 0);
+        assert_eq!(screen.borrow().backlight, 0);
     }
 
     #[test]
-    fn a_panel_relit_after_being_dark_paints_the_frame_the_darkness_swallowed() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_asked(Mode::Off), 0);
+    fn a_screen_relit_after_being_dark_paints_the_frame_the_darkness_swallowed() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::Off)), 0);
         r.on_appearance(ambient_breath(0), 0);
         r.step(1_000);
-        assert_eq!(panel.borrow().fills, 0);
+        assert_eq!(screen.borrow().fills, 0);
 
-        r.on_appearance(panel_asked(Mode::Continuous), 2_000);
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 2_000);
         r.step(2_000);
         assert_eq!(
-            panel.borrow().fills,
+            screen.borrow().fills,
             1,
             "the first frame after relighting is the one that matters"
         );
-        assert_eq!(panel.borrow().ceiling, 100);
+        assert_eq!(screen.borrow().ceiling, 100);
     }
 
     #[test]
-    fn a_dimmed_panel_is_brightness_only_and_keeps_its_cadence() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_asked(Mode::OnChange), 0);
-        assert_eq!(panel.borrow().ceiling, LightState::BACKLIGHT_FLOOR_PCT);
+    fn a_dimmed_screen_is_brightness_only_and_keeps_its_cadence() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::OnChange)), 0);
+        assert_eq!(screen.borrow().ceiling, LightState::BACKLIGHT_FLOOR_PCT);
 
         r.on_appearance(ambient_breath(0), 0);
         assert_eq!(
@@ -445,34 +433,37 @@ mod tests {
             "dimming is a brightness, not a rate"
         );
         r.step(1_000);
-        assert!(panel.borrow().fills > 0);
+        assert!(screen.borrow().fills > 0);
     }
 
     #[test]
-    fn the_network_page_grounds_the_panel_black_and_still() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_on(PageId::Network, Mode::Continuous), 0);
+    fn the_network_page_grounds_the_screen_black_and_still() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(
+            Appearance::Frame(&frame_on(PageId::Network, Mode::Continuous)),
+            0,
+        );
         assert_eq!(
             r.on_appearance(ambient_breath(0), 0),
             Activity::Idle,
             "a breathing light does not breathe through the page's ground"
         );
-        assert_eq!(panel.borrow().color, Rgb(0, 0, 0), "the ground is black");
+        assert_eq!(screen.borrow().color, Rgb(0, 0, 0), "the ground is black");
         assert_eq!(
-            panel.borrow().backlight,
+            screen.borrow().backlight,
             100,
             "and the setup screen is lit to read"
         );
-        let fills = panel.borrow().fills;
+        let fills = screen.borrow().fills;
         assert_eq!(r.step(1_000), Activity::Idle);
         r.step(1_100);
         assert_eq!(
-            panel.borrow().fills,
+            screen.borrow().fills,
             fills,
             "and the loop parks instead of repainting"
         );
         assert_eq!(
-            panel.borrow().backlight,
+            screen.borrow().backlight,
             100,
             "the backlight holds instead of ramping"
         );
@@ -480,58 +471,61 @@ mod tests {
         r.on_appearance(
             Appearance::Surface {
                 instance: 0,
-                appearance: LightAppearance::Off,
+                light: LightAppearance::Off,
             },
             1_200,
         );
-        assert_eq!(panel.borrow().color, Rgb(0, 0, 0));
-        assert_eq!(panel.borrow().backlight, 100);
+        assert_eq!(screen.borrow().color, Rgb(0, 0, 0));
+        assert_eq!(screen.borrow().backlight, 100);
     }
 
     #[test]
-    fn the_camera_page_grounds_the_panel_black() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 0);
+    fn the_camera_page_grounds_the_screen_black() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 0);
         r.on_appearance(
             Appearance::Surface {
                 instance: 0,
-                appearance: LightAppearance::Color(Rgb(10, 20, 30)),
+                light: LightAppearance::Color(Rgb(10, 20, 30)),
             },
             0,
         );
-        assert_eq!(panel.borrow().color, Rgb(10, 20, 30));
+        assert_eq!(screen.borrow().color, Rgb(10, 20, 30));
 
         assert_eq!(
-            r.on_appearance(panel_on(PageId::Camera, Mode::Continuous), 1),
+            r.on_appearance(
+                Appearance::Frame(&frame_on(PageId::Camera, Mode::Continuous)),
+                1
+            ),
             Activity::TimeDriven,
             "a camera page is driven by arriving frames, not by the light"
         );
         assert_eq!(
-            panel.borrow().color,
+            screen.borrow().color,
             Rgb(0, 0, 0),
             "the camera page's ground is the page's black, not the light's colour"
         );
-        assert_eq!(panel.borrow().backlight, 100);
+        assert_eq!(screen.borrow().backlight, 100);
         assert_eq!(r.step(2), Activity::TimeDriven);
         assert_eq!(
-            panel.borrow().camera_paints,
+            screen.borrow().camera_paints,
             1,
-            "the panel pulls the next frame"
+            "the screen pulls the next frame"
         );
     }
 
     #[test]
     fn the_camera_cadence_is_handed_to_the_surface_rather_than_read_there() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_collecting(PageId::Camera, 200), 0);
+        let (mut r, screen) = renderer();
+        r.on_appearance(Appearance::Frame(&frame_collecting(PageId::Camera, 200)), 0);
         r.step(1_000);
         assert_eq!(
-            panel.borrow().camera_period,
+            screen.borrow().camera_period,
             200,
             "the claim's cadence is the policy the page asked for"
         );
         assert_eq!(
-            panel.borrow().camera_releases,
+            screen.borrow().camera_releases,
             0,
             "a collecting demand keeps the buffer"
         );
@@ -539,50 +533,53 @@ mod tests {
 
     #[test]
     fn the_camera_is_released_when_the_demand_stops_collecting() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_collecting(PageId::Camera, 0), 0);
-        r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 1);
+        let (mut r, screen) = renderer();
+        r.on_appearance(Appearance::Frame(&frame_collecting(PageId::Camera, 0)), 0);
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 1);
         assert_eq!(
-            panel.borrow().camera_releases,
+            screen.borrow().camera_releases,
             1,
             "the renderer hands the buffer back; the surface only does as it is told"
         );
-        r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 2);
+        r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 2);
         assert_eq!(
-            panel.borrow().camera_releases,
+            screen.borrow().camera_releases,
             2,
             "and it asks every snapshot, leaving the surface's own guard to make it a no-op"
         );
     }
 
     #[test]
-    fn leaving_the_page_that_grounds_the_panel_puts_the_light_back() {
-        let (mut r, panel) = renderer();
-        r.on_appearance(panel_on(PageId::Network, Mode::Continuous), 0);
+    fn leaving_the_page_that_grounds_the_screen_puts_the_light_back() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(
+            Appearance::Frame(&frame_on(PageId::Network, Mode::Continuous)),
+            0,
+        );
         r.on_appearance(ambient_breath(0), 0);
-        assert_eq!(panel.borrow().color, Rgb(0, 0, 0));
+        assert_eq!(screen.borrow().color, Rgb(0, 0, 0));
 
         assert_eq!(
-            r.on_appearance(panel_on(PageId::Ambient, Mode::Continuous), 100),
+            r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 100),
             Activity::TimeDriven,
             "the breathing the page was hiding resumes"
         );
         let LightAppearance::Breathing(breath) = light_appearance(LightState::boot()) else {
             panic!("the boot light breathes");
         };
-        assert_eq!(panel.borrow().color, breath.rgb(100));
+        assert_eq!(screen.borrow().color, breath.rgb(100));
     }
 
     #[test]
     fn the_camera_is_attached_only_to_a_page_surface() {
-        let (r, panel) = renderer();
-        assert!(!panel.borrow().camera);
+        let (r, screen) = renderer();
+        assert!(!screen.borrow().camera);
         let r = r.with_camera(Box::new(NullCamera));
         assert!(
-            panel.borrow().camera,
-            "a panel is what a camera can write into"
+            screen.borrow().camera,
+            "a page surface is what a camera can write into"
         );
-        assert_eq!(r.consumers(), &[Consumer::Surface(0), Consumer::Screen]);
+        assert_eq!(r.topics(), &[Topic::Surface(0), Topic::Frame]);
     }
 
     struct NullCamera;

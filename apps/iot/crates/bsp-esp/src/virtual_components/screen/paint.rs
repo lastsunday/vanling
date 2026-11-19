@@ -10,7 +10,7 @@ use core::pin::Pin;
 
 use esp_hal::time::{Duration, Instant};
 use iot_core::drivers::camera::FrameOwner;
-use iot_core::drivers::surface::{PageSurface, PanelContext, PanelPainter, PanelTarget};
+use iot_core::drivers::surface::{PageSurface, ScreenContext, ScreenPainter, ScreenTarget};
 use iot_core::light::rgb565;
 use iot_core::stats::windowed_percent;
 
@@ -38,7 +38,7 @@ impl PageSurface for Screen {
         self.panel.set_ceiling(level_pct);
     }
 
-    fn repaint(&mut self, painter: &dyn PanelPainter, snapshot: &dyn Any, force: bool) -> bool {
+    fn repaint(&mut self, painter: &dyn ScreenPainter, snapshot: &dyn Any, force: bool) -> bool {
         let Some(color) = self.owner.painted_color() else {
             return false;
         };
@@ -53,8 +53,8 @@ impl PageSurface for Screen {
 }
 
 impl Screen {
-    pub(super) fn context(&self) -> PanelContext {
-        PanelContext {
+    pub(super) fn context(&self) -> ScreenContext {
+        ScreenContext {
             instance: self.instance,
             fps: self.metrics.fps(),
             spl_offset_db: SPL_OFFSET_DECIBELS,
@@ -62,14 +62,14 @@ impl Screen {
         }
     }
 
-    pub(super) fn paint(&mut self, color: Rgb, painter: &dyn PanelPainter, snapshot: &dyn Any) {
+    pub(super) fn paint(&mut self, color: Rgb, painter: &dyn ScreenPainter, snapshot: &dyn Any) {
         let render_start = Instant::now();
         self.fill(color);
 
         let bytes = self.panel.frame_bytes();
         let context = self.context();
         painter.paint(
-            PanelTarget {
+            ScreenTarget {
                 frame: &mut self.frame[..bytes],
                 width: usize::from(self.panel.width()),
                 height: usize::from(self.panel.height()),

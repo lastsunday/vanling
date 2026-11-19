@@ -1,50 +1,52 @@
-//! The renderer registry: one entry per wired surface, reconciled from device state.
+//! The renderers a device carries, fed from one controller diff.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::render::{Activity, Consumer, RenderController, Renderer};
+use super::appearance::Topic;
+use super::reconciler::RenderController;
+use super::renderer::{Activity, Renderer};
 use crate::shared::model::DeviceState;
 use crate::shared::snapshot::PageSnapshot;
 use iot_core::demand::EffectiveDemand;
 
-struct Entry {
+struct Slot {
     activity: Activity,
     renderer: Box<dyn Renderer>,
 }
 
 /// The renderers a device carries, fed from one [`RenderController`] diff.
-pub struct Registry {
+pub struct Renderers {
     controller: RenderController,
-    renderers: Vec<Entry>,
+    slots: Vec<Slot>,
 }
 
-impl Registry {
+impl Renderers {
     pub const fn new() -> Self {
         Self {
             controller: RenderController::new(),
-            renderers: Vec::new(),
+            slots: Vec::new(),
         }
     }
 
     /// Adds a renderer and hands it the appearances the controller has already seen, so a
     /// renderer that arrives after the first diff is not left showing nothing.
     pub fn register(&mut self, renderer: Box<dyn Renderer>, now_ms: u32) {
-        let mut entry = Entry {
+        let mut slot = Slot {
             activity: Activity::Idle,
             renderer,
         };
-        let consumers: Vec<Consumer> = entry.renderer.consumers().to_vec();
-        for consumer in consumers {
-            if let Some(appearance) = self.controller.current(consumer) {
-                entry.activity = entry.renderer.on_appearance(appearance, now_ms);
+        let topics: Vec<Topic> = slot.renderer.topics().to_vec();
+        for topic in topics {
+            if let Some(appearance) = self.controller.current(topic) {
+                slot.activity = slot.renderer.on_appearance(appearance, now_ms);
             }
         }
-        self.renderers.push(entry);
+        self.slots.push(slot);
     }
 
     /// Diffs the state, fans the changed appearances out to the renderers that claim those
-    /// consumers, and steps the ones that asked for time. Answers whether any still wants frames.
+    /// topics, and steps the ones that asked for time. Answers whether any still wants frames.
     pub fn tick(
         &mut self,
         state: &DeviceState,
@@ -53,40 +55,40 @@ impl Registry {
         now_ms: u32,
     ) -> bool {
         let controller = &mut self.controller;
-        let entries = &mut self.renderers;
+        let slots = &mut self.slots;
         controller.reconcile(state, pages, demand, |appearance| {
-            let consumer = appearance.consumer();
-            for entry in entries.iter_mut() {
-                if entry.renderer.consumers().contains(&consumer) {
-                    entry.activity = entry.renderer.on_appearance(appearance, now_ms);
+            let topic = appearance.topic();
+            for slot in slots.iter_mut() {
+                if slot.renderer.topics().contains(&topic) {
+                    slot.activity = slot.renderer.on_appearance(appearance, now_ms);
                 }
             }
         });
         let mut any = false;
-        for entry in self.renderers.iter_mut() {
-            if entry.activity == Activity::TimeDriven {
-                entry.activity = entry.renderer.step(now_ms);
+        for slot in self.slots.iter_mut() {
+            if slot.activity == Activity::TimeDriven {
+                slot.activity = slot.renderer.step(now_ms);
             }
-            if entry.activity == Activity::TimeDriven {
+            if slot.activity == Activity::TimeDriven {
                 any = true;
             }
         }
         any
     }
 
-    /// Ships what the last [`Registry::tick`] buffered. Awaited rather than folded into the
-    /// tick because the panel's transfer yields between DMA chunks, and the tick must stay a
+    /// Ships what the last [`Renderers::tick`] buffered. Awaited rather than folded into the
+    /// tick because the screen's transfer yields between DMA chunks, and the tick must stay a
     /// plain state diff for the callers that only want to know whether frames are still due.
     pub async fn flush(&mut self) {
-        for entry in self.renderers.iter_mut() {
-            if let Some(flush) = entry.renderer.flush() {
+        for slot in self.slots.iter_mut() {
+            if let Some(flush) = slot.renderer.flush() {
                 flush.await;
             }
         }
     }
 }
 
-impl Default for Registry {
+impl Default for Renderers {
     fn default() -> Self {
         Self::new()
     }
@@ -102,18 +104,18 @@ mod tests {
     use iot_core::demand::EffectiveDemand;
 
     struct Recorder {
-        consumers: [Consumer; 1],
+        topics: [Topic; 1],
         seen: Rc<RefCell<Vec<LightAppearance>>>,
     }
 
     impl Renderer for Recorder {
-        fn consumers(&self) -> &[Consumer] {
-            &self.consumers
+        fn topics(&self) -> &[Topic] {
+            &self.topics
         }
 
-        fn on_appearance(&mut self, appearance: Appearance, _now_ms: u32) -> Activity {
-            if let Appearance::Surface { appearance, .. } = appearance {
-                self.seen.borrow_mut().push(appearance);
+        fn on_appearance(&mut self, appearance: Appearance<'_>, _now_ms: u32) -> Activity {
+            if let Appearance::Surface { light, .. } = appearance {
+                self.seen.borrow_mut().push(light);
             }
             Activity::Idle
         }
@@ -134,13 +136,13 @@ mod tests {
     fn a_renderer_registered_after_the_first_diff_catches_up() {
         let state = state();
         let demand = EffectiveDemand::default();
-        let mut registry = Registry::new();
-        registry.tick(&state, PageSnapshot::default(), &demand, 0);
+        let mut renderers = Renderers::new();
+        renderers.tick(&state, PageSnapshot::default(), &demand, 0);
 
         let seen = Rc::new(RefCell::new(Vec::new()));
-        registry.register(
+        renderers.register(
             Box::new(Recorder {
-                consumers: [Consumer::Surface(0)],
+                topics: [Topic::Surface(0)],
                 seen: Rc::clone(&seen),
             }),
             100,

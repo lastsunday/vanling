@@ -5,19 +5,19 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::render::AppPainter;
-use crate::render::{LampRenderer, Registry, Renderer, ScreenRenderer};
+use crate::render::{AppPainter, LampRenderer, Renderer, Renderers, ScreenRenderer};
 use crate::shared::model::{MAX_LIGHTS, SurfaceRole};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::surface::WiredSurface;
 
-pub type Renderers = Registry;
+/// Whether the debug overlay is drawn, and therefore whether its counters earn repaints.
+const OVERLAY: bool = true;
 
 /// Turns each board surface into the renderer that draws on it.
-pub fn wired(
+pub fn wire(
     surfaces: Vec<WiredSurface>,
     mut camera: Option<Box<dyn FrameSource + Send>>,
-) -> (Registry, [SurfaceRole; MAX_LIGHTS]) {
+) -> (Renderers, [SurfaceRole; MAX_LIGHTS]) {
     assert!(
         surfaces.len() <= MAX_LIGHTS,
         "more wired surfaces than consumers"
@@ -26,16 +26,20 @@ pub fn wired(
     for (role, surface) in roles.iter_mut().zip(&surfaces) {
         *role = surface.role();
     }
-    let mut renderers = Registry::new();
+    let mut renderers = Renderers::new();
     for (instance, surface) in surfaces.into_iter().enumerate() {
         let instance = instance as u8;
         let renderer: Box<dyn Renderer> = match surface {
             WiredSurface::Pages(surface) => {
-                let panel =
-                    ScreenRenderer::new(instance, surface).with_painter(Box::new(AppPainter), true);
+                let screen = ScreenRenderer::new(
+                    instance,
+                    surface,
+                    Box::new(AppPainter::new(OVERLAY)),
+                    OVERLAY,
+                );
                 match camera.take() {
-                    Some(taken) => Box::new(panel.with_camera(taken)),
-                    None => Box::new(panel),
+                    Some(taken) => Box::new(screen.with_camera(taken)),
+                    None => Box::new(screen),
                 }
             }
             WiredSurface::Lamp(light) => Box::new(LampRenderer::new(instance, light)),

@@ -6,16 +6,18 @@ use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
 use iot_core::light::Rgb;
 
+use super::renderer::Activity;
+
 /// What one painted appearance is: nothing, one colour, or a breath that keeps moving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Lit {
+pub(crate) enum Shown {
     Off,
     Solid,
     Breathing(Breath),
 }
 
-impl Lit {
-    /// The panel's backlight for this appearance; lamps never ask.
+impl Shown {
+    /// The screen's backlight for this appearance; lamps never ask.
     pub(crate) fn backlight(self, now_ms: u32, floor_pct: u8) -> u8 {
         match self {
             Self::Off => 0,
@@ -50,12 +52,17 @@ impl ColorDriver {
         self.display = mode;
     }
 
-    pub(crate) fn breathing(&self) -> bool {
-        self.breath.is_some()
-    }
-
     pub(crate) fn display(&self) -> Mode {
         self.display
+    }
+
+    /// Whether the renderer has anything to step: a breath still moving.
+    pub(crate) fn activity(&self) -> Activity {
+        if self.breath.is_some() {
+            Activity::TimeDriven
+        } else {
+            Activity::Idle
+        }
     }
 
     /// Stops the breath without painting: what being dark means.
@@ -74,22 +81,22 @@ impl ColorDriver {
         step: u8,
         appearance: LightAppearance,
         now_ms: u32,
-    ) -> Lit {
+    ) -> Shown {
         match appearance {
             LightAppearance::Off => {
                 self.breath = None;
                 self.drive(light, step, Rgb(0, 0, 0));
-                Lit::Off
+                Shown::Off
             }
             LightAppearance::Color(color) => {
                 self.breath = None;
                 self.drive(light, step, color);
-                Lit::Solid
+                Shown::Solid
             }
             LightAppearance::Breathing(breath) => {
                 self.breath = Some(breath);
                 self.drive(light, step, breath.rgb(now_ms));
-                Lit::Breathing(breath)
+                Shown::Breathing(breath)
             }
         }
     }
@@ -106,10 +113,10 @@ impl ColorDriver {
         light: &mut R,
         step: u8,
         now_ms: u32,
-    ) -> Option<Lit> {
+    ) -> Option<Shown> {
         let breath = self.breath?;
         self.drive(light, step, breath.rgb(now_ms));
-        Some(Lit::Breathing(breath))
+        Some(Shown::Breathing(breath))
     }
 
     fn drive<R: RgbLight + ?Sized>(&mut self, light: &mut R, step: u8, color: Rgb) {

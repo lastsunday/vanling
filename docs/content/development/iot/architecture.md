@@ -25,7 +25,7 @@ weight = 10
       1. 从板子获取喇叭对象,开启状态
       1. 从板子获取摄像头对象,开启状态
       1. 创建渲染器
-      1. 遍历表面,按角色建灯渲染器或屏幕渲染器,把摄像头交给面板
+      1. 遍历表面,按角色建灯渲染器或屏幕渲染器,把摄像头交给屏幕
       1. 创建设备管理器,将各个特性和需求,参数,覆盖参数传入设备管理器
       1. 创建配置器,喇叭共享对象,需求共享对象
       1. 根据喇叭共享对象，需求共享对象来启动主流程
@@ -43,8 +43,8 @@ weight = 10
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
 - **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `PageSurface`）。板模块只做选引脚与装配，元件本身跨板通用
-- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、快照、网络、产品或芯片。页面壳（`shared::kit::painter::Painter`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖面板
-- **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `PanelPainter` 接缝把 `PanelTarget`/`PanelContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `FrameSnapshot` 或任何页面类型
+- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、快照、网络、产品或芯片。页面壳（`shared::kit::painter::Painter`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖屏幕
+- **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `ScreenPainter` 接缝把 `ScreenTarget`/`ScreenContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `FrameSnapshot` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app 的 bin 入口（`main.rs`、`bin/*.rs`）
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
@@ -94,10 +94,10 @@ weight = 10
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
-| `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
-| `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有面板会叠上去的东西 |
-| `render/wiring.rs` | 接线：`wired()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
+| `render/engine/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconciler.rs`），状态→外观在 `projection.rs`，`appearance.rs` 定义 `Topic`/`Appearance`，`color.rs` 步进颜色，`renderers.rs` 把外观交给认领它的 renderer |
+| `render/screen/` | 屏幕（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
+| `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有屏幕会叠上去的东西 |
+| `render/wire.rs` | 接线：`wire()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
 | `runtime/system.rs` | `System` 契约：`tick` 收 `&mut DeviceManager` 与时钟，`intent` 只读意图已写入的状态；worker 句柄由系统自己持有 |
 | `runtime/coordinator/{mod,pacing}.rs`、`coordinator/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`pacing.rs` 持帧时间与下一帧截止点 |
@@ -178,7 +178,7 @@ WebUI 的传输是适配层：语义 API（资源 + 动作）定一次，传输�
 - **组合点 = bin 板清单**：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
-- **渲染层运行时可插拔**：app 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调；先按 consumer 选出各自该显示什么，只对选中项变化的 consumer 通知，最后一次性写回快照），以及一个堆上的 `Render` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线
+- **渲染层运行时可插拔**：app 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调；先按 topic 选出各自该显示什么，只对选中项变化的 topic 通知，最后一次性写回快照），以及一个堆上的 `Renderers` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线。每个 renderer 只声明它认领的 `Topic`（`Surface(instance)` / `Frame` / `Display`），灯带因此从不接触约 2 KB 的帧；`Appearance` 借用帧，只有屏幕留副本
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 
@@ -286,7 +286,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 **句柄只从入口流下去，不从模块路径摸上来。** 组合根有一份 `static RUNTIME: Runtime`（`runtime/mod.rs`），里面是跨层要用的全部存储：意图环、采集窗口、网络与播放的队列、喂数唤醒、`Readiness`。往下传的永远是具体句柄或一个内聚的旁值，不传整个 `Runtime`：`Io` 是驱动半边跨核要带走的那一束，网络工作者拿到的是 `NetCtx { bus, network, readiness, heap_free }`（`readiness` 与堆读数只有组合点知道）。意图环自己数它拒掉的意图（`IntentBus::dropped_count()`），所以那个计数没有第二根句柄。函数签名因此就是它的输入清单，测试可以自己造一份而不用抢全局单例。
 
-旁值只在边界上产生：组合根（`Wiring`、`NetCtx`）、板层（`PanelContext`）、任务/会话起点（`BootFacts`）。协调者、渲染、页面、状态不得就地拼包——那是被删掉的 `Frame` 的形状。判据与两条栅栏见 `records/iot/layering.md`。
+旁值只在边界上产生：组合根（`Wiring`、`NetCtx`）、板层（`ScreenContext`）、任务/会话起点（`BootFacts`）。协调者、渲染、页面、状态不得就地拼包——那是被删掉的 `Frame` 的形状。判据与两条栅栏见 `records/iot/layering.md`。
 
 `Playback`、`Network`、`CaptureWindow` 都自己拥有通道（`const fn new()`），不再是「static 通道 + 指向它的句柄」：跨核锁只在确有必要时出现，`LinkWatch` 的「上次报告」与「未送出的 MAC」因此在任务自己的栈上，用普通 `Cell`。
 
@@ -300,10 +300,10 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 **每帧逻辑按边界拆成系统。** `coordinator/systems/*.rs` 一个文件一个 `System`，它持有自己那条边界的 worker 句柄与跨帧记忆（上一条播报状态、上一页、governor），共享状态与时钟由 `tick` 的参数交给它；系统之间不互相调用。共享协作者不超过两个时用显式参数，达到三个或集合在编译期说不清时才收成一个 `Context`；bus 由循环持有，每帧显式传给 `process_intents`。加一个特性 = 加一个文件 + 在组合根 `Schedule::register` 一行（句柄在那里交给系统），注册顺序就是执行顺序，改顺序就是改语义。意图那一侧也走 `System`：每条意图应用后，模型留下的 `Command` 按类型查注册表，交给声明了 `System::takes` 的那个系统；同一帧的两条命令不会合并，没人取走则在 release 里打一条 `[COORD]` 错误日志（调试构建另有断言）。
 
-**渲染层零成本**：`FrameSnapshot` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`Appearance::Screen` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
+**渲染层零成本**：`FrameSnapshot` 已经是「融合所有子系统状态的单快照」，含 `page`/`motion`/`audio`/`playback`；`Appearance::Frame` 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：
 
 ```
-DeviceState.page → frame_snapshot() → Appearance::Screen
+DeviceState.page → frame_snapshot() → Appearance::Frame
   → RenderController::reconcile → ScreenRenderer::on_appearance
   → surface.release_camera()
 ```
@@ -413,7 +413,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 | ------------- | ------------------------------------------------------------------------------------------------------------- |
 | `input_task`  | 共享需求，每个 tick 在临界区内借用一次，按 `PollEntry.key()` 排程（cadence 还要问驱动 `accepts_slower_poll`） |
 | `run_loop` | 写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导                                            |
-| 摄像头        | `Appearance::Screen`（已有通道），门控条件从「页面变了」改成「需求不再要求画面」                                 |
+| 摄像头        | `Appearance::Frame`（已有通道），门控条件从「页面变了」改成「需求不再要求画面」                                 |
 | `feed_task`   | 刻意不注入。它的存在本身供给麦克风时钟，所以它是音频路径时钟的来源而不是它需求的消费者                        |
 
 轮询节奏只向外走：板级 cadence 是抖动窗口的量度下限，需求没有资格改短。地板与当前节奏分两个字段（`board_cadence_ms` 与 `cadence_ms`），否则一次拉长就再也收不回来。
@@ -474,7 +474,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 `app/src/shared/route/nav.rs` 的 `Navigator` 是页面位置的唯一来源：固定容量（`MAX_DEPTH`）的栈，`current`/`root`/`entries` 读它，`go` 原地换页（按钮的循环是 tab，不堆历史），`push` 把瞬态压在当前页之上，`pop` 弹掉栈顶且根永远保留。`DeviceState::page()` 就是 `nav.current()`，所以「当前页」只有一处可写。启动时根是 `Boot::boot_page` 判过能力的落地页，splash 以 `push` 压上去；`SplashOver` 弹栈，按住请求过 setup 则 `go(Network)`。`next_page` 从本页之后按 `ALL` 走一圈、跳过瞬态、取第一个本板能力支持的页、走到末尾回绕；瞬态停在原页直到 `timeout_ms` 到期（`input.rs` 的定时器直接读这条路由属性）。
 
-能力判定是每条路由自己的一列（`Route::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以入口交进来的是 `Wifi`（`Absent` / `Unattended` / `Worker`），`run` 在组合 `Backed` 时用 `wifi.wired()` 落成那个 `bool`：是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`wifi` 一起交给 `run`，`surface::wired` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
+能力判定是每条路由自己的一列（`Route::needs`，`is_backed` 只做查表），问的是同一个 `Backed` 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 `Boot` 的 `backed` 字段。前四个来自板子的 `take_*`，链路来自入口点（station 要在调度器起来之后才启动，`run` 拿到板子时射频已经被取走）——所以入口交进来的是 `Wifi`（`Absent` / `Unattended` / `Worker`），`run` 在组合 `Backed` 时用 `wifi.wired()` 落成那个 `bool`：是**接线事实的参数**，不是 `run` 里回头去问板子。表面同理：`HasSurface::take_surfaces()` 交出的每个 `WiredSurface` 自带角色（`Pages` 或 `Lamp`），入口点取出后连同 `clock`/`feed`/`wifi` 一起交给 `run`，`render::wire` 在同一趟里既建 renderer 又落下 `surface_roles`——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。
 
 这条规约是修一个缺陷写下来的。
 

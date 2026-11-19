@@ -1,48 +1,16 @@
-//! What each consumer should show, derived from state.
+//! State → the values a renderer draws from.
 
 use crate::shared::model::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
 use crate::shared::snapshot::{
     BreathSnapshot, FrameSnapshot, LightSnapshot, PageSnapshot, TouchSnapshot,
 };
 use iot_core::demand::EffectiveDemand;
-use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID, Rgb, rgb_hue, scale_brightness};
+use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID, rgb_hue, scale_brightness};
 
-/// Who an appearance is for: one wired surface, or the page screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Consumer {
-    Surface(u8),
-    Screen,
-}
+use super::appearance::LightAppearance;
 
-/// The declared appearance of the light, derived from state; breathing is the schedule, not
-/// a color frame — time-driven rendering is the renderer's call.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum LightAppearance {
-    Off,
-    Color(Rgb),
-    Breathing(Breath),
-}
-
-/// The intended appearance of every known consumer, derived from [`DeviceState`].
-#[allow(clippy::large_enum_variant)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Appearance {
-    Surface {
-        instance: u8,
-        appearance: LightAppearance,
-    },
-    Screen(FrameSnapshot),
-}
-
-impl Appearance {
-    pub fn consumer(&self) -> Consumer {
-        match self {
-            Appearance::Surface { instance, .. } => Consumer::Surface(*instance),
-            Appearance::Screen(_) => Consumer::Screen,
-        }
-    }
-}
-
+/// The lights as the device shows them: a lamp carries the link's news instead of its own
+/// state, because a device with no page has nowhere else to put it.
 pub(super) fn status_lights(state: &DeviceState) -> [LightState; MAX_LIGHTS] {
     let mut lights = state.lights;
     if let Some(status) = state.link_notice() {
@@ -107,7 +75,7 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
     }
 }
 
-pub(crate) fn frame_snapshot(
+pub(super) fn frame_snapshot(
     state: &DeviceState,
     pages: PageSnapshot,
     demand: &EffectiveDemand,
@@ -148,19 +116,19 @@ pub(crate) fn frame_snapshot(
 
 #[cfg(test)]
 mod tests {
+    use super::super::RenderController;
+    use super::super::test_support::*;
     use super::*;
-    use crate::render::RenderController;
-    use crate::render::test_support::*;
     use crate::shared::intent::{AudioIntent, BusinessIntent, NavigationIntent};
     use crate::shared::snapshot::{BreathSnapshot, LightSnapshot};
     use crate::state::{AudioPhase, Backed, DeviceManager, PageId};
     use iot_core::demand::DemandKey;
     use iot_core::drivers::audio::{AudioEnvelope, AudioSample};
     use iot_core::drivers::network::{LinkStatus, SetupHost};
-    use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID};
+    use iot_core::light::Rgb;
 
     #[test]
-    fn the_board_address_reaches_the_panel_with_the_rest_of_the_header() {
+    fn the_board_address_reaches_the_screen_with_the_rest_of_the_header() {
         let mac = [0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef];
         let mut state = state(LightState::boot());
         state.network.mac = Some(mac);
@@ -209,7 +177,7 @@ mod tests {
         );
         assert_eq!(
             recording.restarts, 2,
-            "the repair count has to reach the panel, or a stalled capture that was \
+            "the repair count has to reach the screen, or a stalled capture that was \
              recovered from still reads as a capture that simply went quiet"
         );
 
@@ -227,7 +195,7 @@ mod tests {
     fn the_frame_projection_owns_every_state_domain() {
         // Compile-time guard rather than a behaviour test: `frame_snapshot` projects
         // `DeviceState` field by field, and a new domain must be looked at there instead of
-        // silently reading as its `Default` on the panel.
+        // silently reading as its `Default` on the screen.
         fn project_every_field(state: DeviceState) {
             let DeviceState {
                 backed: _,
@@ -266,10 +234,7 @@ mod tests {
         let mut expected = frame_for(state.lights[0]);
         expected.touch.presses = 1;
         expected.touch.points = [Some((42, 97)), None];
-        assert_eq!(
-            collect(&mut ctl, &state),
-            vec![Appearance::Screen(expected)]
-        );
+        assert_eq!(collect(&mut ctl, &state), vec![Seen::Frame(expected)]);
         let mut ctl = RenderController::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
@@ -299,7 +264,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Screen(frame) = seen[0] else {
+        let Seen::Frame(frame) = seen[0].clone() else {
             panic!("first diff must carry the frame");
         };
         assert_eq!(
@@ -334,7 +299,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Screen(frame) = seen[0] else {
+        let Seen::Frame(frame) = seen[0].clone() else {
             panic!("first diff must carry the frame");
         };
         assert_eq!(frame.touch.swipes, 1);
@@ -363,7 +328,7 @@ mod tests {
         ));
         let state = manager.state();
         let seen = collect(&mut ctl, &state);
-        let Appearance::Screen(frame) = seen[0] else {
+        let Seen::Frame(frame) = seen[0].clone() else {
             panic!("first diff must carry the frame");
         };
         assert_eq!(frame.touch.taps, 1);
@@ -466,7 +431,7 @@ mod tests {
     }
 
     #[test]
-    fn the_link_notice_lands_on_every_lamp_and_no_display() {
+    fn the_link_notice_lands_on_every_lamp_and_no_screen() {
         for (kinds, expected) in [
             (
                 [SurfaceRole::Pages, SurfaceRole::Lamp],

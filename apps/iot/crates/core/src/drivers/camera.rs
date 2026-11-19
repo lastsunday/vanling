@@ -91,7 +91,7 @@ impl CameraSnapshot {
 pub trait CameraTarget {
     /// Pulls one frame, if one has arrived. `period_ms` is the cadence the demand asked
     /// for: a surface at or slower than the thumbnail period reports less often, and the
-    /// rate is the caller's policy rather than the panel's.
+    /// rate is the caller's policy rather than the screen's.
     ///
     /// The painter is the product's; the surface hands it the buffer and the reading and
     /// names neither the page nor the snapshot type.
@@ -99,7 +99,7 @@ pub trait CameraTarget {
         &mut self,
         now_ms: u64,
         period_ms: u32,
-        painter: &dyn crate::drivers::surface::PanelPainter,
+        painter: &dyn crate::drivers::surface::ScreenPainter,
         snapshot: &dyn core::any::Any,
     ) -> bool;
 

@@ -6,7 +6,7 @@ use core::any::Any;
 use esp_hal::time::Instant;
 use iot_core::demand::CAMERA_THUMBNAIL_PERIOD_MS;
 use iot_core::drivers::camera::{CameraSnapshot, CameraTarget, FrameAdvance, FrameSource};
-use iot_core::drivers::surface::{PanelPainter, PanelTarget};
+use iot_core::drivers::surface::{ScreenPainter, ScreenTarget};
 
 use crate::stack::note_stack_high_water;
 
@@ -80,7 +80,7 @@ impl CameraTarget for Screen {
         &mut self,
         now_ms: u64,
         period_ms: u32,
-        painter: &dyn PanelPainter,
+        painter: &dyn ScreenPainter,
         snapshot: &dyn Any,
     ) -> bool {
         Screen::paint_camera(self, now_ms, period_ms, painter, snapshot)
@@ -103,7 +103,7 @@ impl Screen {
         &mut self,
         now_ms: u64,
         period_ms: u32,
-        painter: &dyn PanelPainter,
+        painter: &dyn ScreenPainter,
         snapshot: &dyn Any,
     ) -> bool {
         let bytes = self.panel.frame_bytes();
@@ -124,7 +124,7 @@ impl Screen {
 
         let render_start = Instant::now();
         painter.paint_camera(
-            PanelTarget {
+            ScreenTarget {
                 frame,
                 width,
                 height,

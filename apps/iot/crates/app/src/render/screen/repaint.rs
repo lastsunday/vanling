@@ -8,7 +8,10 @@ use iot_core::demand::{DemandKey, Mode};
 #[cfg(test)]
 use crate::services::REPAINT_FLOOR_MS;
 
-pub fn frame_repaint_due(
+/// How many display steps a change-gated page waits before drift earns a repaint.
+const ON_CHANGE_STRIDE: u64 = 4;
+
+pub(super) fn repaint_due(
     page: PageId,
     prev: &FrameSnapshot,
     next: &FrameSnapshot,
@@ -18,35 +21,13 @@ pub fn frame_repaint_due(
     let step = descriptor(page).repaint_step_ms();
     match next.demand.claim(DemandKey::DISPLAY).mode {
         Mode::Off => return false,
-        Mode::OnChange => return since_ms >= step * 4 && prev != next,
+        Mode::OnChange => return since_ms >= step * ON_CHANGE_STRIDE && prev != next,
         Mode::Continuous => {}
     }
     if since_ms < step {
         return false;
     }
     descriptor(page).repaints_on(prev, next, overlay)
-}
-
-/// Repaint rate (frames per second) over one window, `0` for an empty or degenerate window.
-pub fn windowed_rate(frames: u32, elapsed_ms: u64) -> u8 {
-    if elapsed_ms == 0 {
-        return 0;
-    }
-    u64::from(frames)
-        .saturating_mul(1_000)
-        .checked_div(elapsed_ms)
-        .and_then(|rate| u8::try_from(rate).ok())
-        .unwrap_or(u8::MAX)
-}
-
-/// A share of a window as a whole percent, or `0` for a window nothing was measured in.
-pub fn windowed_percent(part_us: u64, window_us: u64) -> u32 {
-    part_us
-        .saturating_mul(100)
-        .checked_div(window_us)
-        .and_then(|pct| u32::try_from(pct).ok())
-        .unwrap_or(100)
-        .min(100)
 }
 
 #[cfg(test)]
@@ -56,15 +37,6 @@ mod tests {
     use iot_core::drivers::audio::AudioEnvelope;
     use iot_core::drivers::network::{AccessPoint, ApList, Ipv4, LinkPhase, Ssid};
     use iot_core::drivers::playback::Sound;
-
-    #[test]
-    fn a_share_is_reported_whole_and_never_over_a_hundred() {
-        assert_eq!(windowed_percent(500_000, 2_000_000), 25);
-        assert_eq!(windowed_percent(2_000_000, 2_000_000), 100);
-        assert_eq!(windowed_percent(1, 1_000_000), 0);
-        assert_eq!(windowed_percent(4_000_000, 2_000_000), 100);
-        assert_eq!(windowed_percent(7_000, 0), 100);
-    }
 
     fn live_envelope() -> AudioEnvelope {
         let mut envelope = AudioEnvelope::default();
@@ -81,18 +53,18 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_waits_out_the_step() {
+    fn frame_repaint_waits_out_the_step() {
         let base = FrameSnapshot::default();
         let mut moved = base;
         moved.audio.phase = AudioPhase::Recording;
-        assert!(!frame_repaint_due(
+        assert!(!repaint_due(
             PageId::Audio,
             &base,
             &moved,
             audio_step() - 1,
             false
         ));
-        assert!(frame_repaint_due(
+        assert!(repaint_due(
             PageId::Audio,
             &base,
             &moved,
@@ -102,11 +74,11 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_ignores_the_wall_time_counter() {
+    fn frame_repaint_ignores_the_wall_time_counter() {
         let base = FrameSnapshot::default();
         let mut ticked = base;
         ticked.audio.elapsed_ms = 1_234;
-        assert!(!frame_repaint_due(
+        assert!(!repaint_due(
             PageId::Audio,
             &base,
             &ticked,
@@ -116,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_audio_tracks_everything_else_it_draws() {
+    fn frame_repaint_audio_tracks_everything_else_it_draws() {
         let base = FrameSnapshot::default();
         let mut phase = base;
         phase.audio.phase = AudioPhase::Recording;
@@ -128,25 +100,25 @@ mod tests {
         level.audio.dba_lsb = 0x8000;
         for next in [phase, envelope, restarts, level] {
             assert!(
-                frame_repaint_due(PageId::Audio, &base, &next, audio_step(), false),
+                repaint_due(PageId::Audio, &base, &next, audio_step(), false),
                 "an Audio drift the page draws must repaint"
             );
         }
     }
 
     #[test]
-    fn diag_repaint_attitude_follows_every_snapshot() {
+    fn frame_repaint_attitude_follows_every_snapshot() {
         let base = FrameSnapshot::default();
         let mut ticked = base;
         ticked.audio.elapsed_ms = 10;
-        assert!(!frame_repaint_due(
+        assert!(!repaint_due(
             PageId::Attitude,
             &base,
             &ticked,
             REPAINT_FLOOR_MS - 1,
             false
         ));
-        assert!(frame_repaint_due(
+        assert!(repaint_due(
             PageId::Attitude,
             &base,
             &ticked,
@@ -156,18 +128,18 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_ambient_only_for_the_overlay() {
+    fn frame_repaint_ambient_only_for_the_overlay() {
         let base = FrameSnapshot::default();
         let mut ticked = base;
         ticked.audio.phase = AudioPhase::Recording;
-        assert!(!frame_repaint_due(
+        assert!(!repaint_due(
             PageId::Ambient,
             &base,
             &ticked,
             REPAINT_FLOOR_MS,
             false
         ));
-        assert!(frame_repaint_due(
+        assert!(repaint_due(
             PageId::Ambient,
             &base,
             &ticked,
@@ -177,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_speaker_tracks_the_row_it_draws() {
+    fn frame_repaint_speaker_tracks_the_row_it_draws() {
         let base = FrameSnapshot::default();
         let mut playing = base;
         playing.playback.phase = PlaybackPhase::Playing;
@@ -191,27 +163,27 @@ mod tests {
         dropped.playback.dropped = 2;
         for next in [playing, source, muted, played, dropped] {
             assert!(
-                frame_repaint_due(PageId::Speaker, &base, &next, REPAINT_FLOOR_MS, false),
+                repaint_due(PageId::Speaker, &base, &next, REPAINT_FLOOR_MS, false),
                 "a playback drift the Speaker page draws must repaint even with the overlay off"
             );
         }
     }
 
     #[test]
-    fn diag_repaint_speaker_ignores_a_drift_it_does_not_draw() {
+    fn frame_repaint_speaker_ignores_a_drift_it_does_not_draw() {
         let base = FrameSnapshot::default();
         let mut drifting = base;
         drifting.audio.envelope = live_envelope();
         for overlay in [false, true] {
             assert!(
-                !frame_repaint_due(PageId::Speaker, &base, &drifting, REPAINT_FLOOR_MS, overlay),
+                !repaint_due(PageId::Speaker, &base, &drifting, REPAINT_FLOOR_MS, overlay),
                 "the Speaker page draws no envelope, so the overlay flag must not re-open it"
             );
         }
     }
 
     #[test]
-    fn diag_repaint_network_tracks_the_link_and_the_list() {
+    fn frame_repaint_network_tracks_the_link_and_the_list() {
         let base = FrameSnapshot::default();
         let mut associated = base;
         associated.link.phase = LinkPhase::Connecting;
@@ -228,7 +200,7 @@ mod tests {
         scanned.aps = Some(ApList::from_ranked(&[AccessPoint::default()]));
         for next in [associated, addressed, scanned] {
             assert!(
-                frame_repaint_due(PageId::Network, &base, &next, REPAINT_FLOOR_MS, false),
+                repaint_due(PageId::Network, &base, &next, REPAINT_FLOOR_MS, false),
                 "a link or list drift the Network page draws must repaint even with the \
                  overlay off"
             );
@@ -236,11 +208,11 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_network_takes_the_board_address_the_first_time_it_arrives() {
+    fn frame_repaint_network_takes_the_board_address_the_first_time_it_arrives() {
         let base = FrameSnapshot::default();
         let mut addressed = base;
         addressed.mac = Some([0x02, 0x1f, 0x88, 0xab, 0xcd, 0xef]);
-        assert!(frame_repaint_due(
+        assert!(repaint_due(
             PageId::Network,
             &base,
             &addressed,
@@ -250,34 +222,21 @@ mod tests {
     }
 
     #[test]
-    fn diag_repaint_network_ignores_a_drift_it_does_not_draw() {
+    fn frame_repaint_network_ignores_a_drift_it_does_not_draw() {
         let base = FrameSnapshot::default();
         let mut drifting = base;
         drifting.audio.envelope = live_envelope();
         drifting.touch.taps = 12;
         for overlay in [false, true] {
             assert!(
-                !frame_repaint_due(PageId::Network, &base, &drifting, REPAINT_FLOOR_MS, overlay),
+                !repaint_due(PageId::Network, &base, &drifting, REPAINT_FLOOR_MS, overlay),
                 "the Network page draws no envelope and no counter"
             );
         }
     }
 
     #[test]
-    fn rate_scales_frames_over_the_window() {
-        assert_eq!(windowed_rate(13, 250), 52);
-        assert_eq!(windowed_rate(0, 250), 0);
-        assert_eq!(windowed_rate(5, 0), 0);
-    }
-
-    #[test]
-    fn overheated_rate_saturates_at_max() {
-        assert_eq!(windowed_rate(1_000, 1_000), u8::MAX);
-        assert_eq!(windowed_rate(u32::MAX, 1), u8::MAX);
-    }
-
-    #[test]
-    fn an_unlit_panel_never_repaints_and_a_dim_one_only_on_a_change() {
+    fn an_unlit_screen_never_repaints_and_a_dim_one_only_on_a_change() {
         let base = FrameSnapshot::default();
         assert_eq!(base.demand.claim(DemandKey::DISPLAY).mode, Mode::Continuous);
 
@@ -290,8 +249,8 @@ mod tests {
         wobble.audio.phase = AudioPhase::Recording;
 
         assert!(
-            !frame_repaint_due(PageId::Audio, &unlit, &wobble, 10 * REPAINT_FLOOR_MS, true),
-            "a panel nobody is looking at does not get frames no matter what drifts"
+            !repaint_due(PageId::Audio, &unlit, &wobble, 10 * REPAINT_FLOOR_MS, true),
+            "a screen nobody is looking at does not get frames no matter what drifts"
         );
 
         let mut dim = base;
@@ -300,17 +259,17 @@ mod tests {
             iot_core::demand::Claim::new(Mode::OnChange, 0, iot_core::demand::Priority::Primary),
         );
         assert!(
-            !frame_repaint_due(PageId::Audio, &dim, &dim, 10 * REPAINT_FLOOR_MS, false),
+            !repaint_due(PageId::Audio, &dim, &dim, 10 * REPAINT_FLOOR_MS, false),
             "nothing changed, so there is nothing to redraw"
         );
 
         let mut dim_moved = dim;
         dim_moved.audio.phase = AudioPhase::Recording;
         assert!(
-            !frame_repaint_due(PageId::Audio, &dim, &dim_moved, audio_step(), false),
-            "a dim panel waits out the base cadence before it spends a frame"
+            !repaint_due(PageId::Audio, &dim, &dim_moved, audio_step(), false),
+            "a dim screen waits out the base cadence before it spends a frame"
         );
-        assert!(frame_repaint_due(
+        assert!(repaint_due(
             PageId::Audio,
             &dim,
             &dim_moved,
@@ -318,19 +277,19 @@ mod tests {
             false
         ));
     }
-}
 
-#[test]
-fn only_the_audio_page_raises_the_step() {
-    for page in PageId::ALL {
-        assert!(
-            descriptor(page).repaint_step_ms() >= REPAINT_FLOOR_MS,
-            "{page:?} cannot repaint faster than the floor"
-        );
-        assert_eq!(
-            descriptor(page).repaint_step_ms() > REPAINT_FLOOR_MS,
-            page == PageId::Audio,
-            "{page:?} step"
-        );
+    #[test]
+    fn only_the_audio_page_raises_the_step() {
+        for page in PageId::ALL {
+            assert!(
+                descriptor(page).repaint_step_ms() >= REPAINT_FLOOR_MS,
+                "{page:?} cannot repaint faster than the floor"
+            );
+            assert_eq!(
+                descriptor(page).repaint_step_ms() > REPAINT_FLOOR_MS,
+                page == PageId::Audio,
+                "{page:?} step"
+            );
+        }
     }
 }

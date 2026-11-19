@@ -201,7 +201,7 @@ impl RgbLight for HostLight {
 impl PageSurface for HostLight {
     fn repaint(
         &mut self,
-        _painter: &dyn iot_core::drivers::surface::PanelPainter,
+        _painter: &dyn iot_core::drivers::surface::ScreenPainter,
         snapshot: &dyn core::any::Any,
         _force: bool,
     ) -> bool {
@@ -254,7 +254,7 @@ impl CameraTarget for HostLight {
         &mut self,
         now_ms: u64,
         _period_ms: u32,
-        _painter: &dyn iot_core::drivers::surface::PanelPainter,
+        _painter: &dyn iot_core::drivers::surface::ScreenPainter,
         _snapshot: &dyn core::any::Any,
     ) -> bool {
         if !self.owner.is_camera() {

@@ -1,5 +1,5 @@
 //! Paints the product's pages into a board-owned frame. Stateless: the snapshot arrives
-//! with each call, so the panel never holds a product type.
+//! with each call, so the screen never holds a product type.
 
 use core::any::Any;
 
@@ -8,50 +8,54 @@ use crate::services::paint;
 use crate::shared::kit::painter::Painter;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::camera::CameraSnapshot;
-use iot_core::drivers::surface::{PanelContext, PanelPainter, PanelTarget};
+use iot_core::drivers::surface::{ScreenContext, ScreenPainter, ScreenTarget};
 use iot_core::ui::Canvas;
 
-const DEBUG_OVERLAY: bool = true;
+pub struct AppPainter {
+    overlay: bool,
+}
 
-pub struct AppPainter;
+impl AppPainter {
+    pub const fn new(overlay: bool) -> Self {
+        Self { overlay }
+    }
 
-impl PanelPainter for AppPainter {
-    fn paint(&self, target: PanelTarget<'_>, context: PanelContext, snapshot: &dyn Any) {
-        let Some(frame) = snapshot.downcast_ref::<FrameSnapshot>() else {
-            return;
-        };
+    fn painter<'a>(&self, target: ScreenTarget<'a>, context: ScreenContext) -> Painter<'a> {
         let canvas = Canvas::new(target.frame, target.width, target.height, target.ground);
-        let mut painter = Painter::new(
+        let painter = Painter::new(
             canvas,
             context.instance,
             context.fps,
-            DEBUG_OVERLAY,
+            self.overlay,
             context.spl_offset_db,
         );
-        if let Some(probe) = context.stack_probe {
-            painter = painter.with_stack_probe(probe);
+        match context.stack_probe {
+            Some(probe) => painter.with_stack_probe(probe),
+            None => painter,
         }
-        paint(frame.page, frame, &mut painter);
+    }
+}
+
+impl ScreenPainter for AppPainter {
+    fn paint(&self, target: ScreenTarget<'_>, context: ScreenContext, snapshot: &dyn Any) {
+        let Some(frame) = snapshot.downcast_ref::<FrameSnapshot>() else {
+            debug_assert!(false, "the screen's snapshot is the frame it was handed");
+            return;
+        };
+        paint(frame.page, frame, &mut self.painter(target, context));
     }
 
     fn paint_camera(
         &self,
-        target: PanelTarget<'_>,
+        target: ScreenTarget<'_>,
         readout: CameraSnapshot,
-        context: PanelContext,
+        context: ScreenContext,
         snapshot: &dyn Any,
     ) {
         let Some(frame) = snapshot.downcast_ref::<FrameSnapshot>() else {
+            debug_assert!(false, "the screen's snapshot is the frame it was handed");
             return;
         };
-        let canvas = Canvas::new(target.frame, target.width, target.height, target.ground);
-        let mut painter = Painter::new(
-            canvas,
-            context.instance,
-            context.fps,
-            DEBUG_OVERLAY,
-            context.spl_offset_db,
-        );
-        CameraPage::paint_frame(frame, &mut painter, readout);
+        CameraPage::paint_frame(frame, &mut self.painter(target, context), readout);
     }
 }

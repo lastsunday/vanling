@@ -29,7 +29,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
       1. take the speaker object and its enabled state from the board
       1. take the camera object and its enabled state from the board
       1. create the renderer
-      1. walk the surfaces, build a lamp or screen renderer per role, and hand the camera to the panel
+      1. walk the surfaces, build a lamp or screen renderer per role, and hand the camera to the screen
       1. create the device manager, handing it the capabilities, demands, parameters and overrides
       1. create the configurator, the speaker handle and the demand handle
       1. start the main flow from the speaker handle and the demand handle
@@ -47,8 +47,8 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
 - **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `PageSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
-- **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, snapshot, network, product or chip. The page shell (`app::shared::kit::painter::Painter`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a panel.
-- **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `PanelTarget`/`PanelContext` to the app through `core`'s `PanelPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `FrameSnapshot` nor any page type.
+- **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, snapshot, network, product or chip. The page shell (`app::shared::kit::painter::Painter`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a screen.
+- **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `ScreenTarget`/`ScreenContext` to the app through `core`'s `ScreenPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `FrameSnapshot` nor any page type.
 - **Each component is its own feature**: one feature per component, gated once at the `mod` in `components/` (absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
 - **iot-chip-esp**: chip init / logging / RTOS / panic definitions; the app-level entry macro `#[esp_rtos::main]` stays in the app's bin entries (`main.rs`, `bin/*.rs`).
 - **iot-bsp-esp**: board differences converge in the `type Board` alias, the `HEAP_BYTES`/`SETUP_HOST` constants and the feed's landing (`Feed::Interrupt`/`Inline`) inside the per-part `start_executors`; one `#[cfg(feature)]` per board and per part respectively. The boot sequence itself is shared and carries none.
@@ -98,10 +98,10 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `state/manager/mod.rs` | the read side: ownership and construction of `DeviceState` (`Boot`, `DeviceManager::boot`), the owned `Services`, the per-page `DemandPolicy`, and the getters the coordinator and the render loop read |
 | `state/manager/write.rs` | the write side: every write from the bus, a worker report or the clock's tick; records move only here |
 | `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `render/common/` | surface-agnostic: `RenderController` decides *what* to show (`reconcile.rs`), state→appearance lives in `appearance.rs`, `color.rs` steps the colour, and `registry.rs` hands the appearance to the renderers that claimed it |
-| `render/screen/` | the panel (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `services::paint`, `repaint.rs` (frame drift and the repaint step) |
-| `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a panel would add |
-| `render/wiring.rs` | wiring: `wired()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
+| `render/engine/` | surface-agnostic: `RenderController` decides *what* to show (`reconciler.rs`), state→appearance lives in `projection.rs`, `appearance.rs` defines `Topic`/`Appearance`, `color.rs` steps the colour, and `renderers.rs` hands the appearance to the renderers that claimed it |
+| `render/screen/` | the screen (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `services::paint`, `repaint.rs` (frame drift and the repaint step) |
+| `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a screen would add |
+| `render/wire.rs` | wiring: `wire()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
 | `runtime/system.rs` | the `System` contract: `tick` takes the manager and the clock, `intent` reads the state its intent already wrote; a worker handle is held by the system |
 | `runtime/coordinator/{mod,pacing}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `pacing.rs` holds the frame clock and the next deadline |
@@ -187,7 +187,7 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Composition point = bin board manifest**: capabilities injected by move, generic over capabilities, shared by boards with the same capability set; enabling a module that lacks a capability is a compile error, never silent.
 - **Product tier = feature alias**: the tier fixes the module set, the board fixes the supported set, and the intersection is trimmed and checked at compile time.
 - **Module configurability** = feature switch + const parameters.
-- **Runtime-pluggable render layer**: `iot-app`'s allocation-free central `RenderController` (reconcile closure callback; selections are computed per consumer first, only the ones that moved are notified, and the snapshot is written once at the end) plus a heap `Render` registry in the same crate (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus.
+- **Runtime-pluggable render layer**: `iot-app`'s allocation-free central `RenderController` (reconcile closure callback; selections are computed per topic first, only the ones that moved are notified, and the snapshot is written once at the end) plus a heap `Renderers` registry in the same crate (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus. Each renderer declares only the `Topic`s it claims (`Surface(instance)` / `Frame` / `Display`), so a lamp never touches the ~2 KB frame; `Appearance` borrows the frame and only the screen keeps a copy.
 
 ## The demand model (what / how often / how sensitive)
 
@@ -299,7 +299,7 @@ Each system holds the handle for its own boundary, and the composition root hand
 
 **Handles flow down from the entry; nothing reaches back up a module path.** The composition root holds one `static RUNTIME: Runtime` (`runtime/mod.rs`) with every piece of storage more than one layer needs: intent ring, capture window, the network and playback queues, the feed wake and `Readiness`. What travels down is always a specific handle or one coherent companion value — never the whole `Runtime`: `Io` is the bundle the driver half carries across cores, and the network worker gets `NetCtx { bus, network, readiness, heap_free }` (only the composition point knows the readiness flag and the heap reading). The intent ring counts what it refused (`IntentBus::dropped_count()`), so that number has no second handle. A signature is therefore its own list of inputs, and a test can build its own instead of competing for a global singleton.
 
-A companion value is produced only at a boundary: the composition root (`Wiring`, `NetCtx`), the board layer (`PanelContext`), the start of a task or session (`BootFacts`). The coordinator, the renderers, the pages and the state never assemble one on the spot — that is the shape of the deleted `Frame`. The criterion and its two fences are in `records/iot/layering.md`.
+A companion value is produced only at a boundary: the composition root (`Wiring`, `NetCtx`), the board layer (`ScreenContext`), the start of a task or session (`BootFacts`). The coordinator, the renderers, the pages and the state never assemble one on the spot — that is the shape of the deleted `Frame`. The criterion and its two fences are in `records/iot/layering.md`.
 
 `Playback`, `Network` and `CaptureWindow` own their channels (`const fn new()`), rather than being "a static channel plus a handle pointing at it": a cross-core lock appears only where it is genuinely needed, so `LinkWatch`'s last report and unsent MAC live on the task's own stack in a plain `Cell`.
 
@@ -318,7 +318,7 @@ The `NetworkCommand` vocabulary stays in `app/src/shared/model/network.rs`; the 
 The camera's chain runs end to end today:
 
 ```
-DeviceState.page → frame_snapshot() → Appearance::Screen
+DeviceState.page → frame_snapshot() → Appearance::Frame
   → RenderController::reconcile → ScreenRenderer::on_appearance
   → surface.release_camera()
 ```
@@ -434,7 +434,7 @@ Wiring:
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `input_task`  | the shared demand, borrowed once inside a critical section each tick, scheduling by `PollEntry.key()` (the cadence also asking the driver `accepts_slower_poll`)                                                                      |
 | `run_loop` | the writer; the page is the product's declaration, so it is written here rather than each consumer deriving its own                                                                                                                   |
-| camera        | `Appearance::Screen` (an existing channel), gated on "the demand no longer asks for frames" rather than on "the page changed"                                                                                                            |
+| camera        | `Appearance::Frame` (an existing channel), gated on "the demand no longer asks for frames" rather than on "the page changed"                                                                                                            |
 | `feed_task`   | deliberately not fed. Its existence supplies the microphone clock, so it is the source of the audio path's clock rather than a consumer of its demand |
 
 Cadence only ever moves outward: the board's cadence is the floor the debounce windows are measured against, and a demand has no standing to shorten it. The floor and the cadence in force are two fields (`board_cadence_ms` and `cadence_ms`) because merging them means a single stretch can never be given back.
@@ -499,7 +499,7 @@ This yields one rule for measurement: to ask what throttling does to the worst b
 
 `Navigator` in `app/src/shared/route/nav.rs` is the only source of the panel's position: a fixed-capacity stack (`MAX_DEPTH`) read through `current`/`root`/`entries`, with `go` replacing the top in place (the button's cycle is a tab, not a growing history), `push` placing a transient over the current page, and `pop` dropping the top while the root always survives. `DeviceState::page()` is `nav.current()`, so there is exactly one writable place for "the current page". At boot the root is `Boot::boot_page` after the capability clamp, and the splash is pushed over it; `SplashOver` pops, and `go(Network)` follows if the hold asked for setup. `next_page` walks from just after this page, takes the first page the board's capabilities back, and wraps at the end; a transient has no place in the order and stays until its `timeout_ms` runs out (the `input.rs` timer reads that route property directly).
 
-The capability test is one column of each route (`Route::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So the entry point hands over a `Wifi` (`Absent` / `Unattended` / `Worker`), and `run` folds it into that `bool` with `wifi.wired()`: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`wifi`; `surface::wired` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
+The capability test is one column of each route (`Route::needs`, with `is_backed` only looking it up), and every column asks the same `Backed` record: motion, audio, playback, camera and the link are five wiring facts written once into the `backed` field of `Boot` at the composition point. The first four come from the board's `take_*` calls; the link comes from the entry point, because the station only starts once the scheduler is up — by the time `run` has the board, the radio has already been taken. So the entry point hands over a `Wifi` (`Absent` / `Unattended` / `Worker`), and `run` folds it into that `bool` with `wifi.wired()`: **a wiring fact given as an argument**, not something `run` turns round and asks the board about. Surfaces work the same way: every `WiredSurface` handed out by `HasSurface::take_surfaces()` carries its own role (`Pages` or `Lamp`), and the entry point passes them to `run` alongside `clock`/`feed`/`wifi`; `render::wire` builds the renderers and drops the `surface_roles` table in the same pass — no surface is ever asked back whether it draws pages, an empty slot never appears as a handle, and a renderer outnumbering the slots trips one assertion in that pass.
 
 This rule exists because of a defect it fixed.
 

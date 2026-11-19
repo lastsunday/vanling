@@ -10,7 +10,7 @@ use crate::light::Rgb;
 
 /// The frame a board hands to the product's painter: the bytes it owns, and the colour the
 /// light already put under them. Nothing here names a page or a snapshot type.
-pub struct PanelTarget<'a> {
+pub struct ScreenTarget<'a> {
     pub frame: &'a mut [u8],
     pub width: usize,
     pub height: usize,
@@ -18,9 +18,9 @@ pub struct PanelTarget<'a> {
     pub ground: Option<Rgb>,
 }
 
-/// What the panel knows about itself when it asks for one frame.
+/// What the screen knows about itself when it asks for one frame.
 #[derive(Clone, Copy)]
-pub struct PanelContext {
+pub struct ScreenContext {
     pub instance: u8,
     pub fps: u8,
     /// The codec's calibration, owned by the board that wired it.
@@ -29,15 +29,15 @@ pub struct PanelContext {
     pub stack_probe: Option<fn()>,
 }
 
-/// Product-side drawing for a panel. The board owns the buffer; the app decides the ink.
-pub trait PanelPainter {
-    fn paint(&self, target: PanelTarget<'_>, context: PanelContext, snapshot: &dyn Any);
+/// Product-side drawing for a screen. The board owns the buffer; the app decides the ink.
+pub trait ScreenPainter {
+    fn paint(&self, target: ScreenTarget<'_>, context: ScreenContext, snapshot: &dyn Any);
 
     fn paint_camera(
         &self,
-        target: PanelTarget<'_>,
+        target: ScreenTarget<'_>,
         readout: CameraSnapshot,
-        context: PanelContext,
+        context: ScreenContext,
         snapshot: &dyn Any,
     );
 }
@@ -77,12 +77,13 @@ pub trait PageSurface: RgbLight + CameraTarget {
     /// supplies its own frame and the app's painter decides the ink. `force` redraws even
     /// when no colour moved; the product's repaint gate is what asks for that. Answers
     /// whether a frame is now pending for [`Self::flush`].
-    fn repaint(&mut self, _painter: &dyn PanelPainter, _snapshot: &dyn Any, _force: bool) -> bool {
-        false
-    }
+    ///
+    /// Required rather than defaulted: a page surface that cannot draw a page is a wiring
+    /// mistake, and a `false` default would hide it behind a screen that never fills.
+    fn repaint(&mut self, painter: &dyn ScreenPainter, snapshot: &dyn Any, force: bool) -> bool;
 
     /// Ships whatever the last paint left in the buffer, if anything. Separate from painting
-    /// because the panel's transfer is a DMA operation: awaiting it lets the executor run
+    /// because the screen's transfer is a DMA operation: awaiting it lets the executor run
     /// between chunks instead of holding it for the whole frame. Surfaces without a bus, and
     /// surfaces with nothing to send, answer `None` rather than a future that does nothing.
     fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
@@ -92,7 +93,7 @@ pub trait PageSurface: RgbLight + CameraTarget {
 
 /// One surface as the board hands it over, with the role the wiring gave it.
 ///
-/// A lamp is only asked for colour; nothing here can be mistaken for a panel, so an LED
+/// A lamp is only asked for colour; nothing here can be mistaken for a screen, so an LED
 /// never has to answer for a backlight or a camera it does not have.
 pub enum WiredSurface {
     Pages(Box<dyn PageSurface>),
