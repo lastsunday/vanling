@@ -726,8 +726,8 @@ fn translation_dispatches_without_naming_page_geometry() {
 #[test]
 fn drivers_never_reach_up() {
     let src = core_src().join("drivers");
-    // The bare word names core's own `PageSurface` and `SurfaceRole::Pages`; a product page
-    // can only reach a driver by naming a variant, so that is the token to forbid.
+    // A product page can only reach a driver by naming a variant, so that is the token to
+    // forbid.
     let upward = &["iot_app", "PageId::", "FrameSnapshot"];
     let mut plain = Vec::new();
     let mut surface = Vec::new();

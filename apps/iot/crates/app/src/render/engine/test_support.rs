@@ -1,6 +1,6 @@
 //! Fixtures shared by the render layer's tests.
 
-use crate::render::{Appearance, LightAppearance, RenderController};
+use crate::render::{Appearance, Differ, LightAppearance};
 use crate::shared::intent::{BusinessIntent, NavigationIntent};
 use crate::shared::model::{DeviceState, LightState, MAX_LIGHTS};
 use crate::shared::snapshot::{FrameSnapshot, PageSnapshot};
@@ -22,7 +22,7 @@ pub(super) enum Seen {
         light: LightAppearance,
     },
     Frame(FrameSnapshot),
-    Display(Mode),
+    Demand(Mode),
 }
 
 impl Seen {
@@ -30,7 +30,7 @@ impl Seen {
         match appearance {
             Appearance::Surface { instance, light } => Self::Surface { instance, light },
             Appearance::Frame(frame) => Self::Frame(*frame),
-            Appearance::Display(mode) => Self::Display(mode),
+            Appearance::Demand(mode) => Self::Demand(mode),
         }
     }
 }
@@ -42,9 +42,9 @@ pub(super) fn state(light: LightState) -> DeviceState {
     }
 }
 
-pub(super) fn collect(ctl: &mut RenderController, s: &DeviceState) -> Vec<Seen> {
+pub(super) fn collect(ctl: &mut Differ, s: &DeviceState) -> Vec<Seen> {
     let mut seen = Vec::new();
-    ctl.reconcile(
+    ctl.diff(
         s,
         PageSnapshot::default(),
         &EffectiveDemand::default(),
@@ -71,7 +71,7 @@ pub(super) fn light_appearances(seen: Vec<Seen>) -> Vec<(u8, LightAppearance)> {
     seen.into_iter()
         .filter_map(|appearance| match appearance {
             Seen::Surface { instance, light } => Some((instance, light)),
-            Seen::Frame(_) | Seen::Display(_) => None,
+            Seen::Frame(_) | Seen::Demand(_) => None,
         })
         .collect()
 }

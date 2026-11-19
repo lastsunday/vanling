@@ -28,7 +28,7 @@ pub(super) struct SetupMode<'d> {
     /// Whether the first access point this mode raises starts under a passphrase. Set once by
     /// `link` from the board's surfaces, so every host and every entry agree.
     pub(super) secure_on_entry: bool,
-    pub(super) has_display: bool,
+    pub(super) has_screen: bool,
 }
 
 /// What one round of the panel's list came to.
@@ -236,7 +236,7 @@ where
                             return None;
                         }
                         Either3::First(Choice::Hidden) => {}
-                        Either3::Third(()) if setup.has_display => {
+                        Either3::Third(()) if setup.has_screen => {
                             log::info!(
                                 "[WIFI] nobody read the page in {} s; the access point goes down",
                                 SETUP_IDLE_MS / 1_000

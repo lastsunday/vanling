@@ -46,7 +46,7 @@ A state machine whose trigger points are intents, advanced one frame at a time.
 `iot-core (mechanisms, driver seams, pixels and glyphs) → iot-chip-esp (esp family runtime) → iot-bsp-esp (per-board wiring) → iot-app (product pages and state machine)`
 
 - **Wiring lives only in the `bsp/` board modules**: fixed pins inside `Board::new(Peripherals)`; business code must not reference pin numbers.
-- **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `PageSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
+- **iot-bsp-esp has two layers of components**: `components/` holds real components (chip drivers, parameterised by bus/pins, board-agnostic), and `virtual_components/` holds abstract components (real components assembled into a virtual device, e.g. `Screen` assembling an ST7789 panel, its backlight and the frame buffer into a `ScreenSurface`). The board module only picks pins and assembles; the components themselves are shared across boards.
 - **`core::ui` knows pixels and glyphs only**: `Canvas` owns the frame buffer, its dimensions and its ground; `font` and `text/number` do glyphs and numeric layout. It names no page, snapshot, network, product or chip. The page shell (`app::shared::kit::painter::Painter`), the widget primitives and components, the page views and the network words live in `iot-app`, so they stay host-testable without a screen.
 - **bsp draws but names no page**: `bsp-esp` owns the frame buffer, DMA, panel and camera sampling, and hands `ScreenTarget`/`ScreenContext` to the app through `core`'s `ScreenPainter` seam. Page state and the repaint gate live in the app; bsp knows neither `FrameSnapshot` nor any page type.
 - **Each component is its own feature**: one feature per component, gated once at the `mod` in `components/` (absent = file does not exist); a board feature is an aggregate list of components (see the module axis in `features.md`).
@@ -78,7 +78,7 @@ Names follow the work: a one-shot report is `*_reported` (`first_frame_reported`
 
 `app/src/` is organised by vertical slice: each page is its own slice (a file for a small page, a directory for a large one), cross-page truth and vocabulary live in `shared/`, the composition root and the presentation layer stand apart, and wiring happens only in the composition root.
 
-A page is where the device is, not a picture on a screen: `Route.needs` asks only what the board wired, and whether a panel exists is answered separately by `SurfaceRole::Pages`; a board with no panel still has a current page, and the lamp, demand and network setup are simply its other readers.
+A page is where the device is, not a picture on a screen: `Route.needs` asks only what the board wired, and whether a panel exists is answered separately by `SurfaceRole::Screen`; a board with no panel still has a current page, and the lamp, demand and network setup are simply its other readers.
 
 | Path | Responsibility |
 | --- | --- |
@@ -98,10 +98,10 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `state/manager/mod.rs` | the read side: ownership and construction of `DeviceState` (`Boot`, `DeviceManager::boot`), the owned `Services`, the per-page `DemandPolicy`, and the getters the coordinator and the render loop read |
 | `state/manager/write.rs` | the write side: every write from the bus, a worker report or the clock's tick; records move only here |
 | `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
-| `render/engine/` | surface-agnostic: `RenderController` decides *what* to show (`reconciler.rs`), state→appearance lives in `projection.rs`, `appearance.rs` defines `Topic`/`Appearance`, `color.rs` steps the colour, and `renderers.rs` hands the appearance to the renderers that claimed it |
-| `render/screen/` | the screen (`SurfaceRole::Pages`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `services::paint`, `repaint.rs` (frame drift and the repaint step) |
+| `render/engine/` | surface-agnostic: `Differ` decides *what* to show (`differ.rs`), state→appearance lives in `projection.rs`, `appearance.rs` defines `Topic`/`Appearance`, `color.rs` steps the colour, and `set.rs` hands the appearance to the renderers that claimed it |
+| `render/screen/` | the screen (`SurfaceRole::Screen`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `services::paint`, `repaint.rs` (frame drift and the repaint step) |
 | `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a screen would add |
-| `render/wire.rs` | wiring: `wire()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `Renderers` is the handle this layer hands out |
+| `render/wire.rs` | wiring: `wire()` turns the board's surfaces into `ScreenRenderer`/`LampRenderer`, and `RenderSet` is the handle this layer hands out |
 | `runtime/` | the tasks beside the model: the coordinator, the feature workers under `feature/`, and the `workers/` handles they share |
 | `runtime/system.rs` | the `System` contract: `tick` takes the manager and the clock, `intent` reads the state its intent already wrote; a worker handle is held by the system |
 | `runtime/coordinator/{mod,pacing}.rs`, `coordinator/systems/*.rs` | the coordinator `run_loop`: four steps per frame (process intents, system sweep, present, wait); `pacing.rs` holds the frame clock and the next deadline |
@@ -154,7 +154,7 @@ The render answers come in two layers: `Painter`'s `draw_*` puts one mark down (
 
 `Services` owns the eight pages plus the device's own two things: `NavService` (the page stack) and `LightService` (the lamp). It exposes `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`; there is no per-page field accessor. A landed scan writes the list into the record first, then `LinkIntent::Scan` travels the same dispatch table so the Network page clamps its draft to the new list; there is no scan-specific hook. `Services::apply` is the one business dispatch table: one arm per `BusinessIntent` group: `Link` writes `NetworkState`, `Network` writes `NetworkView`, and the two records belong to `NetworkPage`, which is why they share one arm; the other four groups have one each; the match is exhaustive, so a new group does not compile. Adding a page means a `services/<page>/` directory, one field on `Services`, one arm each in `get`/`get_mut`, `service_mut` and the `descriptor(page)` match, and the page's own `bind` and `descriptor` (plus `apply` when it claims intents); a missing arm does not compile, and `iot-tool/tests/page_table.rs` guards the template. Adding a service that is not a page means one field, one `ServiceId` variant, its own `apply`, and a `Services::apply` arm that points at it.
 
-`state/manager/write.rs` drives the lifecycle: after one business intent has landed its state, it compares `state.page()`, and on a change calls `leave(old)` then `enter(new)`; the boot `Splash` counts as an `enter`. The hooks do not depend on `has_display()` — a page on a board with no panel still hears them — but they touch only the page's own fields. The Network page puts its keyboard and confirmation box away in `on_hide` while keeping the picked row and the draft, so leaving and coming back does not reopen the keyboard.
+`state/manager/write.rs` drives the lifecycle: after one business intent has landed its state, it compares `state.page()`, and on a change calls `leave(old)` then `enter(new)`; the boot `Splash` counts as an `enter`. The hooks do not depend on `has_screen()` — a page on a board with no panel still hears them — but they touch only the page's own fields. The Network page puts its keyboard and confirmation box away in `on_hide` while keeping the picked row and the draft, so leaving and coming back does not reopen the keyboard.
 
 `PageSnapshot` is the one view a page shows the outside world (`shared/snapshot.rs`); the render layer takes it and never names `crate::services`, which is why `NetworkView` lives in `shared/model/network_view/` too.
 
@@ -187,7 +187,7 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Composition point = bin board manifest**: capabilities injected by move, generic over capabilities, shared by boards with the same capability set; enabling a module that lacks a capability is a compile error, never silent.
 - **Product tier = feature alias**: the tier fixes the module set, the board fixes the supported set, and the intersection is trimmed and checked at compile time.
 - **Module configurability** = feature switch + const parameters.
-- **Runtime-pluggable render layer**: `iot-app`'s allocation-free central `RenderController` (reconcile closure callback; selections are computed per topic first, only the ones that moved are notified, and the snapshot is written once at the end) plus a heap `Renderers` registry in the same crate (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Renderers are registered beside their surface at start-up and all live in the same render task; there is no cross-task bus. Each renderer declares only the `Topic`s it claims (`Surface(instance)` / `Frame` / `Display`), so a lamp never touches the ~2 KB frame; `Appearance` borrows the frame and only the screen keeps a copy.
+- **Runtime-pluggable render layer**: `iot-app`'s allocation-free central `Differ` (diff closure callback; selections are computed per topic first, only the ones that moved are notified, and the snapshot is written once at the end) plus a heap `RenderSet` registry in the same crate (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Each renderer is registered beside its surface at start-up, and all live in the same render task; there is no cross-task bus. Each renderer declares only the `Topic`s it claims (`Surface(instance)` / `Frame` / `Demand`), so a lamp never touches the ~2 KB frame; `Appearance` borrows the frame and only the screen keeps a copy.
 
 ## The demand model (what / how often / how sensitive)
 
@@ -319,7 +319,7 @@ The camera's chain runs end to end today:
 
 ```
 DeviceState.page → frame_snapshot() → Appearance::Frame
-  → RenderController::reconcile → ScreenRenderer::on_appearance
+  → Differ::diff → ScreenRenderer::on_appearance
   → surface.release_camera()
 ```
 

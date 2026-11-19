@@ -5,7 +5,7 @@
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
-use crate::render::{AppPainter, LampRenderer, Renderer, Renderers, ScreenRenderer};
+use crate::render::{AppPainter, LampRenderer, RenderSet, Renderer, ScreenRenderer};
 use crate::shared::model::{MAX_LIGHTS, SurfaceRole};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::surface::WiredSurface;
@@ -17,7 +17,7 @@ const OVERLAY: bool = true;
 pub fn wire(
     surfaces: Vec<WiredSurface>,
     mut camera: Option<Box<dyn FrameSource + Send>>,
-) -> (Renderers, [SurfaceRole; MAX_LIGHTS]) {
+) -> (RenderSet, [SurfaceRole; MAX_LIGHTS]) {
     assert!(
         surfaces.len() <= MAX_LIGHTS,
         "more wired surfaces than consumers"
@@ -26,11 +26,11 @@ pub fn wire(
     for (role, surface) in roles.iter_mut().zip(&surfaces) {
         *role = surface.role();
     }
-    let mut renderers = Renderers::new();
+    let mut renderers = RenderSet::new();
     for (instance, surface) in surfaces.into_iter().enumerate() {
         let instance = instance as u8;
         let renderer: Box<dyn Renderer> = match surface {
-            WiredSurface::Pages(surface) => {
+            WiredSurface::Screen(surface) => {
                 let screen = ScreenRenderer::new(
                     instance,
                     surface,

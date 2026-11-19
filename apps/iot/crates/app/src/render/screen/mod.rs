@@ -12,22 +12,22 @@ use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::render::engine::ColorDriver;
-use crate::render::{Activity, Appearance, LightAppearance, Renderer, Topic};
+use crate::render::engine::ColorOutput;
+use crate::render::{Appearance, Drive, LightAppearance, Renderer, Topic};
 use crate::services::descriptor;
 use crate::shared::model::LightState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::{DemandKey, Mode};
 use iot_core::drivers::camera::FrameSource;
-use iot_core::drivers::surface::{PageSurface, ScreenPainter};
+use iot_core::drivers::surface::{ScreenPainter, ScreenSurface};
 
 pub struct ScreenRenderer {
     instance: u8,
-    surface: Box<dyn PageSurface>,
+    surface: Box<dyn ScreenSurface>,
     topics: [Topic; 2],
-    color: ColorDriver,
-    appearance: Option<LightAppearance>,
+    color: ColorOutput,
+    declared: Option<LightAppearance>,
     page: Option<PageId>,
     painter: Box<dyn ScreenPainter>,
     overlay: bool,
@@ -41,7 +41,7 @@ pub struct ScreenRenderer {
 impl ScreenRenderer {
     pub fn new(
         instance: u8,
-        surface: Box<dyn PageSurface>,
+        surface: Box<dyn ScreenSurface>,
         painter: Box<dyn ScreenPainter>,
         overlay: bool,
     ) -> Self {
@@ -49,8 +49,8 @@ impl ScreenRenderer {
             instance,
             surface,
             topics: [Topic::Surface(instance), Topic::Frame],
-            color: ColorDriver::new(),
-            appearance: None,
+            color: ColorOutput::new(),
+            declared: None,
             page: None,
             painter,
             overlay,
@@ -66,7 +66,7 @@ impl ScreenRenderer {
     }
 
     fn present(&mut self, now_ms: u32) {
-        let Some(declared) = self.appearance else {
+        let Some(declared) = self.declared else {
             return;
         };
         let step = self.surface.repaint_step();
@@ -86,12 +86,12 @@ impl ScreenRenderer {
         }
     }
 
-    fn on_camera_page(&self) -> bool {
+    fn is_camera_page(&self) -> bool {
         self.page
             .is_some_and(|page| descriptor(page).camera_frames())
     }
 
-    fn on_frame(&mut self, frame: &FrameSnapshot, now_ms: u32) -> Activity {
+    fn on_frame(&mut self, frame: &FrameSnapshot, now_ms: u32) -> Drive {
         let page_changed = self.page != Some(frame.page);
         let camera = frame.demand.claim(DemandKey::CAMERA);
         self.camera_period_ms = camera.period_ms;
@@ -113,12 +113,12 @@ impl ScreenRenderer {
         });
         self.page = Some(frame.page);
         self.color
-            .set_display(frame.demand.claim(DemandKey::DISPLAY).mode);
-        match self.color.display() {
+            .set_demand(frame.demand.claim(DemandKey::DISPLAY).mode);
+        match self.color.demand() {
             Mode::Off => {
                 self.surface.set_backlight_ceiling(0);
-                self.color.stop();
-                return Activity::Idle;
+                self.color.stop_breath();
+                return Drive::Idle;
             }
             Mode::OnChange => self
                 .surface
@@ -126,16 +126,16 @@ impl ScreenRenderer {
             Mode::Continuous => self.surface.set_backlight_ceiling(100),
         }
         if page_changed {
-            self.color.forget();
+            self.color.forget_color();
             self.present(now_ms);
         }
         if (page_changed || repaint) && self.repaint(frame, true) {
             self.last_repaint_ms = now_ms;
         }
-        if self.on_camera_page() {
-            return Activity::TimeDriven;
+        if self.is_camera_page() {
+            return Drive::TimeDriven;
         }
-        self.color.activity()
+        self.color.drive()
     }
 
     fn repaint(&mut self, snapshot: &dyn Any, force: bool) -> bool {
@@ -152,27 +152,27 @@ impl Renderer for ScreenRenderer {
         self.surface.flush()
     }
 
-    fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Activity {
+    fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Drive {
         match appearance {
             Appearance::Frame(frame) => self.on_frame(frame, now_ms),
             Appearance::Surface { instance, light } => {
                 debug_assert_eq!(instance, self.instance);
-                self.appearance = Some(light);
+                self.declared = Some(light);
                 self.present(now_ms);
                 self.paint_last();
-                self.color.activity()
+                self.color.drive()
             }
-            Appearance::Display(_) => {
-                debug_assert!(false, "the screen reads the gate from its frame");
-                Activity::Idle
+            Appearance::Demand(_) => {
+                debug_assert!(false, "the screen reads the demand from its frame");
+                Drive::Idle
             }
         }
     }
 
-    fn step(&mut self, now_ms: u32) -> Activity {
-        if self.on_camera_page() {
+    fn step(&mut self, now_ms: u32) -> Drive {
+        if self.is_camera_page() {
             let Some(snapshot) = self.last_snapshot.as_ref() else {
-                return Activity::TimeDriven;
+                return Drive::TimeDriven;
             };
             self.surface.paint_camera(
                 u64::from(now_ms),
@@ -180,16 +180,16 @@ impl Renderer for ScreenRenderer {
                 &*self.painter,
                 snapshot,
             );
-            return Activity::TimeDriven;
+            return Drive::TimeDriven;
         }
         let step = self.surface.repaint_step();
         let Some(shown) = self.color.step(&mut *self.surface, step, now_ms) else {
-            return Activity::Idle;
+            return Drive::Idle;
         };
         self.surface
             .set_backlight(shown.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
         self.paint_last();
-        Activity::TimeDriven
+        Drive::TimeDriven
     }
 }
 
@@ -263,7 +263,7 @@ mod tests {
         }
     }
 
-    impl PageSurface for FakeScreen {
+    impl ScreenSurface for FakeScreen {
         fn set_backlight(&mut self, level_pct: u8) {
             let mut screen = self.0.borrow_mut();
             screen.backlight = level_pct.min(screen.ceiling);
@@ -367,10 +367,10 @@ mod tests {
         let (mut r, screen) = renderer();
         assert_eq!(
             r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 0),
-            Activity::Idle,
+            Drive::Idle,
             "the first appearance only tells the screen what it is for"
         );
-        assert_eq!(r.on_appearance(ambient_breath(0), 0), Activity::TimeDriven);
+        assert_eq!(r.on_appearance(ambient_breath(0), 0), Drive::TimeDriven);
         r.step(1_000);
         r.step(1_100);
         assert!(screen.borrow().fills > 0, "a lit screen keeps painting");
@@ -429,7 +429,7 @@ mod tests {
         r.on_appearance(ambient_breath(0), 0);
         assert_eq!(
             r.on_appearance(ambient_breath(0), 0),
-            Activity::TimeDriven,
+            Drive::TimeDriven,
             "dimming is a brightness, not a rate"
         );
         r.step(1_000);
@@ -445,7 +445,7 @@ mod tests {
         );
         assert_eq!(
             r.on_appearance(ambient_breath(0), 0),
-            Activity::Idle,
+            Drive::Idle,
             "a breathing light does not breathe through the page's ground"
         );
         assert_eq!(screen.borrow().color, Rgb(0, 0, 0), "the ground is black");
@@ -455,7 +455,7 @@ mod tests {
             "and the setup screen is lit to read"
         );
         let fills = screen.borrow().fills;
-        assert_eq!(r.step(1_000), Activity::Idle);
+        assert_eq!(r.step(1_000), Drive::Idle);
         r.step(1_100);
         assert_eq!(
             screen.borrow().fills,
@@ -497,7 +497,7 @@ mod tests {
                 Appearance::Frame(&frame_on(PageId::Camera, Mode::Continuous)),
                 1
             ),
-            Activity::TimeDriven,
+            Drive::TimeDriven,
             "a camera page is driven by arriving frames, not by the light"
         );
         assert_eq!(
@@ -506,7 +506,7 @@ mod tests {
             "the camera page's ground is the page's black, not the light's colour"
         );
         assert_eq!(screen.borrow().backlight, 100);
-        assert_eq!(r.step(2), Activity::TimeDriven);
+        assert_eq!(r.step(2), Drive::TimeDriven);
         assert_eq!(
             screen.borrow().camera_paints,
             1,
@@ -561,7 +561,7 @@ mod tests {
 
         assert_eq!(
             r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 100),
-            Activity::TimeDriven,
+            Drive::TimeDriven,
             "the breathing the page was hiding resumes"
         );
         let LightAppearance::Breathing(breath) = light_appearance(LightState::boot()) else {

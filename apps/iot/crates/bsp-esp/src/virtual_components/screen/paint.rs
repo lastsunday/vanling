@@ -10,7 +10,7 @@ use core::pin::Pin;
 
 use esp_hal::time::{Duration, Instant};
 use iot_core::drivers::camera::FrameOwner;
-use iot_core::drivers::surface::{PageSurface, ScreenContext, ScreenPainter, ScreenTarget};
+use iot_core::drivers::surface::{ScreenContext, ScreenPainter, ScreenSurface, ScreenTarget};
 use iot_core::light::rgb565;
 use iot_core::stats::windowed_percent;
 
@@ -20,7 +20,7 @@ use crate::stack::{high_water, main_stack_bytes, note_stack_high_water};
 
 use super::*;
 
-impl PageSurface for Screen {
+impl ScreenSurface for Screen {
     fn repaint_step(&self) -> u8 {
         REPAINT_STEP
     }

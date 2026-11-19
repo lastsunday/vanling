@@ -5,13 +5,13 @@ use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::Mode;
 use iot_core::light::Rgb;
 
-/// Who an appearance is for: one wired surface's light, the page frame, or the display gate
+/// Who an appearance is for: one wired surface's light, the page frame, or the display demand
 /// alone.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Topic {
     Surface(u8),
     Frame,
-    Display,
+    Demand,
 }
 
 /// The declared appearance of a light, derived from state; breathing is the schedule, not
@@ -32,7 +32,7 @@ pub enum Appearance<'a> {
         light: LightAppearance,
     },
     Frame(&'a FrameSnapshot),
-    Display(Mode),
+    Demand(Mode),
 }
 
 impl Appearance<'_> {
@@ -40,7 +40,7 @@ impl Appearance<'_> {
         match self {
             Self::Surface { instance, .. } => Topic::Surface(*instance),
             Self::Frame(_) => Topic::Frame,
-            Self::Display(_) => Topic::Display,
+            Self::Demand(_) => Topic::Demand,
         }
     }
 }

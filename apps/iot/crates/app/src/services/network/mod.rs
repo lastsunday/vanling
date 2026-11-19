@@ -41,7 +41,7 @@ impl super::Service for NetworkPage {
             }
             BusinessIntent::Network(intent) => (
                 self.draft
-                    .apply(*intent, &state.network, state.has_display()),
+                    .apply(*intent, &state.network, state.has_screen()),
                 Effects::default(),
             ),
             _ => (None, Effects::default()),

@@ -6,7 +6,7 @@ use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
 use iot_core::light::Rgb;
 
-use super::renderer::Activity;
+use super::renderer::Drive;
 
 /// What one painted appearance is: nothing, one colour, or a breath that keeps moving.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -28,105 +28,110 @@ impl Shown {
 }
 
 /// Writes appearances to a surface: dedupes a slow one, steps a breathing one.
-pub(crate) struct ColorDriver {
+pub(crate) struct ColorOutput {
     last: Option<Rgb>,
     breath: Option<Breath>,
-    display: Mode,
+    demand: Mode,
 }
 
-impl ColorDriver {
+impl ColorOutput {
     pub(crate) const fn new() -> Self {
         Self {
             last: None,
             breath: None,
-            display: Mode::Continuous,
+            demand: Mode::Continuous,
         }
     }
 
     /// Follows the display demand. A mode that stops collecting forgets the last colour, so
     /// the first frame after it is a full one.
-    pub(crate) fn set_display(&mut self, mode: Mode) {
-        if self.display.is_collecting() != mode.is_collecting() {
+    pub(crate) fn set_demand(&mut self, mode: Mode) {
+        if self.demand.is_collecting() != mode.is_collecting() {
             self.last = None;
         }
-        self.display = mode;
+        self.demand = mode;
     }
 
-    pub(crate) fn display(&self) -> Mode {
-        self.display
+    pub(crate) fn demand(&self) -> Mode {
+        self.demand
     }
 
     /// Whether the renderer has anything to step: a breath still moving.
-    pub(crate) fn activity(&self) -> Activity {
+    pub(crate) fn drive(&self) -> Drive {
         if self.breath.is_some() {
-            Activity::TimeDriven
+            Drive::TimeDriven
         } else {
-            Activity::Idle
+            Drive::Idle
         }
     }
 
     /// Stops the breath without painting: what being dark means.
-    pub(crate) fn stop(&mut self) {
+    pub(crate) fn stop_breath(&mut self) {
         self.breath = None;
     }
 
     /// Forgets the last colour, so the next appearance repaints even if it did not move.
-    pub(crate) fn forget(&mut self) {
+    pub(crate) fn forget_color(&mut self) {
         self.last = None;
     }
 
     pub(crate) fn show<R: RgbLight + ?Sized>(
         &mut self,
         light: &mut R,
-        step: u8,
+        repaint_step: u8,
         appearance: LightAppearance,
         now_ms: u32,
     ) -> Shown {
         match appearance {
             LightAppearance::Off => {
                 self.breath = None;
-                self.drive(light, step, Rgb(0, 0, 0));
+                self.write(light, repaint_step, Rgb(0, 0, 0));
                 Shown::Off
             }
             LightAppearance::Color(color) => {
                 self.breath = None;
-                self.drive(light, step, color);
+                self.write(light, repaint_step, color);
                 Shown::Solid
             }
             LightAppearance::Breathing(breath) => {
                 self.breath = Some(breath);
-                self.drive(light, step, breath.rgb(now_ms));
+                self.write(light, repaint_step, breath.rgb(now_ms));
                 Shown::Breathing(breath)
             }
         }
     }
 
     /// A page's own ground: solid and still, whatever the light was doing.
-    pub(crate) fn ground<R: RgbLight + ?Sized>(&mut self, light: &mut R, step: u8, color: Rgb) {
+    pub(crate) fn ground<R: RgbLight + ?Sized>(
+        &mut self,
+        light: &mut R,
+        repaint_step: u8,
+        color: Rgb,
+    ) {
         self.breath = None;
-        self.drive(light, step, color);
+        self.write(light, repaint_step, color);
     }
 
     /// Paints the next breathing frame, or `None` when nothing is breathing.
     pub(crate) fn step<R: RgbLight + ?Sized>(
         &mut self,
         light: &mut R,
-        step: u8,
+        repaint_step: u8,
         now_ms: u32,
     ) -> Option<Shown> {
         let breath = self.breath?;
-        self.drive(light, step, breath.rgb(now_ms));
+        self.write(light, repaint_step, breath.rgb(now_ms));
         Some(Shown::Breathing(breath))
     }
 
-    fn drive<R: RgbLight + ?Sized>(&mut self, light: &mut R, step: u8, color: Rgb) {
-        if !self.display.is_collecting() {
+    fn write<R: RgbLight + ?Sized>(&mut self, light: &mut R, repaint_step: u8, color: Rgb) {
+        if !self.demand.is_collecting() {
             self.last = None;
             return;
         }
         let repaint = match self.last {
             None => true,
-            Some(last) => should_repaint(last, color, step),
+            Some(last) => should_repaint(last, color, repaint_step),
         };
         if repaint {
             self.last = Some(color);
@@ -136,12 +141,14 @@ impl ColorDriver {
 }
 
 /// Whether `next` differs from `last` enough to repaint a slow refresh surface.
-fn should_repaint(last: Rgb, next: Rgb, step: u8) -> bool {
+fn should_repaint(last: Rgb, next: Rgb, repaint_step: u8) -> bool {
     if last == next {
         return false;
     }
     let delta = |a: u8, b: u8| u8::abs_diff(a, b);
-    delta(last.0, next.0) >= step || delta(last.1, next.1) >= step || delta(last.2, next.2) >= step
+    delta(last.0, next.0) >= repaint_step
+        || delta(last.1, next.1) >= repaint_step
+        || delta(last.2, next.2) >= repaint_step
 }
 
 #[cfg(test)]

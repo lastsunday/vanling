@@ -86,7 +86,7 @@ impl NetworkView {
         &mut self,
         intent: NetworkIntent,
         link: &NetworkState,
-        has_display: bool,
+        has_screen: bool,
     ) -> Option<Command> {
         match intent {
             NetworkIntent::Key { key, at_ms } => self.apply_key(key, at_ms),
@@ -103,10 +103,10 @@ impl NetworkView {
                 self.no_copy(ssid);
                 None
             }
-            NetworkIntent::Leave => self.leave_link(link, has_display),
+            NetworkIntent::Leave => self.leave_link(link, has_screen),
             NetworkIntent::Answer(confirm) => self.answer(confirm, link),
             NetworkIntent::CloseSetup => self.close_setup(link),
-            NetworkIntent::SwitchHost => self.switch_host(link, has_display),
+            NetworkIntent::SwitchHost => self.switch_host(link, has_screen),
             NetworkIntent::ScanNow => self.scan_now(link),
             NetworkIntent::SetOpenAccessPoint(open) => self.set_open(open, link),
             NetworkIntent::Dismiss => {
@@ -255,11 +255,11 @@ impl NetworkView {
         self.confirm = Some(Confirm::Forget(ap));
     }
 
-    fn leave_link(&mut self, link: &NetworkState, has_display: bool) -> Option<Command> {
+    fn leave_link(&mut self, link: &NetworkState, has_screen: bool) -> Option<Command> {
         if !link.link.is_leavable() {
             return None;
         }
-        if has_display {
+        if has_screen {
             self.confirm = Some(Confirm::Leave);
             None
         } else {
@@ -267,8 +267,8 @@ impl NetworkView {
         }
     }
 
-    fn switch_host(&mut self, link: &NetworkState, has_display: bool) -> Option<Command> {
-        if !has_display || self.join_wait || self.setup_wait.is_some() {
+    fn switch_host(&mut self, link: &NetworkState, has_screen: bool) -> Option<Command> {
+        if !has_screen || self.join_wait || self.setup_wait.is_some() {
             return None;
         }
         let from = link.setup_host()?;

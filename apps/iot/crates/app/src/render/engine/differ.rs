@@ -11,17 +11,17 @@ use super::projection::{frame_snapshot, light_appearance, status_lights};
 /// Central judge of the device surface: diffs successive [`DeviceState`] snapshots and
 /// reports only the appearances that changed, via a callback the render layer fans out to
 /// matching renderers.
-pub struct RenderController {
-    last: Option<Box<Synced>>,
+pub struct Differ {
+    last: Option<Box<Baseline>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-struct Synced {
+struct Baseline {
     frame: FrameSnapshot,
     lights: [LightState; MAX_LIGHTS],
 }
 
-impl RenderController {
+impl Differ {
     pub const fn new() -> Self {
         Self { last: None }
     }
@@ -30,18 +30,18 @@ impl RenderController {
     /// first call reports every known topic.
     ///
     /// What each topic shows is selected from the state first — the frame the screen reads,
-    /// the gate every surface obeys, the appearance one surface reads — and only the topics
-    /// whose selection moved are notified. A renderer therefore never receives an appearance
-    /// it would have to throw away, and the state is written once at the end, after the
-    /// selections are compared.
-    pub fn reconcile(
+    /// the demand every surface obeys, the appearance one surface reads — and only the
+    /// topics whose selection moved are notified. A renderer therefore never receives an
+    /// appearance it would have to throw away, and the state is written once at the end,
+    /// after the selections are compared.
+    pub fn diff(
         &mut self,
         state: &DeviceState,
         pages: PageSnapshot,
         demand: &EffectiveDemand,
         mut notify: impl FnMut(Appearance<'_>),
     ) -> bool {
-        let next = Synced {
+        let next = Baseline {
             frame: frame_snapshot(state, pages, demand),
             lights: status_lights(state),
         };
@@ -61,7 +61,7 @@ impl RenderController {
         // frame move; the reverse is not true, and that is what this selection keeps.
         let moved = self.last.as_deref() != Some(&next) || surfaces.iter().any(|moved| *moved);
         if display_moved {
-            notify(Appearance::Display(display));
+            notify(Appearance::Demand(display));
         }
         if moved {
             notify(Appearance::Frame(&next.frame));
@@ -83,9 +83,9 @@ impl RenderController {
         moved
     }
 
-    /// Last synced appearance for `topic` (or `None` before the first sync), so a freshly
+    /// Last diffed appearance for `topic` (or `None` before the first diff), so a freshly
     /// registered renderer can catch up before the next diff.
-    pub fn current(&self, topic: Topic) -> Option<Appearance<'_>> {
+    pub fn latest(&self, topic: Topic) -> Option<Appearance<'_>> {
         let last = self.last.as_deref()?;
         Some(match topic {
             Topic::Surface(instance) => Appearance::Surface {
@@ -95,12 +95,12 @@ impl RenderController {
                 ),
             },
             Topic::Frame => Appearance::Frame(&last.frame),
-            Topic::Display => Appearance::Display(last.frame.demand.claim(DemandKey::DISPLAY).mode),
+            Topic::Demand => Appearance::Demand(last.frame.demand.claim(DemandKey::DISPLAY).mode),
         })
     }
 }
 
-impl Default for RenderController {
+impl Default for Differ {
     fn default() -> Self {
         Self::new()
     }
@@ -115,12 +115,12 @@ mod tests {
     use iot_core::light::Rgb;
 
     #[test]
-    fn first_sync_reports_boot_then_silence() {
-        let mut ctl = RenderController::new();
+    fn first_diff_reports_boot_then_silence() {
+        let mut ctl = Differ::new();
         let boot = state(LightState::boot());
         let mut seen = Vec::new();
         assert!(
-            ctl.reconcile(
+            ctl.diff(
                 &boot,
                 PageSnapshot::default(),
                 &EffectiveDemand::default(),
@@ -131,7 +131,7 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                Seen::Display(Mode::Continuous),
+                Seen::Demand(Mode::Continuous),
                 Seen::Frame(frame_for(LightState::boot())),
                 Seen::Surface {
                     instance: 0,
@@ -144,7 +144,7 @@ mod tests {
             ]
         );
         assert!(
-            !ctl.reconcile(
+            !ctl.diff(
                 &boot,
                 PageSnapshot::default(),
                 &EffectiveDemand::default(),
@@ -154,7 +154,7 @@ mod tests {
         );
         let off = state(LightState::Off);
         assert!(
-            ctl.reconcile(
+            ctl.diff(
                 &off,
                 PageSnapshot::default(),
                 &EffectiveDemand::default(),
@@ -163,7 +163,7 @@ mod tests {
             "changed state is a change"
         );
         assert!(
-            !ctl.reconcile(
+            !ctl.diff(
                 &off,
                 PageSnapshot::default(),
                 &EffectiveDemand::default(),
@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn off_emits_off_once() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         collect(&mut ctl, &state(LightState::boot()));
         let off = state(LightState::Off);
         assert_eq!(
@@ -197,7 +197,7 @@ mod tests {
 
     #[test]
     fn a_state_change_no_renderer_can_see_stays_silent() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         let boot = state(LightState::boot());
         collect(&mut ctl, &boot);
         let mut moved = boot.clone();
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn light_changes_emit_new_appearances() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         collect(&mut ctl, &state(LightState::boot()));
         let target = state(LightState::Solid {
             color: Rgb(1, 2, 3),
@@ -288,15 +288,15 @@ mod tests {
 
     #[test]
     fn current_reports_last_synced_appearance_per_topic() {
-        let mut ctl = RenderController::new();
-        assert_eq!(ctl.current(Topic::Surface(0)), None, "nothing synced yet");
+        let mut ctl = Differ::new();
+        assert_eq!(ctl.latest(Topic::Surface(0)), None, "nothing synced yet");
         let plain = state(LightState::Solid {
             color: Rgb(7, 6, 5),
             brightness: 255,
         });
         collect(&mut ctl, &plain);
         assert_eq!(
-            ctl.current(Topic::Surface(0)),
+            ctl.latest(Topic::Surface(0)),
             Some(Appearance::Surface {
                 instance: 0,
                 light: LightAppearance::Color(Rgb(7, 6, 5))
@@ -314,29 +314,29 @@ mod tests {
         };
         collect(&mut ctl, &two);
         assert_eq!(
-            ctl.current(Topic::Surface(0)),
+            ctl.latest(Topic::Surface(0)),
             Some(Appearance::Surface {
                 instance: 0,
                 light: LightAppearance::Off
             })
         );
         assert_eq!(
-            ctl.current(Topic::Surface(1)),
+            ctl.latest(Topic::Surface(1)),
             Some(Appearance::Surface {
                 instance: 1,
                 light: LightAppearance::Color(Rgb(3, 3, 3))
             })
         );
         assert!(matches!(
-            ctl.current(Topic::Frame),
+            ctl.latest(Topic::Frame),
             Some(Appearance::Frame(_))
         ));
         assert_eq!(
-            ctl.current(Topic::Display),
-            Some(Appearance::Display(Mode::Continuous))
+            ctl.latest(Topic::Demand),
+            Some(Appearance::Demand(Mode::Continuous))
         );
         assert_eq!(
-            ctl.current(Topic::Surface(9)),
+            ctl.latest(Topic::Surface(9)),
             Some(Appearance::Surface {
                 instance: 9,
                 light: LightAppearance::Color(Rgb(3, 3, 3))
@@ -346,7 +346,7 @@ mod tests {
 
     #[test]
     fn diff_carries_the_frame_before_surfaces_in_wiring_order() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         let two = DeviceState {
             lights: [
                 LightState::Off,
@@ -361,7 +361,7 @@ mod tests {
         assert_eq!(
             seen,
             vec![
-                Seen::Display(Mode::Continuous),
+                Seen::Demand(Mode::Continuous),
                 Seen::Frame(frame_snapshot(
                     &two,
                     PageSnapshot::default(),
@@ -383,7 +383,7 @@ mod tests {
         assert_eq!(d.lights.len(), MAX_LIGHTS);
         assert_eq!(d.lights[0].mode, 0);
         assert_eq!(d.lights[1].mode, 2);
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         collect(&mut ctl, &DeviceState::default());
         let changed = DeviceState {
             lights: [
@@ -414,7 +414,7 @@ mod tests {
 
     #[test]
     fn frame_change_emits_both_fields_before_light() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         collect(&mut ctl, &state(LightState::boot()));
         let mut changed = state(LightState::Off);
         changed.touch.view.tap_count = 7;
@@ -445,14 +445,14 @@ mod tests {
 
     #[test]
     fn frame_diff_only_sets_the_shifted_field() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut ghost = state(LightState::Off);
         ghost.touch.view.ghost_count = 3;
         let mut expected = frame_for(LightState::Off);
         expected.touch.ghost = 3;
         assert_eq!(collect(&mut ctl, &ghost), vec![Seen::Frame(expected)]);
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         collect(&mut ctl, &state(LightState::Off));
         let mut presses = state(LightState::Off);
         presses.touch.view.press_count = 1;

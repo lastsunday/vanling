@@ -116,7 +116,7 @@ pub(super) fn frame_snapshot(
 
 #[cfg(test)]
 mod tests {
-    use super::super::RenderController;
+    use super::super::Differ;
     use super::super::test_support::*;
     use super::*;
     use crate::shared::intent::{AudioIntent, BusinessIntent, NavigationIntent};
@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn press_and_frame_snapshots_carry_coordinates() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
         manager.apply_input(crate::shared::intent::recognize(
@@ -235,7 +235,7 @@ mod tests {
         expected.touch.presses = 1;
         expected.touch.points = [Some((42, 97)), None];
         assert_eq!(collect(&mut ctl, &state), vec![Seen::Frame(expected)]);
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         let mut manager = landed();
         collect(&mut ctl, &manager.state());
         manager.apply_input(crate::shared::intent::recognize(
@@ -275,7 +275,7 @@ mod tests {
 
     #[test]
     fn swipe_chip_and_tap_reach_the_frame() {
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
         manager.apply_input(crate::shared::intent::recognize(
@@ -311,7 +311,7 @@ mod tests {
         assert_eq!(frame.touch.last_gesture_origin, Some((20, 90)));
         assert_eq!(frame.touch.last_gesture_end, Some((20, 15)));
         assert_eq!(frame.touch.chip_gesture_id, 0x10);
-        let mut ctl = RenderController::new();
+        let mut ctl = Differ::new();
         let mut manager = crate::state::DeviceManager::new();
         collect(&mut ctl, &manager.state());
         manager.apply_input(crate::shared::intent::recognize(
@@ -434,7 +434,7 @@ mod tests {
     fn the_link_notice_lands_on_every_lamp_and_no_screen() {
         for (kinds, expected) in [
             (
-                [SurfaceRole::Pages, SurfaceRole::Lamp],
+                [SurfaceRole::Screen, SurfaceRole::Lamp],
                 alloc::vec![
                     (0, LightAppearance::Off),
                     (1, light_appearance(LightState::SETUP))
@@ -448,12 +448,12 @@ mod tests {
                 ],
             ),
             (
-                [SurfaceRole::Pages, SurfaceRole::Absent],
+                [SurfaceRole::Screen, SurfaceRole::Absent],
                 alloc::vec![(0, LightAppearance::Off)],
             ),
             ([SurfaceRole::Absent, SurfaceRole::Absent], alloc::vec![]),
         ] {
-            let mut ctl = RenderController::new();
+            let mut ctl = Differ::new();
             let status = DeviceState {
                 lights: [LightState::Off, LightState::Off],
                 surface_roles: kinds,

@@ -122,9 +122,9 @@ fn build_wiring(
     io: IoPlacement,
 ) -> Wiring<iot_chip_esp::Clock> {
     let surfaces = board.take_surfaces().expect("board has a wired surface");
-    let has_display = surfaces
+    let has_screen = surfaces
         .iter()
-        .any(|wired| wired.role() == SurfaceRole::Pages);
+        .any(|wired| wired.role() == SurfaceRole::Screen);
 
     // The board owns the station and the store, so the worker that uses them is built here; the
     // library's frame loop never learns what the radio is.
@@ -133,7 +133,7 @@ fn build_wiring(
             station,
             board.take_credentials(),
             iot_bsp_esp::SETUP_HOST,
-            has_display,
+            has_screen,
             NetCtx {
                 bus: &RUNTIME.bus,
                 network: &RUNTIME.network,

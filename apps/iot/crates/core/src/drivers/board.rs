@@ -119,7 +119,7 @@ mod tests {
     use super::*;
     use crate::drivers::input::{BUTTON_SCAN_MS, Button};
     use crate::drivers::playback::{Recovery, SpeakerFault, Tone};
-    use crate::drivers::surface::{PageSurface, RgbLight, SurfaceRole};
+    use crate::drivers::surface::{RgbLight, ScreenSurface, SurfaceRole};
     use crate::light::Rgb;
     use alloc::{boxed::Box, vec};
 
@@ -149,7 +149,7 @@ mod tests {
         fn attach_camera(&mut self, _camera: Box<dyn crate::drivers::camera::FrameSource + Send>) {}
     }
 
-    impl PageSurface for FakePage {
+    impl ScreenSurface for FakePage {
         fn repaint(
             &mut self,
             _painter: &dyn crate::drivers::surface::ScreenPainter,
@@ -223,7 +223,7 @@ mod tests {
     fn has_surface_delivers_every_surface_with_its_role_then_none() {
         let mut board = FakeBoard {
             lights: Some(vec![
-                WiredSurface::Pages(Box::new(FakePage)),
+                WiredSurface::Screen(Box::new(FakePage)),
                 WiredSurface::Lamp(Box::new(FakeLight)),
             ]),
             input: None,
@@ -233,17 +233,17 @@ mod tests {
         assert_eq!(wired.len(), 2, "both surfaces in wiring order");
         assert_eq!(
             wired.iter().map(WiredSurface::role).collect::<Vec<_>>(),
-            vec![SurfaceRole::Pages, SurfaceRole::Lamp],
+            vec![SurfaceRole::Screen, SurfaceRole::Lamp],
             "each surface carries the role the board gave it"
         );
         let mut only = wired.into_iter();
         match only.next().unwrap() {
-            WiredSurface::Pages(mut page) => page.set_rgb(Rgb(1, 2, 3)),
+            WiredSurface::Screen(mut page) => page.set_rgb(Rgb(1, 2, 3)),
             WiredSurface::Lamp(_) => panic!("the panel is wired first"),
         }
         match only.next().unwrap() {
             WiredSurface::Lamp(mut lamp) => lamp.set_rgb(Rgb(3, 2, 1)),
-            WiredSurface::Pages(_) => panic!("the lamp is wired second"),
+            WiredSurface::Screen(_) => panic!("the lamp is wired second"),
         }
         assert!(board.take_surfaces().is_none(), "taken exactly once");
     }
@@ -260,7 +260,7 @@ mod tests {
         assert_eq!(wired[0].role(), SurfaceRole::Lamp);
         match wired.pop().unwrap() {
             WiredSurface::Lamp(mut lamp) => lamp.set_rgb(Rgb(1, 2, 3)),
-            WiredSurface::Pages(_) => panic!("the only surface is a lamp"),
+            WiredSurface::Screen(_) => panic!("the only surface is a lamp"),
         }
         assert!(board.take_surfaces().is_none(), "taken exactly once");
     }

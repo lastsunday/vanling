@@ -165,7 +165,7 @@ pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {
 pub(crate) fn state_on(page: PageId, light: LightState) -> DeviceState {
     DeviceState {
         lights: [light; MAX_LIGHTS],
-        surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
+        surface_roles: [SurfaceRole::Screen, SurfaceRole::Absent],
         nav: Navigator::new(page),
         backed: Backed {
             motion: Some(MotionCapabilities::EMPTY),

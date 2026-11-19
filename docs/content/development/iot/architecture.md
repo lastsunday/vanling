@@ -42,7 +42,7 @@ weight = 10
 `iot-core(纯逻辑、驱动接缝与像素/字形) → iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(产品页面与状态机)`
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
-- **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `PageSurface`）。板模块只做选引脚与装配，元件本身跨板通用
+- **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `ScreenSurface`）。板模块只做选引脚与装配，元件本身跨板通用
 - **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、快照、网络、产品或芯片。页面壳（`shared::kit::painter::Painter`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖屏幕
 - **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `ScreenPainter` 接缝把 `ScreenTarget`/`ScreenContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `FrameSnapshot` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
@@ -74,7 +74,7 @@ weight = 10
 
 `app/src/` 按垂直切片组织：页面各自成片（小页一个文件，大页一个目录），跨页真相与词汇收在 `shared/`，组合根与表示层各自独立，接线只发生在组合根。
 
-页面是设备当前的目的地，不是屏幕上的画面：`Route.needs` 只看板子接了什么能力，屏的存在由 `SurfaceRole::Pages` 单独回答；无面板的板子照样有当前页，灯带、demand 与网络 setup 都只是这个目的地的其他消费者。
+页面是设备当前的目的地，不是屏幕上的画面：`Route.needs` 只看板子接了什么能力，屏的存在由 `SurfaceRole::Screen` 单独回答；无面板的板子照样有当前页，灯带、demand 与网络 setup 都只是这个目的地的其他消费者。
 
 | 路径 | 职责 |
 | --- | --- |
@@ -94,10 +94,10 @@ weight = 10
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
-| `render/engine/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconciler.rs`），状态→外观在 `projection.rs`，`appearance.rs` 定义 `Topic`/`Appearance`，`color.rs` 步进颜色，`renderers.rs` 把外观交给认领它的 renderer |
-| `render/screen/` | 屏幕（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
+| `render/engine/` | 与 surface 无关：`Differ` 决定*显示什么*（`differ.rs`），状态→外观在 `projection.rs`，`appearance.rs` 定义 `Topic`/`Appearance`，`color.rs` 步进颜色，`set.rs` 把外观交给认领它的 renderer |
+| `render/screen/` | 屏幕（`SurfaceRole::Screen`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
 | `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有屏幕会叠上去的东西 |
-| `render/wire.rs` | 接线：`wire()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`Renderers` 就是这一层交出去的句柄 |
+| `render/wire.rs` | 接线：`wire()` 把板子的 surface 变成 `ScreenRenderer`/`LampRenderer`，`RenderSet` 就是这一层交出去的句柄 |
 | `runtime/` | 模型旁边的任务：协调者、`feature/` 里的功能工作者，以及它们共享的 `workers/` 句柄 |
 | `runtime/system.rs` | `System` 契约：`tick` 收 `&mut DeviceManager` 与时钟，`intent` 只读意图已写入的状态；worker 句柄由系统自己持有 |
 | `runtime/coordinator/{mod,pacing}.rs`、`coordinator/systems/*.rs` | 协调者 `run_loop`：一帧四段（取意图 → 走系统 → 呈现 → 等待）；`pacing.rs` 持帧时间与下一帧截止点 |
@@ -148,7 +148,7 @@ bench             → { lib::run_with, services::network::{controller, layout}, 
 
 `Services` 持有八个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
-生命周期由 `state/manager/write.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_display()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
+生命周期由 `state/manager/write.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_screen()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
 
 `PageSnapshot` 是页面对外唯一的视图（`shared/snapshot.rs`），渲染层只拿它，不认 `crate::services`；`NetworkView` 因此也放在 `shared/model/network_view/`。
 
@@ -178,7 +178,7 @@ WebUI 的传输是适配层：语义 API（资源 + 动作）定一次，传输�
 - **组合点 = bin 板清单**：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
-- **渲染层运行时可插拔**：app 里一个零分配的中央 `RenderController` 做 reconcile（闭包回调；先按 topic 选出各自该显示什么，只对选中项变化的 topic 通知，最后一次性写回快照），以及一个堆上的 `Renderers` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线。每个 renderer 只声明它认领的 `Topic`（`Surface(instance)` / `Frame` / `Display`），灯带因此从不接触约 2 KB 的帧；`Appearance` 借用帧，只有屏幕留副本
+- **渲染层运行时可插拔**：app 里一个零分配的中央 `Differ` 做 diff（闭包回调；先按 topic 选出各自该显示什么，只对选中项变化的 topic 通知，最后一次性写回快照），以及一个堆上的 `RenderSet` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线。每个 renderer 只声明它认领的 `Topic`（`Surface(instance)` / `Frame` / `Demand`），灯带因此从不接触约 2 KB 的帧；`Appearance` 借用帧，只有屏幕留副本
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 
@@ -304,7 +304,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ```
 DeviceState.page → frame_snapshot() → Appearance::Frame
-  → RenderController::reconcile → ScreenRenderer::on_appearance
+  → Differ::diff → ScreenRenderer::on_appearance
   → surface.release_camera()
 ```
 

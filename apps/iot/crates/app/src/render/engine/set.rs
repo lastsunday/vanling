@@ -1,45 +1,45 @@
-//! The renderers a device carries, fed from one controller diff.
+//! The renderers a device carries, fed from one diff.
 
 use alloc::boxed::Box;
 use alloc::vec::Vec;
 
 use super::appearance::Topic;
-use super::reconciler::RenderController;
-use super::renderer::{Activity, Renderer};
+use super::differ::Differ;
+use super::renderer::{Drive, Renderer};
 use crate::shared::model::DeviceState;
 use crate::shared::snapshot::PageSnapshot;
 use iot_core::demand::EffectiveDemand;
 
 struct Slot {
-    activity: Activity,
+    drive: Drive,
     renderer: Box<dyn Renderer>,
 }
 
-/// The renderers a device carries, fed from one [`RenderController`] diff.
-pub struct Renderers {
-    controller: RenderController,
+/// The renderers a device carries, fed from one [`Differ`] diff.
+pub struct RenderSet {
+    differ: Differ,
     slots: Vec<Slot>,
 }
 
-impl Renderers {
+impl RenderSet {
     pub const fn new() -> Self {
         Self {
-            controller: RenderController::new(),
+            differ: Differ::new(),
             slots: Vec::new(),
         }
     }
 
-    /// Adds a renderer and hands it the appearances the controller has already seen, so a
+    /// Adds a renderer and hands it the appearances the differ has already seen, so a
     /// renderer that arrives after the first diff is not left showing nothing.
     pub fn register(&mut self, renderer: Box<dyn Renderer>, now_ms: u32) {
         let mut slot = Slot {
-            activity: Activity::Idle,
+            drive: Drive::Idle,
             renderer,
         };
         let topics: Vec<Topic> = slot.renderer.topics().to_vec();
         for topic in topics {
-            if let Some(appearance) = self.controller.current(topic) {
-                slot.activity = slot.renderer.on_appearance(appearance, now_ms);
+            if let Some(appearance) = self.differ.latest(topic) {
+                slot.drive = slot.renderer.on_appearance(appearance, now_ms);
             }
         }
         self.slots.push(slot);
@@ -54,29 +54,29 @@ impl Renderers {
         demand: &EffectiveDemand,
         now_ms: u32,
     ) -> bool {
-        let controller = &mut self.controller;
+        let differ = &mut self.differ;
         let slots = &mut self.slots;
-        controller.reconcile(state, pages, demand, |appearance| {
+        differ.diff(state, pages, demand, |appearance| {
             let topic = appearance.topic();
             for slot in slots.iter_mut() {
                 if slot.renderer.topics().contains(&topic) {
-                    slot.activity = slot.renderer.on_appearance(appearance, now_ms);
+                    slot.drive = slot.renderer.on_appearance(appearance, now_ms);
                 }
             }
         });
         let mut any = false;
         for slot in self.slots.iter_mut() {
-            if slot.activity == Activity::TimeDriven {
-                slot.activity = slot.renderer.step(now_ms);
+            if slot.drive == Drive::TimeDriven {
+                slot.drive = slot.renderer.step(now_ms);
             }
-            if slot.activity == Activity::TimeDriven {
+            if slot.drive == Drive::TimeDriven {
                 any = true;
             }
         }
         any
     }
 
-    /// Ships what the last [`Renderers::tick`] buffered. Awaited rather than folded into the
+    /// Ships what the last [`RenderSet::tick`] buffered. Awaited rather than folded into the
     /// tick because the screen's transfer yields between DMA chunks, and the tick must stay a
     /// plain state diff for the callers that only want to know whether frames are still due.
     pub async fn flush(&mut self) {
@@ -88,7 +88,7 @@ impl Renderers {
     }
 }
 
-impl Default for Renderers {
+impl Default for RenderSet {
     fn default() -> Self {
         Self::new()
     }
@@ -113,15 +113,15 @@ mod tests {
             &self.topics
         }
 
-        fn on_appearance(&mut self, appearance: Appearance<'_>, _now_ms: u32) -> Activity {
+        fn on_appearance(&mut self, appearance: Appearance<'_>, _now_ms: u32) -> Drive {
             if let Appearance::Surface { light, .. } = appearance {
                 self.seen.borrow_mut().push(light);
             }
-            Activity::Idle
+            Drive::Idle
         }
 
-        fn step(&mut self, _now_ms: u32) -> Activity {
-            Activity::Idle
+        fn step(&mut self, _now_ms: u32) -> Drive {
+            Drive::Idle
         }
     }
 
@@ -136,7 +136,7 @@ mod tests {
     fn a_renderer_registered_after_the_first_diff_catches_up() {
         let state = state();
         let demand = EffectiveDemand::default();
-        let mut renderers = Renderers::new();
+        let mut renderers = RenderSet::new();
         renderers.tick(&state, PageSnapshot::default(), &demand, 0);
 
         let seen = Rc::new(RefCell::new(Vec::new()));

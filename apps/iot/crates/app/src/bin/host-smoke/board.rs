@@ -25,7 +25,7 @@ use iot_core::drivers::motion::{
     MotionSample, MotionScale, MotionSource,
 };
 use iot_core::drivers::playback::{Recovery, SampleSource, Speaker, SpeakerFault};
-use iot_core::drivers::surface::{PageSurface, RgbLight, WiredSurface};
+use iot_core::drivers::surface::{RgbLight, ScreenSurface, WiredSurface};
 use iot_core::light::Rgb;
 
 pub(super) static PAINTED: Mutex<Vec<(u8, Rgb)>> = Mutex::new(Vec::new());
@@ -198,7 +198,7 @@ impl RgbLight for HostLight {
     }
 }
 
-impl PageSurface for HostLight {
+impl ScreenSurface for HostLight {
     fn repaint(
         &mut self,
         _painter: &dyn iot_core::drivers::surface::ScreenPainter,
@@ -380,7 +380,7 @@ impl HasSurface for HostBoard {
         self.lights.take().map(|lights| {
             lights
                 .into_iter()
-                .map(|light| WiredSurface::Pages(Box::new(light)))
+                .map(|light| WiredSurface::Screen(Box::new(light)))
                 .collect()
         })
     }

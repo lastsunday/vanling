@@ -7,9 +7,9 @@ mod lamp;
 mod screen;
 mod wire;
 
-pub use self::engine::{Activity, Appearance, LightAppearance, Renderer, Renderers, Topic};
+pub use self::engine::{Appearance, Drive, LightAppearance, RenderSet, Renderer, Topic};
 #[cfg(test)]
-pub(crate) use self::engine::{RenderController, light_appearance};
+pub(crate) use self::engine::{Differ, light_appearance};
 pub use self::lamp::LampRenderer;
 pub use self::screen::{AppPainter, ScreenRenderer};
 pub use self::wire::wire;

@@ -11,7 +11,7 @@ use crate::state::DeviceManager;
 use embassy_futures::select::select3;
 use embassy_time::{Instant, Timer};
 
-use crate::render::Renderers;
+use crate::render::RenderSet;
 use crate::runtime::feature::input::IntentBus;
 use crate::runtime::workers::{CaptureWindow, Scan};
 use iot_core::boot::Readiness;
@@ -27,7 +27,7 @@ pub async fn run_loop(
     capture: &'static CaptureWindow,
     scan: &'static Scan,
     readiness: &'static Readiness,
-    mut renderers: Renderers,
+    mut renderers: RenderSet,
     manager: &mut DeviceManager,
     schedule: &mut Schedule<'_>,
 ) -> ! {

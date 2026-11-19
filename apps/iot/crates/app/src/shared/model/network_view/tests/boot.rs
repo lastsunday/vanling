@@ -5,7 +5,7 @@ use super::*;
 #[test]
 fn a_splash_long_press_asks_for_setup_mode_on_every_board() {
     for kinds in [
-        [SurfaceRole::Pages, SurfaceRole::Absent],
+        [SurfaceRole::Screen, SurfaceRole::Absent],
         [SurfaceRole::Lamp, SurfaceRole::Absent],
     ] {
         let mut manager = DeviceManager::boot(Boot {

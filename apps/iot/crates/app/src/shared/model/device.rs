@@ -71,9 +71,9 @@ impl DeviceState {
         LightAction::from_swipe(direction).and_then(|action| self.light_intent(op, action))
     }
 
-    /// Whether any wired surface draws the pages and puts the questions on them.
-    pub fn has_display(&self) -> bool {
-        self.surface_roles.contains(&SurfaceRole::Pages)
+    /// Whether any wired surface draws a frame.
+    pub fn has_screen(&self) -> bool {
+        self.surface_roles.contains(&SurfaceRole::Screen)
     }
 
     /// Whether any wired surface is a lamp the link can speak through.

@@ -2,8 +2,8 @@
 
 use alloc::boxed::Box;
 
-use crate::render::engine::ColorDriver;
-use crate::render::{Activity, Appearance, LightAppearance, Renderer, Topic};
+use crate::render::engine::ColorOutput;
+use crate::render::{Appearance, Drive, LightAppearance, Renderer, Topic};
 use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
 
@@ -11,8 +11,8 @@ pub struct LampRenderer {
     instance: u8,
     light: Box<dyn RgbLight>,
     topics: [Topic; 2],
-    color: ColorDriver,
-    appearance: Option<LightAppearance>,
+    color: ColorOutput,
+    declared: Option<LightAppearance>,
 }
 
 impl LampRenderer {
@@ -20,14 +20,14 @@ impl LampRenderer {
         Self {
             instance,
             light,
-            topics: [Topic::Surface(instance), Topic::Display],
-            color: ColorDriver::new(),
-            appearance: None,
+            topics: [Topic::Surface(instance), Topic::Demand],
+            color: ColorOutput::new(),
+            declared: None,
         }
     }
 
     fn present(&mut self, now_ms: u32) {
-        let Some(declared) = self.appearance else {
+        let Some(declared) = self.declared else {
             return;
         };
         // A lamp has no repaint throttle of its own: any colour difference is worth writing.
@@ -40,32 +40,32 @@ impl Renderer for LampRenderer {
         &self.topics
     }
 
-    fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Activity {
+    fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Drive {
         match appearance {
-            Appearance::Display(mode) => {
-                self.color.set_display(mode);
+            Appearance::Demand(mode) => {
+                self.color.set_demand(mode);
                 if mode == Mode::Off {
-                    self.color.stop();
+                    self.color.stop_breath();
                 }
-                self.color.activity()
+                self.color.drive()
             }
             Appearance::Surface { instance, light } => {
                 debug_assert_eq!(instance, self.instance);
-                self.appearance = Some(light);
+                self.declared = Some(light);
                 self.present(now_ms);
-                self.color.activity()
+                self.color.drive()
             }
             Appearance::Frame(_) => {
-                debug_assert!(false, "the lamp reads the gate, not the frame");
-                Activity::Idle
+                debug_assert!(false, "the lamp reads the demand, not the frame");
+                Drive::Idle
             }
         }
     }
 
-    fn step(&mut self, now_ms: u32) -> Activity {
+    fn step(&mut self, now_ms: u32) -> Drive {
         match self.color.step(&mut *self.light, 0, now_ms) {
-            Some(_) => Activity::TimeDriven,
-            None => Activity::Idle,
+            Some(_) => Drive::TimeDriven,
+            None => Drive::Idle,
         }
     }
 }
@@ -108,7 +108,7 @@ mod tests {
     }
 
     fn gate(mode: Mode) -> Appearance<'static> {
-        Appearance::Display(mode)
+        Appearance::Demand(mode)
     }
 
     fn breathing() -> Appearance<'static> {
@@ -134,10 +134,10 @@ mod tests {
     #[test]
     fn a_breathing_lamp_keeps_stepping() {
         let (mut r, lamp) = renderer();
-        assert_eq!(r.on_appearance(gate(Mode::Continuous), 0), Activity::Idle);
-        assert_eq!(r.on_appearance(breathing(), 0), Activity::TimeDriven);
+        assert_eq!(r.on_appearance(gate(Mode::Continuous), 0), Drive::Idle);
+        assert_eq!(r.on_appearance(breathing(), 0), Drive::TimeDriven);
         assert_eq!(lamp.borrow().writes, 1);
-        assert_eq!(r.step(1_000), Activity::TimeDriven);
+        assert_eq!(r.step(1_000), Drive::TimeDriven);
         assert_eq!(
             lamp.borrow().writes,
             2,
@@ -148,9 +148,9 @@ mod tests {
     #[test]
     fn a_solid_lamp_writes_the_colour_once() {
         let (mut r, lamp) = renderer();
-        assert_eq!(r.on_appearance(color(Rgb(10, 20, 30)), 0), Activity::Idle);
+        assert_eq!(r.on_appearance(color(Rgb(10, 20, 30)), 0), Drive::Idle);
         assert_eq!(lamp.borrow().color, Rgb(10, 20, 30));
-        assert_eq!(r.on_appearance(color(Rgb(10, 20, 30)), 100), Activity::Idle);
+        assert_eq!(r.on_appearance(color(Rgb(10, 20, 30)), 100), Drive::Idle);
         assert_eq!(lamp.borrow().writes, 1, "the same colour is not rewritten");
     }
 
@@ -161,7 +161,7 @@ mod tests {
             instance: 0,
             light: LightAppearance::Off,
         };
-        assert_eq!(r.on_appearance(off, 0), Activity::Idle);
+        assert_eq!(r.on_appearance(off, 0), Drive::Idle);
         assert_eq!(lamp.borrow().color, Rgb(0, 0, 0));
         r.on_appearance(off, 100);
         assert_eq!(lamp.borrow().writes, 1);
@@ -171,7 +171,7 @@ mod tests {
     fn a_lamp_under_a_dark_display_writes_nothing() {
         let (mut r, lamp) = renderer();
         r.on_appearance(gate(Mode::Off), 0);
-        assert_eq!(r.on_appearance(color(Rgb(255, 0, 0)), 0), Activity::Idle);
+        assert_eq!(r.on_appearance(color(Rgb(255, 0, 0)), 0), Drive::Idle);
         assert_eq!(
             lamp.borrow().writes,
             0,

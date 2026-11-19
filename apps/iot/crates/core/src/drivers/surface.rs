@@ -45,12 +45,12 @@ pub trait ScreenPainter {
 /// Surface slots one device can carry, dimensioning the state's lights and the render slots.
 pub const MAX_LIGHTS: usize = 2;
 
-/// What one wired surface is for: pages, ambient light, or nothing at all.
+/// What one wired surface is for: a screen, ambient light, or nothing at all.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub enum SurfaceRole {
-    /// Draws the pages and puts the questions on them.
+    /// Draws the frame the product paints.
     #[default]
-    Pages,
+    Screen,
     /// Shows light only; the link's news lands here when there is no page to say it.
     Lamp,
     /// This slot carries no surface.
@@ -62,9 +62,9 @@ pub trait RgbLight {
     fn set_rgb(&mut self, color: Rgb);
 }
 
-/// A colour surface that also carries pages: it owns a backlight, throttles its own
-/// repaints, draws the page over the colour, and is the only kind that can take the camera.
-pub trait PageSurface: RgbLight + CameraTarget {
+/// A colour surface that also draws frames: it owns a backlight, throttles its own repaints,
+/// draws the frame over the colour, and is the only kind that can take the camera.
+pub trait ScreenSurface: RgbLight + CameraTarget {
     fn set_backlight(&mut self, _level_pct: u8) {}
 
     fn set_backlight_ceiling(&mut self, _level_pct: u8) {}
@@ -73,12 +73,12 @@ pub trait PageSurface: RgbLight + CameraTarget {
         0
     }
 
-    /// Draws the page the snapshot describes over the colour the last fill left. The board
-    /// supplies its own frame and the app's painter decides the ink. `force` redraws even
+    /// Draws the frame the snapshot describes over the colour the last fill left. The board
+    /// supplies its own buffer and the app's painter decides the ink. `force` redraws even
     /// when no colour moved; the product's repaint gate is what asks for that. Answers
     /// whether a frame is now pending for [`Self::flush`].
     ///
-    /// Required rather than defaulted: a page surface that cannot draw a page is a wiring
+    /// Required rather than defaulted: a screen surface that cannot draw a frame is a wiring
     /// mistake, and a `false` default would hide it behind a screen that never fills.
     fn repaint(&mut self, painter: &dyn ScreenPainter, snapshot: &dyn Any, force: bool) -> bool;
 
@@ -96,14 +96,14 @@ pub trait PageSurface: RgbLight + CameraTarget {
 /// A lamp is only asked for colour; nothing here can be mistaken for a screen, so an LED
 /// never has to answer for a backlight or a camera it does not have.
 pub enum WiredSurface {
-    Pages(Box<dyn PageSurface>),
+    Screen(Box<dyn ScreenSurface>),
     Lamp(Box<dyn RgbLight>),
 }
 
 impl WiredSurface {
     pub const fn role(&self) -> SurfaceRole {
         match self {
-            Self::Pages(_) => SurfaceRole::Pages,
+            Self::Screen(_) => SurfaceRole::Screen,
             Self::Lamp(_) => SurfaceRole::Lamp,
         }
     }

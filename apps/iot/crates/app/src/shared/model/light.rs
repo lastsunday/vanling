@@ -917,7 +917,7 @@ mod lamp {
                 network: true,
                 ..Backed::NONE
             },
-            surface_roles: [SurfaceRole::Pages, SurfaceRole::Absent],
+            surface_roles: [SurfaceRole::Screen, SurfaceRole::Absent],
             ..Default::default()
         });
         setup(&mut screened);
@@ -932,7 +932,7 @@ mod lamp {
                 network: true,
                 ..Backed::NONE
             },
-            surface_roles: [SurfaceRole::Pages, SurfaceRole::Lamp],
+            surface_roles: [SurfaceRole::Screen, SurfaceRole::Lamp],
             ..Default::default()
         });
         setup(&mut both);
@@ -1063,7 +1063,7 @@ mod lamp {
                 network: true,
                 ..Backed::NONE
             },
-            surface_roles: [SurfaceRole::Pages, SurfaceRole::Lamp],
+            surface_roles: [SurfaceRole::Screen, SurfaceRole::Lamp],
             ..Default::default()
         });
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));

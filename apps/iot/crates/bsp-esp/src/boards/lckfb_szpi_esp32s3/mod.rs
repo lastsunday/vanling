@@ -607,7 +607,7 @@ impl iot_core::drivers::board::HasSurface for Board<'static> {
     fn take_surfaces(&mut self) -> Option<Vec<WiredSurface>> {
         self.screen
             .take()
-            .map(|screen| vec![WiredSurface::Pages(screen)])
+            .map(|screen| vec![WiredSurface::Screen(screen)])
     }
 }
 

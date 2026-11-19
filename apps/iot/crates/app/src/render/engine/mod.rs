@@ -3,19 +3,19 @@
 
 mod appearance;
 mod color;
+mod differ;
 mod projection;
-mod reconciler;
 mod renderer;
-mod renderers;
+mod set;
 
 pub use self::appearance::{Appearance, LightAppearance, Topic};
-pub(crate) use self::color::ColorDriver;
+pub(crate) use self::color::ColorOutput;
+#[cfg(test)]
+pub(crate) use self::differ::Differ;
 #[cfg(test)]
 pub(crate) use self::projection::light_appearance;
-#[cfg(test)]
-pub(crate) use self::reconciler::RenderController;
-pub use self::renderer::{Activity, Renderer};
-pub use self::renderers::Renderers;
+pub use self::renderer::{Drive, Renderer};
+pub use self::set::RenderSet;
 
 #[cfg(test)]
 mod test_support;
