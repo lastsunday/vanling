@@ -1,10 +1,10 @@
-//! The write side: an intent off the bus, a report from a worker, the clock's tick.
+//! Every write: an intent off the bus, a report from a worker, the clock's tick.
 //!
 //! Systems write, renderers read.
 
+use super::DeviceManager;
 use crate::shared::intent::{BusinessIntent, InputIntent, Intent, LinkIntent};
 use crate::shared::model::{Command, Effects};
-use crate::state::DeviceManager;
 use iot_core::drivers::audio::AudioSample;
 use iot_core::drivers::input::InputEvent;
 use iot_core::drivers::network::ApList;
@@ -13,9 +13,9 @@ impl DeviceManager {
     /// Route one intent all the way to the state it moves, and answer with what the model
     /// cannot do itself.
     ///
-    /// The two input halves touch different fields: the write lands in `touch`/`motion`, which
-    /// only renderers and the frame snapshot read, while the binding reads the page, the lights
-    /// and the link. Their order is a reading order, not a dependency.
+    /// The two halves touch different fields: the write lands in `touch`/`motion`, which only
+    /// renderers and the frame snapshot read, while the binding reads the page, the lights and
+    /// the link. Their order is a reading order, not a dependency.
     pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
         let business = match intent {
             Intent::Input(op) => {
@@ -29,7 +29,7 @@ impl DeviceManager {
 
     /// Route one input event to the record that owns it: motion to the part's tallies,
     /// everything the panel reports to the touch record.
-    pub fn apply_input(&mut self, op: InputIntent) {
+    pub(crate) fn apply_input(&mut self, op: InputIntent) {
         match op.event {
             InputEvent::Button(_) => {}
             InputEvent::Motion(batch) => {
@@ -46,7 +46,7 @@ impl DeviceManager {
     /// One business intent, one owner: the owner settles its record and says what the device
     /// still owes. The page turn and the demand stay here — they read the stack the owner just
     /// moved, which is the manager's to hold.
-    pub fn apply_business(&mut self, intent: BusinessIntent) -> Option<Command> {
+    pub(crate) fn apply_business(&mut self, intent: BusinessIntent) -> Option<Command> {
         let leaving = self.state.page();
         let (command, effects) = self.services.apply(&intent, &mut self.state);
         self.apply_effects(effects);

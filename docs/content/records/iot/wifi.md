@@ -1184,7 +1184,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 两处缺陷来自同一类问题：状态用布尔近似，页面又拿近似值当模式。
 
-- **长按在启动页之外开了 AP**：`NetworkMode::Browsing` 把离线列表报成 `setup: true`，于是 `link.mode.is_setup()` 从配网结束起一直为真；`intent.rs` 的长按门只看 `link.mode.is_setup()`，任何一次长按都成了 `SwitchHost`。灯仍是琥珀色，因为 `link_notice()` 只认 `setup && front == AccessPoint`，于是现象是「没进设置模式，长按却把 AP 起来了」。
+- **长按在启动页之外开了 AP**：`NetworkMode::Browsing` 把离线列表报成 `setup: true`，于是 `link.mode.is_setup()` 从配网结束起一直为真；`state/manager/write.rs` 的长按门只看 `link.mode.is_setup()`，任何一次长按都成了 `SwitchHost`。灯仍是琥珀色，因为 `link_notice()` 只认 `setup && front == AccessPoint`，于是现象是「没进设置模式，长按却把 AP 起来了」。
 - **C6 复位后不自动连**：`iot:flash` 走 `cargo run`，runner 是 `espflash flash --monitor`，没有 `--partition-table`；espflash 的默认表没有 `creds`，`Store::open` 每次开机都读不到分区，设备就永远像「从未配过网」。S3 的 `flash-s3` 与 `iot:image` 都带表，所以只有 C6 中招。
 
 改法：

@@ -128,8 +128,9 @@ impl Services {
     }
 
     /// Who answers which group. One arm per owner, exhaustive like [`descriptor`]: a new group
-    /// does not compile until it has one. The two groups that write the same record share an
-    /// arm on purpose — that is a fact about the record, not a missing distinction.
+    /// does not compile until it has one. `Link` and `Network` are two directions of one
+    /// domain — the radio's reports and the finger's requests, two records — so one page owns
+    /// both; the shared arm is that ownership, not a missing distinction.
     pub fn apply(
         &mut self,
         intent: &BusinessIntent,

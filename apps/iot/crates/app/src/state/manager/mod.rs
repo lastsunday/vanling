@@ -1,5 +1,5 @@
-//! The read side: the owned state and the demand derived from it. Nothing here moves a
-//! record; writes live in [`super::intent`].
+//! The single owner of device state: the value, its demand, and the getters readers hold.
+//! Nothing here moves a record; every write lives in [`write`].
 
 use alloc::vec::Vec;
 
@@ -7,6 +7,8 @@ use crate::services::Services;
 use crate::shared::model::{Backed, DeviceState, MAX_LIGHTS, PlaybackState, SurfaceRole};
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand, Override};
+
+mod write;
 
 /// Everything one boot decides, before the manager exists.
 ///

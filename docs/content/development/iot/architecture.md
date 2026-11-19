@@ -91,8 +91,8 @@ weight = 10
 | `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
 | `shared/snapshot.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 `PageSnapshot` |
 | `shared/kit/` | 页面壳 `Painter`、版面常量、文字排版、band/overlay 原语与控件；只认像素与快照，不认页面 |
-| `state/manager.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
-| `state/intent.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
+| `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
+| `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
 | `render/common/` | 与 surface 无关：`RenderController` 决定*显示什么*（`reconcile.rs`），状态→外观在 `appearance.rs`，`color.rs` 步进颜色，`registry.rs` 把外观交给认领它的 renderer |
 | `render/screen/` | 面板（`SurfaceRole::Pages`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
@@ -146,9 +146,9 @@ bench             → { lib::run_with, services::network::{controller, layout}, 
 
 渲染答案分两层：`Painter` 的 `draw_*` 落一个记号（像素、一行字、一个键），`LocalPage::paint` 组合一整页，`services::paint` 取 `descriptor(page).paint` 再盖角标；其余四个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`）。
 
-`Services` 持有八个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂，`Link` 与 `Network` 写同一条记录、共用一个所有者，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
+`Services` 持有八个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
-生命周期由 `state/intent.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_display()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
+生命周期由 `state/manager/write.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_display()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
 
 `PageSnapshot` 是页面对外唯一的视图（`shared/snapshot.rs`），渲染层只拿它，不认 `crate::services`；`NetworkView` 因此也放在 `shared/model/network_view/`。
 
@@ -244,7 +244,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 ### 更改：复用现有意图路径
 
-`apply_intent` 是状态变化的唯一入口（输入先写进记录再翻译），内部仍只经 `apply_business` 落状态；手势改页只有 `BusinessIntent::Navigation(NavigationIntent::NextPage)`，`SplashOver` 只在启动页结束时落到 build 的页。
+`apply_intent` 是状态变化的唯一公开入口（输入先写进记录再翻译），内部仍只经 `apply_business` 落状态；worker 上报另走 `apply_scan`/`apply_capture`，时钟走 `tick_notice`，三个入口各自带着无法装进意图的大载荷。`apply_input` 与 `apply_business` 是流水线两半，crate 内可见——外部不能只写记录不翻译；手势改页只有 `BusinessIntent::Navigation(NavigationIntent::NextPage)`，`SplashOver` 只在启动页结束时落到 build 的页。
 
 新增场景 = 新增一个 `BusinessIntent` 变体；运行期换节奏 = 再一个变体。`apply_business` 之后由 `settle_demand()` 重新求 `EffectiveDemand`。不新造机制。
 
@@ -254,7 +254,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 **硬件只由 State 驱动，State 只由 Action 改，Action 只由 Intent 触发，Intent 只由 Event 产生。**
 
-`shared/model/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` 各放工作者写入、渲染循环读取的记录，`device.rs` 是聚合体 `DeviceState`，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（`NetworkView`/`Entry`/`SetupWait`）——页面拥有它，快照复制它，链路从不读它。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/intent.rs`，按当前页走 `Services::bind`，先写记录再翻译。
+`shared/model/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` 各放工作者写入、渲染循环读取的记录，`device.rs` 是聚合体 `DeviceState`，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（`NetworkView`/`Entry`/`SetupWait`）——页面拥有它，快照复制它，链路从不读它。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/manager/write.rs`，按当前页走 `Services::bind`，先写记录再翻译。
 
 业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkView` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），由 `NetworkPage::apply` 响应手指的 `NetworkIntent` 与扫描落地的 `LinkIntent::Scan` 写它，不在 `DeviceState` 里。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 
@@ -296,7 +296,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 - **保留值**走 `PageWatch`/`Retained`（`Network.page`、`Scan` 的列表）：写入替换旧值，读走之后仍然在，所以面板与手机页面读的是同一份。启动页的结论不是保留值而是**一次性命令**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求同一条队列，工作者不必再看页面演进到哪一步。
 - **最新窗口**走 `Input.from`：1.7 KB 的采集样本只留最新一份，覆盖而不是排队。
 
-`NetworkCommand` 的词汇表留在 `app/src/shared/model/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()`（定义在 `state/intent.rs`）作为 `Command` 返回，`Schedule::process_intents` 按 `Command::type_id()` 查注册表，交给声明了 `System::takes` 的那个系统，`NetworkSystem` 取走 `Command::Network` 那一支后 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
+`NetworkCommand` 的词汇表留在 `app/src/shared/model/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()`（定义在 `state/manager/write.rs`）作为 `Command` 返回，`Schedule::process_intents` 按 `Command::type_id()` 查注册表，交给声明了 `System::takes` 的那个系统，`NetworkSystem` 取走 `Command::Network` 那一支后 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 
 **每帧逻辑按边界拆成系统。** `coordinator/systems/*.rs` 一个文件一个 `System`，它持有自己那条边界的 worker 句柄与跨帧记忆（上一条播报状态、上一页、governor），共享状态与时钟由 `tick` 的参数交给它；系统之间不互相调用。共享协作者不超过两个时用显式参数，达到三个或集合在编译期说不清时才收成一个 `Context`；bus 由循环持有，每帧显式传给 `process_intents`。加一个特性 = 加一个文件 + 在组合根 `Schedule::register` 一行（句柄在那里交给系统），注册顺序就是执行顺序，改顺序就是改语义。意图那一侧也走 `System`：每条意图应用后，模型留下的 `Command` 按类型查注册表，交给声明了 `System::takes` 的那个系统；同一帧的两条命令不会合并，没人取走则在 release 里打一条 `[COORD]` 错误日志（调试构建另有断言）。
 

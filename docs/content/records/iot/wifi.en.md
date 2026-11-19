@@ -3,8 +3,8 @@ title = "Wi-Fi Implementation Record"
 weight = 45
 sort_by = "weight"
 [extra]
-source_file_hash = "a240f9da904c26271a9293a6a67efe46bc6ab85a"
-translated_at = "2026-11-13T04:18:31Z"
+source_file_hash = "05c2307294da74153f6abee143ee99882821f66f"
+translated_at = "2026-11-19T03:21:47Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -2590,10 +2590,10 @@ Both defects came from the same habit: a boolean standing in for a mode, then a 
 approximation.
 
 - **A hold outside the splash opened the AP**: the browsing mode reported the offline list as
-  `setup: true`, so `link.mode.is_setup()` stayed true after setup mode ended; the hold gate in `intent.rs`
-  reads only `link.mode.is_setup()`, so every hold became `SwitchHost`. The lamp stayed amber because
-  `link_notice()` only says `SETUP` for `setup && front == AccessPoint` — hence "not in setup
-  mode, yet a hold raises the AP".
+  `setup: true`, so `link.mode.is_setup()` stayed true after setup mode ended; the hold gate in
+  `state/manager/write.rs` reads only `link.mode.is_setup()`, so every hold became `SwitchHost`. The
+  lamp stayed amber because `link_notice()` only says `SETUP` for `setup && front == AccessPoint` —
+  hence "not in setup mode, yet a hold raises the AP".
 - **The C6 did not rejoin after reset**: `iot:flash` ran `cargo run`, whose runner is
   `espflash flash --monitor` without `--partition-table`. espflash's default table has no `creds`
   partition, so `Store::open` found nothing on every boot and the device read as "never

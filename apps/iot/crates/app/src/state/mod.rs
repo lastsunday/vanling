@@ -6,8 +6,6 @@
 
 pub mod env;
 
-mod intent;
-
 mod manager;
 
 pub use self::manager::{Boot, DeviceManager};

@@ -100,3 +100,26 @@ fn an_empty_scan_is_a_reading_not_an_absence() {
         "a scan that found nothing is kept as an answer"
     );
 }
+
+/// A landed scan is a thin event: the list is already in the record, so the round announces
+/// nothing of its own — no notice, no sound.
+#[test]
+fn a_scan_round_announces_nothing() {
+    let mut manager = landing();
+    manager.apply_scan(ApList::from_ranked(&[AccessPoint {
+        ssid: Ssid::from_octets(b"neighbour"),
+        bssid: [1, 2, 3, 4, 5, 6],
+        channel: 11,
+        rssi: -55,
+        secured: true,
+    }]));
+    assert!(
+        !manager.notice_active(),
+        "a scan is a reading, not a notice"
+    );
+    assert_eq!(
+        manager.state().playback.phase,
+        PlaybackPhase::Idle,
+        "a scan is a reading, not a sound"
+    );
+}

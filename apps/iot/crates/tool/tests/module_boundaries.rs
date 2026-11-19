@@ -691,17 +691,17 @@ fn state_neither_draws_nor_snapshots_itself() {
 }
 
 /// The read side is what the coordinator and the renderers hold; every write goes through
-/// `intent.rs`. A getter that reached a page or the gesture table would make the half that
-/// only reads depend on the half that answers.
+/// `manager/write.rs`. A getter that reached a page or the gesture table would make the half
+/// that only reads depend on the half that answers.
 #[test]
 fn the_state_read_side_stays_a_reader() {
     assert_no_reference(
-        shipping_source(app_src().join("state/manager.rs")),
+        shipping_source(app_src().join("state/manager/mod.rs")),
         &["crate::shared::intent"],
     );
     // The read side owns the container and never one page: a getter that named a page would
     // make the half that only reads depend on the half that answers.
-    for (path, text) in shipping_source(app_src().join("state/manager.rs")) {
+    for (path, text) in shipping_source(app_src().join("state/manager/mod.rs")) {
         let mut rest = text.as_str();
         while let Some(at) = rest.find("crate::services") {
             rest = &rest[at..];
