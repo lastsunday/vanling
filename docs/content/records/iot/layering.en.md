@@ -3,8 +3,8 @@ title = "Layering review of the app crate: what landed"
 weight = 90
 sort_by = "weight"
 [extra]
-source_file_hash = "f386e05eab35eae628d75e9570556f1097b3a739"
-translated_at = "2026-11-15T09:23:50Z"
+source_file_hash = "ae20070b972a8a23b41e3f783022fa11eb66c5da"
+translated_at = "2026-11-20T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

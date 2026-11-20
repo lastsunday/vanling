@@ -3,8 +3,8 @@ title = "Camera Implementation Record"
 weight = 30
 sort_by = "weight"
 [extra]
-source_file_hash = "0b4fea5a2b8b66b55ffc7a498093631ed12782ea"
-translated_at = "2026-11-08T00:00:00Z"
+source_file_hash = "e7704cee20ec5c77a4d57aca8e3f88cc82421ef9"
+translated_at = "2026-11-20T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

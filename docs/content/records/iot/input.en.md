@@ -3,8 +3,8 @@ title = "Input and Touch Implementation Record"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "3672f26b640c7fa143e1a92f75cecd8facdb57f6"
-translated_at = "2026-11-08T00:00:00Z"
+source_file_hash = "c48ca2beedbfe613fdd690c713e0077075959709"
+translated_at = "2026-11-20T00:00:00Z"
 +++
 
 <!-- doc-audience: ai -->

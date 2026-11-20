@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "0482c93ef52535ff1ed468a9f4112f09d5514ab8"
-translated_at = "2026-11-01T00:00:00Z"
+source_file_hash = "53ab9e930ac94477f2c0ee4872498947fb6d7c3f"
+translated_at = "2026-11-20T00:00:00Z"
 +++
 
 # Firmware Installation
