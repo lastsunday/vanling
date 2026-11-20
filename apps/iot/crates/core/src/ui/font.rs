@@ -1,9 +1,11 @@
 //! The panel's face: glyphs cut at 12 px, one table in flash.
 //!
 //! The table is built by `cargo run -p iot-tool -- font` from the subset BDF next to it; that
-//! BDF carries the licences. Metrics are the BDF's own: `ascent` rows above the baseline, and a
-//! glyph's box is placed against that baseline, so a line is `height()` rows tall whatever it
-//! holds.
+//! BDF carries the licences. Coverage is GB2312's 7,475 glyphs plus Big5's 13,706 code points,
+//! 15,466 in all. 866 Big5 code points — 805 rare Level-2 hanzi and 61 symbols — have no glyph
+//! in the upstream `zh_hant` release and draw as [`MISSING`]; the other 12,840 do. Metrics are
+//! the BDF's own: `ascent` rows above the baseline, and a glyph's box is placed against that
+//! baseline, so a line is `height()` rows tall whatever it holds.
 
 /// Where the table and its source live.
 mod table {
@@ -42,6 +44,11 @@ impl Face {
         self.find(ch)
             .or_else(|| self.find(MISSING))
             .expect("the subset carries the fallback mark")
+    }
+
+    /// Whether the face itself carries `ch`, without the fallback.
+    pub fn has(&self, ch: char) -> bool {
+        self.find(ch).is_some()
     }
 
     /// Columns `ch` occupies, fallback included.
@@ -239,6 +246,34 @@ mod tests {
     fn invalid_utf8_advances_instead_of_stalling() {
         let face = Face::new();
         assert_eq!(face.measure(b"a\xffb"), 6 + 12 + 6);
+    }
+
+    #[test]
+    fn every_printable_ascii_is_one_cell() {
+        let face = Face::new();
+        for code in 0x20..=0x7E {
+            let ch = char::from_u32(code).expect("ascii");
+            assert!(face.has(ch), "ASCII {code:#04x} is missing");
+            assert_eq!(face.advance(ch), 6, "ASCII {code:#04x} is not one cell");
+        }
+    }
+
+    #[test]
+    fn simplified_and_traditional_hanzi_are_two_cells() {
+        let face = Face::new();
+        for ch in "中文网络網路設定测试測試繁體简体臺灣".chars() {
+            assert!(face.has(ch), "{ch} is missing");
+            assert_eq!(face.advance(ch), 12, "{ch} is not a whole cell");
+        }
+    }
+
+    #[test]
+    fn the_pages_sample_of_traditional_text_is_all_present() {
+        let face = Face::new();
+        let sample =
+            "繁體中文網路設定測試無線路由器臺灣中華電信我的最愛分享熱點訊號強度密碼連線成功失敗";
+        let missing: alloc::string::String = sample.chars().filter(|ch| !face.has(*ch)).collect();
+        assert!(missing.is_empty(), "missing {missing}");
     }
 
     #[test]

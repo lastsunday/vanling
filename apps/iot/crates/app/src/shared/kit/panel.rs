@@ -7,7 +7,7 @@
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::light::{MODE_BREATH, Rgb, brightness_of, rgb_hue};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, RIGHT};
-use iot_core::ui::{BoxConstraints, Canvas, Rect, Screen, UNIT, Ui};
+use iot_core::ui::{BoxConstraints, Canvas, PX, Rect, Screen, Ui};
 
 /// What a page declares: its picture, as the boxes and runs it wants at the screen's size.
 pub type View = for<'a, 's> fn(&FrameSnapshot, &mut Ui<'a, 's>);
@@ -74,8 +74,8 @@ impl<'a> Panel<'a> {
             let mut paint = |slot: u8, canvas: &mut Canvas<'_>, rect: Rect| {
                 custom(snapshot, screen, slot, canvas, rect)
             };
-            ui.finish(
-                BoxConstraints::tight(PANEL_COLUMNS as i32 * UNIT, CONTENT_BOTTOM as i32 * UNIT),
+            ui.paint(
+                BoxConstraints::tight(PANEL_COLUMNS as i32 * PX, CONTENT_BOTTOM as i32 * PX),
                 &mut paint,
             );
         }

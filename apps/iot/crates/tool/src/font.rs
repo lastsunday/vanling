@@ -1,7 +1,8 @@
 //! The panel's glyphs: the subset BDF as the source, the binary table as the device's copy.
 //!
 //! `font` rebuilds the table from the committed BDF; `font --from <release bdf>` re-cuts the
-//! subset first, keeping the coverage the committed one has. The table format is read by
+//! subset first, keeping the coverage the committed one has; `font --merge <bdf> --chars <list>`
+//! adds the listed code points from another release. The table format is read by
 //! `iot-core/src/ui/font.rs`.
 
 use std::path::{Path, PathBuf};
@@ -79,40 +80,127 @@ pub fn recut(full: &Path) -> Result<(), String> {
     let keep: Vec<u16> = read_source()?.iter().map(|glyph| glyph.code).collect();
     let text = std::fs::read_to_string(full).map_err(|e| format!("{}: {e}", full.display()))?;
     let release = parse(&text)?;
-    let mut out = String::new();
-    let mut kept = 0;
-    let mut head = true;
-    for glyph in &release {
-        if glyph.code < 0x20 || keep.binary_search(&glyph.code).is_err() {
-            continue;
-        }
-        kept += 1;
-        if head {
-            head = false;
-            out.push_str(&head_of(&text, glyph.code));
-        }
-        out.push_str(&block(glyph));
+    let mut glyphs = Vec::with_capacity(keep.len());
+    for code in &keep {
+        let glyph = release
+            .binary_search_by_key(code, |glyph| glyph.code)
+            .map(|index| release[index].clone())
+            .map_err(|_| format!("U+{code:04X} is not in {}", full.display()))?;
+        glyphs.push(glyph);
     }
-    if kept != keep.len() {
+    write_bdf(&text, &glyphs)
+}
+
+/// Add every code point in `chars` from `full`, keeping the glyphs the subset already has.
+pub fn merge(full: &Path, chars: &Path, allow_missing: bool) -> Result<(), String> {
+    let mut glyphs = read_source()?;
+    let wanted = read_chars(chars)?;
+    let text = std::fs::read_to_string(full).map_err(|e| format!("{}: {e}", full.display()))?;
+    let release = parse(&text)?;
+    let (mut added, mut already, mut moved) = (0usize, 0usize, 0usize);
+    let mut absent = Vec::new();
+    for code in &wanted {
+        let found = release.binary_search_by_key(code, |glyph| glyph.code);
+        match (glyphs.binary_search_by_key(code, |glyph| glyph.code), found) {
+            (Ok(index), Ok(at)) => {
+                let (ours, theirs) = (&glyphs[index], &release[at]);
+                // The advance is the cell the page's layout depends on; a regional variant may
+                // legitimately place the same ink inside a different box, so only that is held.
+                if ours.advance != theirs.advance {
+                    return Err(format!(
+                        "U+{code:04X} advances {} here and {} in {}",
+                        ours.advance,
+                        theirs.advance,
+                        full.display()
+                    ));
+                }
+                if box_of(ours) != box_of(theirs) {
+                    moved += 1;
+                }
+                already += 1;
+            }
+            (Err(at), Ok(index)) => {
+                glyphs.insert(at, release[index].clone());
+                added += 1;
+            }
+            (_, Err(_)) => absent.push(*code),
+        }
+    }
+    if !absent.is_empty() && !allow_missing {
         return Err(format!(
-            "{kept} of {} committed glyphs are in {}",
-            keep.len(),
-            full.display()
+            "{} listed code points are not in {}: {:04X?} (pass --allow-missing to merge the rest)",
+            absent.len(),
+            full.display(),
+            &absent[..absent.len().min(8)]
         ));
     }
-    std::fs::write(source_path(), out).map_err(|e| e.to_string())?;
+    if !absent.is_empty() {
+        println!(
+            "{} listed code points are not in {}: {:04X?}",
+            absent.len(),
+            full.display(),
+            &absent[..absent.len().min(8)]
+        );
+    }
+    write_bdf(&text, &glyphs)?;
+    println!(
+        "{added} added, {already} already ({moved} with a variant box), {} total",
+        glyphs.len()
+    );
     write()
 }
 
+fn box_of(glyph: &Glyph) -> (u8, u8, i8, i8) {
+    (glyph.width, glyph.height, glyph.left, glyph.top)
+}
+
+/// The listed hexadecimal code points, sorted and de-duplicated.
+fn read_chars(path: &Path) -> Result<Vec<u16>, String> {
+    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
+    let mut codes = Vec::new();
+    for (number, line) in text.lines().enumerate() {
+        let line = line.split('#').next().unwrap_or("").trim();
+        if line.is_empty() {
+            continue;
+        }
+        let code = u16::from_str_radix(line, 16).map_err(|_| {
+            format!(
+                "{}:{}: {line:?} is not a code point",
+                path.display(),
+                number + 1
+            )
+        })?;
+        codes.push(code);
+    }
+    codes.sort_unstable();
+    codes.dedup();
+    Ok(codes)
+}
+
+/// Write the subset BDF with `CHARS` set to what it actually holds.
+fn write_bdf(release: &str, glyphs: &[Glyph]) -> Result<(), String> {
+    let mut out = head_of(release, glyphs.len());
+    for glyph in glyphs {
+        out.push_str(&block(glyph));
+    }
+    let path = source_path();
+    std::fs::write(&path, out).map_err(|e| format!("{}: {e}", path.display()))
+}
+
 /// The BDF's own preamble, with `CHARS` set to what the subset keeps.
-fn head_of(text: &str, _first: u16) -> String {
+fn head_of(text: &str, chars: usize) -> String {
+    use std::fmt::Write as _;
     let mut out = String::new();
     for line in text.lines() {
         if line.starts_with("STARTCHAR") {
             break;
         }
-        out.push_str(line);
-        out.push('\n');
+        if line.starts_with("CHARS ") {
+            writeln!(out, "CHARS {chars}").expect("writing to a String");
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
     }
     out
 }

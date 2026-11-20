@@ -7,8 +7,10 @@
 use alloc::vec;
 use alloc::vec::Vec;
 
-use crate::services::{descriptor, paint};
+use crate::services::{Services, descriptor, paint};
+use crate::shared::intent::{BusinessIntent, TextIntent};
 use crate::shared::kit::panel::Panel;
+use crate::shared::model::DeviceState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::motion::MotionSample;
@@ -23,6 +25,7 @@ fn render(page: PageId, debug: bool) -> Vec<u8> {
     render_snapshot(
         &FrameSnapshot {
             page,
+            pages: Services::default().snapshot(),
             ..FrameSnapshot::default()
         },
         debug,
@@ -60,7 +63,7 @@ fn fingerprint(frame: &[u8]) -> u32 {
 }
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
-const GOLDEN: [(&str, bool, u32); 16] = [
+const GOLDEN: [(&str, bool, u32); 18] = [
     ("ambient", false, 0xc18e_7dc5),
     ("ambient", true, 0xb334_d787),
     ("attitude", false, 0x8ed2_6849),
@@ -77,6 +80,8 @@ const GOLDEN: [(&str, bool, u32); 16] = [
     ("splash", true, 0x3f0b_3db1),
     ("env", false, 0x97fe_6687),
     ("env", true, 0x936c_5837),
+    ("text", false, 0xbf43_7195),
+    ("text", true, 0x42fc_6f45),
 ];
 
 #[test]
@@ -102,6 +107,52 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
             );
         }
     }
+}
+
+#[test]
+fn a_text_scroll_moves_one_region_and_its_thumb() {
+    let mut services = Services::default();
+    let mut state = DeviceState::default();
+    let before = services.snapshot();
+    assert_eq!(before.text.areas[0].offset, 0);
+    assert_eq!(before.text.areas[1].offset, 0);
+    services.apply(
+        &BusinessIntent::Text(TextIntent::Scroll {
+            area: 1,
+            lines: 3,
+            speed: 0,
+        }),
+        &mut state,
+    );
+    let after = services.snapshot();
+    assert_eq!(after.text.areas[0], before.text.areas[0]);
+    assert!(after.text.areas[1].offset > 0, "the swiped region moved");
+
+    let frame = |pages| {
+        render_snapshot(
+            &FrameSnapshot {
+                page: PageId::Text,
+                pages,
+                ..FrameSnapshot::default()
+            },
+            false,
+        )
+    };
+    let (before_frame, after_frame) = (frame(before), frame(after));
+    assert_ne!(before_frame, after_frame, "the offset reaches the picture");
+
+    let thumb_top = |frame: &[u8]| {
+        (before.text.areas[1].rect.y as usize..HEIGHT)
+            .find(|&y| {
+                let at = (y * WIDTH + 318) * 2;
+                frame[at] != 0 || frame[at + 1] != 0
+            })
+            .expect("a thumb beside the swiped region")
+    };
+    assert!(
+        thumb_top(&after_frame) > thumb_top(&before_frame),
+        "the thumb follows the offset"
+    );
 }
 
 /// Writes every page as a 24-bit BMP under `PAGE_DUMP_DIR`: the golden table proves a picture

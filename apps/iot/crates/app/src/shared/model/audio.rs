@@ -223,7 +223,7 @@ mod tests {
         let mut manager = on_audio_page();
         let before = manager.state().lights[0];
 
-        for _ in 0..2 {
+        for _ in 0..3 {
             manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         }
         assert_eq!(manager.state().page(), PageId::Ambient, "walked off audio");

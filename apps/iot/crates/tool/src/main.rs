@@ -6,7 +6,7 @@ use iot_tool::{font, midi};
 
 fn usage() -> String {
     format!(
-        "usage: {name} <command>\n\ncommands:\n  font    rebuild the panel's glyph table (--from <release bdf> re-cuts it)\n  midi    rebuild the sound catalogue's .mid files",
+        "usage: {name} <command>\n\ncommands:\n  font    rebuild the panel's glyph table (--from <bdf> re-cuts; --merge <bdf> --chars <list> adds)\n  midi    rebuild the sound catalogue's .mid files",
         name = env!("CARGO_PKG_NAME"),
     )
 }
@@ -25,6 +25,13 @@ fn main() -> std::process::ExitCode {
                 Some("--from") => match args.next() {
                     Some(path) => font::recut(Path::new(&path)),
                     None => Err("font: --from needs a BDF path".into()),
+                },
+                Some("--merge") => match (args.next(), args.next().as_deref(), args.next()) {
+                    (Some(bdf), Some("--chars"), Some(chars)) => {
+                        let allow_missing = args.next().as_deref() == Some("--allow-missing");
+                        font::merge(Path::new(&bdf), Path::new(&chars), allow_missing)
+                    }
+                    _ => Err("font: --merge needs a BDF and --chars <list>".into()),
                 },
                 Some(other) => Err(format!("font: unknown argument {other}")),
             };

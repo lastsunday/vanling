@@ -184,9 +184,15 @@ fn any_press_that_ever_traveled_the_slide_threshold_is_a_swipe() {
     let mut agg = TouchGestures::new();
     assert!(agg.feed(touch(TouchStatus::Down, 20, 120), 0).is_some());
     let mid = agg.feed(touch(TouchStatus::Contact, 140, 125), 400);
-    assert!(
-        !matches!(mid, Some(InputEvent::Gesture(_))),
-        "a mid-hold position is a silent Contact: {mid:?}"
+    assert_eq!(
+        mid,
+        Some(InputEvent::Gesture(GestureEvent::Drag {
+            id: 0,
+            x: 140,
+            y: 125,
+            at_ms: 400,
+        })),
+        "a mid-hold move is a drag, not a silent Contact"
     );
     assert_eq!(
         agg.feed(touch(TouchStatus::Release, 20, 120), LONG_PRESS_MS + 100),
@@ -199,6 +205,28 @@ fn any_press_that_ever_traveled_the_slide_threshold_is_a_swipe() {
             end_y: 125,
             held_ms: LONG_PRESS_MS as u16 + 100,
             distance_px: 120,
+        }))
+    );
+}
+
+#[test]
+fn a_contact_drags_only_after_the_deadband() {
+    let mut agg = TouchGestures::new();
+    assert!(agg.feed(touch(TouchStatus::Down, 10, 10), 0).is_some());
+    assert!(
+        matches!(
+            agg.feed(touch(TouchStatus::Contact, 11, 10), 10),
+            Some(InputEvent::Touch(_))
+        ),
+        "one pixel of drift is not a drag"
+    );
+    assert_eq!(
+        agg.feed(touch(TouchStatus::Contact, 13, 10), 20),
+        Some(InputEvent::Gesture(GestureEvent::Drag {
+            id: 0,
+            x: 13,
+            y: 10,
+            at_ms: 20,
         }))
     );
 }

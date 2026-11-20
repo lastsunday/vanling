@@ -213,6 +213,7 @@ pub fn invert_rgb565(packed: u16) -> u16 {
 #[cfg(test)]
 mod tests {
     /// The colour half of [`sample`], so the envelope's tests read as ink comparisons.
+    #[allow(clippy::too_many_arguments)]
     fn breathe(
         elapsed_ms: u32,
         period_ms: u32,

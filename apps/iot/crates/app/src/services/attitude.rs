@@ -251,9 +251,8 @@ mod tests {
     use super::*;
     use crate::shared::route::PageId;
     use alloc::vec::Vec;
-    use iot_core::ui::NodeId;
-    use iot_core::ui::layout::{BoxConstraints, Kind, UNIT};
     use iot_core::ui::panel::{CONTENT_BOTTOM, MARGIN as EDGE, PANEL_COLUMNS};
+    use iot_core::ui::{BoxConstraints, PX, Rect, Screen, Ui};
 
     fn sample(tilt_deg_x10: i16) -> MotionSample {
         let mg = i32::from(tilt_deg_x10);
@@ -271,35 +270,30 @@ mod tests {
         }
     }
 
-    fn tree(sample: MotionSample) -> iot_core::ui::Tree {
+    fn page(sample: MotionSample) -> Ui<'static, 'static> {
         let snapshot = FrameSnapshot {
             page: PageId::Attitude,
             motion: Some(sample),
             ..FrameSnapshot::default()
         };
-        let mut ui = Ui::measure(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default());
+        let mut ui = Ui::headless(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default());
         AttitudePage::view(&snapshot, &mut ui);
         ui.layout(BoxConstraints::tight(
-            PANEL_COLUMNS as i32 * UNIT,
-            CONTENT_BOTTOM as i32 * UNIT,
+            PANEL_COLUMNS as i32 * PX,
+            CONTENT_BOTTOM as i32 * PX,
         ));
-        *ui.tree()
+        ui
     }
 
-    fn rects(tree: &iot_core::ui::Tree) -> Vec<Rect> {
-        (0..tree.len())
-            .map(|index| tree.info(NodeId(index as u16)).rect)
-            .collect()
+    fn rects(ui: &Ui<'_, '_>) -> Vec<Rect> {
+        ui.rects().collect()
     }
 
     #[test]
     fn the_numbers_do_not_move_the_layout() {
-        let quiet = tree(sample(0));
-        let busy = tree(sample(-1799));
-        assert!(
-            quiet.len() <= iot_core::ui::layout::MAX_NODES,
-            "the page outgrew one declaration"
-        );
+        let quiet = page(sample(0));
+        let busy = page(sample(-1799));
+        assert!(quiet.node_count() <= 48, "the page outgrew one declaration");
         assert_eq!(
             rects(&quiet),
             rects(&busy),
@@ -309,24 +303,16 @@ mod tests {
 
     #[test]
     fn the_dial_owns_the_bottom_right_corner() {
-        let tree = tree(sample(400));
-        let dial = (0..tree.len())
-            .map(|index| tree.info(NodeId(index as u16)))
-            .find(|info| info.kind == Kind::Custom { slot: 0 })
-            .expect("the page declares its dial")
-            .rect;
+        let ui = page(sample(400));
+        let dial = ui.paint_rect(0).expect("the page declares its dial");
         assert_eq!(dial.right(), PANEL_COLUMNS as i32 - EDGE as i32);
         assert_eq!(dial.bottom(), CONTENT_BOTTOM as i32);
-        for index in 0..tree.len() {
-            let info = tree.info(NodeId(index as u16));
-            if !matches!(info.kind, Kind::Text { .. }) {
-                continue;
-            }
-            let overlap = info.rect.intersect(dial);
+        for rect in ui.text_rects() {
+            let overlap = rect.intersect(dial);
             assert!(
                 overlap.w == 0 || overlap.h == 0,
                 "a reading at {} overlaps the dial",
-                info.rect.y
+                rect.y
             );
         }
     }

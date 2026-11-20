@@ -51,19 +51,19 @@ pub(crate) fn draw(
         let peak = bar_rows(peaks[column as usize], half);
         let level = bar_rows(levels[column as usize], half).min(peak);
         for row in (centre - level)..=(centre + level) {
-            canvas.draw_pixel(x as isize, row as isize);
+            canvas.invert_pixel(x as isize, row as isize);
         }
         let mut shoulder = 0;
         for row in (centre - peak)..(centre - level) {
             if shoulder % 2 == 0 {
-                canvas.draw_pixel(x as isize, row as isize);
+                canvas.invert_pixel(x as isize, row as isize);
             }
             shoulder += 1;
         }
         shoulder = 0;
         for row in (centre + level + 1)..=(centre + peak) {
             if shoulder % 2 == 0 {
-                canvas.draw_pixel(x as isize, row as isize);
+                canvas.invert_pixel(x as isize, row as isize);
             }
             shoulder += 1;
         }
@@ -110,7 +110,7 @@ fn columns() -> i32 {
 
 fn rule(canvas: &mut Canvas<'_>, x: i32, row: i32, width: i32) {
     for column in (0..width).step_by(2) {
-        canvas.draw_pixel((x + column) as isize, row as isize);
+        canvas.invert_pixel((x + column) as isize, row as isize);
     }
 }
 
@@ -125,7 +125,7 @@ fn peak_hold(canvas: &mut Canvas<'_>, scan_x: i32, centre: i32, half: i32, peaks
         .expect("a maximum is in the window it came from");
     let row = centre - bar_rows(loudest, half);
     for offset in 0..PEAK_HOLD_WIDTH {
-        canvas.draw_pixel((scan_x + column as i32 + offset) as isize, row as isize);
+        canvas.invert_pixel((scan_x + column as i32 + offset) as isize, row as isize);
     }
 }
 
@@ -136,7 +136,7 @@ fn clip_mark(canvas: &mut Canvas<'_>, scan_x: i32, top: i32, clip_age: Option<us
     let column = columns() - 1 - age as i32;
     for offset in 0..CLIP_MARK_WIDTH {
         for row in top..(top + LINE as i32) {
-            canvas.draw_pixel((scan_x + column + offset) as isize, row as isize);
+            canvas.invert_pixel((scan_x + column + offset) as isize, row as isize);
         }
     }
 }

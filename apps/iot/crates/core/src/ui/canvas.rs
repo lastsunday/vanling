@@ -108,7 +108,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Inverts one pixel.
-    pub fn draw_pixel(&mut self, x: isize, y: isize) {
+    pub fn invert_pixel(&mut self, x: isize, y: isize) {
         if self.clipped(x, y) {
             self.invert(x as usize, y as usize);
         }
@@ -184,7 +184,7 @@ impl<'a> Canvas<'a> {
         let mut err = dx + dy;
         let (mut x, mut y) = (x0, y0);
         loop {
-            self.draw_pixel(x, y);
+            self.invert_pixel(x, y);
             if x == x1 && y == y1 {
                 break;
             }
@@ -217,7 +217,7 @@ impl<'a> Canvas<'a> {
                 (y, -x),
                 (-y, -x),
             ] {
-                self.draw_pixel(cx + dx, cy + dy);
+                self.invert_pixel(cx + dx, cy + dy);
             }
             y += 1;
             if err <= 0 {
@@ -285,10 +285,10 @@ mod tests {
     fn a_draw_off_the_edge_is_clipped_rather_than_panicking() {
         let mut bytes = frame();
         let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, None);
-        canvas.draw_pixel(-1, 0);
-        canvas.draw_pixel(0, -1);
-        canvas.draw_pixel(WIDTH as isize, 0);
-        canvas.draw_pixel(0, HEIGHT as isize);
+        canvas.invert_pixel(-1, 0);
+        canvas.invert_pixel(0, -1);
+        canvas.invert_pixel(WIDTH as isize, 0);
+        canvas.invert_pixel(0, HEIGHT as isize);
         canvas.draw_text(b"X", WIDTH - 1, 0);
         assert!(bytes.iter().any(|byte| *byte != 0));
     }

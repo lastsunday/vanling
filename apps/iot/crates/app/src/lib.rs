@@ -27,8 +27,8 @@ pub mod state;
 use render::wire;
 use runtime::Runtime;
 use runtime::coordinator::{
-    CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
-    Schedule, run_loop,
+    CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PageSystem,
+    PlaybackSystem, Schedule, run_loop,
 };
 use runtime::feature::input::{IntentBus, input_task};
 use runtime::feature::playback::{playback_tasks, share};
@@ -293,6 +293,7 @@ where
     schedule.register(NetworkSystem::new(state, network));
     schedule.register(PlaybackSystem::new(state.playback, playback));
     schedule.register(NoticeSystem);
+    schedule.register(PageSystem);
     schedule.register(DemandSystem::new(Input::new(demand, capture)));
     schedule.register(GovernorSystem::new(&mut clock));
     if let Some(system) = extra {

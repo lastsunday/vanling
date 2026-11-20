@@ -10,6 +10,7 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 use iot_core::drivers::surface::MAX_LIGHTS;
+use iot_core::ui::Rect;
 
 /// What the Audio page draws: the phase driving the panel plus the envelope it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -111,10 +112,53 @@ pub struct TouchSnapshot {
     pub chip_gesture_id: u8,
 }
 
+/// The scroll regions one page may publish. The text page uses two.
+pub const TEXT_AREAS: usize = 2;
+
+/// How many lines the wrapped run may be pre-broken into.
+pub const TEXT_LINES: usize = iot_core::ui::typeset::MAX_LINES;
+
+/// How many standing glyph rows the page draws.
+pub const TEXT_ROWS: usize = 18;
+
+/// One line of the wrapped run, as a byte range and the width it was broken to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextLine {
+    pub start: u16,
+    pub end: u16,
+    pub width: u16,
+}
+
+/// What one scroll region publishes to the view: where it sits, what it shows, how far it
+/// can go, and whether a thumb belongs beside it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ScrollAreaView {
+    pub rect: Rect,
+    pub offset: i16,
+    pub max: i16,
+    pub bar: bool,
+}
+
+/// What the Text page publishes: one view per region, the run pre-broken into lines, the
+/// glyph rows' widths, and whether a glide is in flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct TextSnapshot {
+    pub areas: [ScrollAreaView; TEXT_AREAS],
+    pub lines: [TextLine; TEXT_LINES],
+    pub line_count: u8,
+    pub rows: [u16; TEXT_ROWS],
+    /// The coverage line's static reading: how many sample glyphs the face lacks, and whether
+    /// every printable ASCII code is present. Computed once, because the face never changes.
+    pub missing: u16,
+    pub ascii: bool,
+    pub moving: bool,
+}
+
 /// What each page publishes beyond the state it read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PageSnapshot {
     pub network: NetworkView,
+    pub text: TextSnapshot,
 }
 
 /// One frame's drawing data, extracted from the state so a renderer holds no reference into
@@ -134,4 +178,15 @@ pub struct FrameSnapshot {
     pub motion_caps: MotionCapabilities,
     pub audio: AudioSnapshot,
     pub playback: PlaybackSnapshot,
+}
+
+impl FrameSnapshot {
+    /// Whether the shown page has motion of its own to advance, which keeps the loop awake
+    /// between snapshots.
+    pub fn animating(&self) -> bool {
+        match self.page {
+            PageId::Text => self.pages.text.moving,
+            _ => false,
+        }
+    }
 }

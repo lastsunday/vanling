@@ -3,6 +3,7 @@
 
 pub mod chrome;
 pub mod panel;
+pub mod scroll;
 pub mod text;
 
 pub use self::panel::Panel;

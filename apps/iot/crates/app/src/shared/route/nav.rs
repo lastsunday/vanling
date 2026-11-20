@@ -181,12 +181,13 @@ mod tests {
         assert_eq!(
             nav.advance(bare),
             PageId::Env,
-            "the page that needs nothing is the only other one a bare board has"
+            "a page that needs nothing comes first"
         );
+        assert_eq!(nav.advance(bare), PageId::Text, "then the other one");
         assert_eq!(
             nav.advance(bare),
             PageId::Ambient,
-            "and the lap is two pages"
+            "and the lap is three pages"
         );
         assert_eq!(nav.depth, 1);
 

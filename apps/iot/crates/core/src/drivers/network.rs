@@ -166,11 +166,15 @@ impl Ssid {
         self.len == 0
     }
 
-    /// The name as text, or `None` when it is not something this panel can draw.
+    /// The name as text, or `None` when the radio reported bytes that are not text.
+    ///
+    /// A UTF-8 name is carried whole, not narrowed to ASCII: the face covers Big5, and a
+    /// character it lacks still draws as the fallback mark rather than hiding the name behind
+    /// its BSSID. Control characters stay out; they are not something a panel can show.
     pub fn as_display_text(&self) -> Option<&str> {
         core::str::from_utf8(self.as_bytes())
             .ok()
-            .filter(|text| text.chars().all(|c| (' '..='~').contains(&c)))
+            .filter(|text| !text.chars().any(char::is_control))
     }
 }
 
@@ -962,20 +966,25 @@ mod tests {
     }
 
     #[test]
-    fn a_name_the_panel_cannot_draw_is_not_display_text() {
+    fn a_utf8_name_is_display_text_and_the_bytes_stay_whole() {
         let ascii = ap("TP-LINK", [1; 6], -50);
         assert_eq!(ascii.ssid.as_display_text(), Some("TP-LINK"));
 
         let chinese = AccessPoint {
-            ssid: Ssid::from_octets(&[0xe7, 0xa7, 0x9b, 0xe5, 0x8d, 0x8a]),
+            ssid: Ssid::from_octets("网络".as_bytes()),
             ..ap("", [2; 6], -50)
         };
-        assert_eq!(chinese.ssid.as_display_text(), None);
+        assert_eq!(chinese.ssid.as_display_text(), Some("网络"));
         assert_eq!(
             chinese.ssid.as_bytes(),
-            &[0xe7, 0xa7, 0x9b, 0xe5, 0x8d, 0x8a],
+            "网络".as_bytes(),
             "the name is still carried byte for byte, because connecting needs it"
         );
+    }
+
+    #[test]
+    fn a_name_with_a_control_character_is_not_display_text() {
+        assert_eq!(Ssid::from_octets(b"cafe\x07").as_display_text(), None);
     }
 
     #[test]

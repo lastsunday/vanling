@@ -25,6 +25,8 @@ fn the_page_switch_reaches_the_audio_page_and_back() {
         "the page that needs nothing"
     );
     feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Text);
+    feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Ambient);
 }
 
@@ -43,6 +45,8 @@ fn the_camera_page_cycles_from_the_board_and_back() {
     assert_eq!(manager.state().page(), PageId::Camera);
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Env);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Text);
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Ambient);
 }
@@ -77,6 +81,7 @@ fn a_full_lap_walks_every_page_and_returns_home() {
         PageId::Audio,
         PageId::Speaker,
         PageId::Env,
+        PageId::Text,
         PageId::Ambient,
     ] {
         feed_input(&mut manager, triple_click());

@@ -26,6 +26,14 @@ pub enum GestureEvent {
         x: u16,
         y: u16,
     },
+    /// A finger that is still down has moved. The page follows it live; the release is still
+    /// the [`Self::Swipe`] or [`Self::Tap`] the whole gesture resolves to.
+    Drag {
+        id: u8,
+        x: u16,
+        y: u16,
+        at_ms: u32,
+    },
     Ghost,
     Tap {
         id: u8,
@@ -397,6 +405,8 @@ struct FingerState {
     down_at_ms: Option<u64>,
     down_x: u16,
     down_y: u16,
+    drag_x: u16,
+    drag_y: u16,
     farthest: Option<(u16, u16, u16)>,
 }
 
@@ -408,6 +418,8 @@ impl FingerState {
             down_at_ms: None,
             down_x: 0,
             down_y: 0,
+            drag_x: 0,
+            drag_y: 0,
             farthest: None,
         }
     }
@@ -500,6 +512,8 @@ impl TouchGestures {
                             self.fingers[slot].down_at_ms = Some(now_ms);
                             self.fingers[slot].down_x = point.x;
                             self.fingers[slot].down_y = point.y;
+                            self.fingers[slot].drag_x = point.x;
+                            self.fingers[slot].drag_y = point.y;
                             self.fingers[slot].farthest = Some((0, point.x, point.y));
                         }
                         let far = travel_px(
@@ -517,6 +531,24 @@ impl TouchGestures {
                                     id: point.id,
                                     x: point.x,
                                     y: point.y,
+                                }),
+                                out,
+                            );
+                        } else if travel_px(
+                            self.fingers[slot].drag_x,
+                            self.fingers[slot].drag_y,
+                            point.x,
+                            point.y,
+                        ) >= MOVE_DEADBAND_PX
+                        {
+                            self.fingers[slot].drag_x = point.x;
+                            self.fingers[slot].drag_y = point.y;
+                            push(
+                                InputEvent::Gesture(GestureEvent::Drag {
+                                    id: point.id,
+                                    x: point.x,
+                                    y: point.y,
+                                    at_ms: u32::try_from(now_ms).unwrap_or(u32::MAX),
                                 }),
                                 out,
                             );

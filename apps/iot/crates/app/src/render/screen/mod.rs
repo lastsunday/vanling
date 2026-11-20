@@ -132,7 +132,7 @@ impl ScreenRenderer {
         if (page_changed || repaint) && self.repaint(frame, true) {
             self.last_repaint_ms = now_ms;
         }
-        if self.is_camera_page() {
+        if self.is_camera_page() || frame.animating() {
             return Drive::TimeDriven;
         }
         self.color.drive()
@@ -198,13 +198,24 @@ impl Renderer for ScreenRenderer {
             return Drive::TimeDriven;
         }
         let step = self.surface.repaint_step();
-        let Some(shown) = self.color.step(&mut *self.surface, step, now_ms) else {
-            return Drive::Idle;
-        };
-        self.surface
-            .set_backlight(duty(shown, LightState::BACKLIGHT_FLOOR_PCT));
-        self.paint_last();
-        Drive::TimeDriven
+        let shown = self.color.step(&mut *self.surface, step, now_ms);
+        if let Some(shown) = shown {
+            self.surface
+                .set_backlight(duty(shown, LightState::BACKLIGHT_FLOOR_PCT));
+            self.paint_last();
+        }
+        if self
+            .last_snapshot
+            .as_ref()
+            .is_some_and(FrameSnapshot::animating)
+        {
+            return Drive::TimeDriven;
+        }
+        if shown.is_some() {
+            Drive::TimeDriven
+        } else {
+            Drive::Idle
+        }
     }
 }
 

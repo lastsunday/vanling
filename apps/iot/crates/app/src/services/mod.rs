@@ -15,6 +15,7 @@ pub mod nav;
 pub mod network;
 pub mod speaker;
 pub mod splash;
+pub mod text;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
 use crate::shared::kit::panel::{Custom, Panel, View, no_custom};
@@ -36,6 +37,7 @@ use self::nav::NavService;
 use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
+use self::text::TextPage;
 
 /// One intent's owner: its own record settles first, then the answer says what the rest of the
 /// device owes.
@@ -74,6 +76,9 @@ pub trait LocalPage: Service {
 
     /// The page is no longer the current one.
     fn on_hide(&mut self) {}
+
+    /// One frame of the page's own clock, for motion the snapshot cannot carry by itself.
+    fn tick(&mut self, _step_ms: u16) {}
 }
 
 /// Every service this build has: one instance each, the pages plus the device's own two.
@@ -90,6 +95,7 @@ pub struct Services {
     network: NetworkPage,
     splash: SplashPage,
     env: EnvPage,
+    text: TextPage,
 }
 
 /// The dispatch key: a page the panel can stop on, or one of the device's own services.
@@ -112,6 +118,7 @@ impl Services {
             PageId::Network => &self.network,
             PageId::Splash => &self.splash,
             PageId::Env => &self.env,
+            PageId::Text => &self.text,
         }
     }
 
@@ -151,6 +158,9 @@ impl Services {
             BusinessIntent::Playback(_) => self
                 .service_mut(ServiceId::Page(PageId::Speaker))
                 .apply(intent, state),
+            BusinessIntent::Text(_) => self
+                .service_mut(ServiceId::Page(PageId::Text))
+                .apply(intent, state),
         }
     }
 
@@ -165,6 +175,7 @@ impl Services {
             ServiceId::Page(PageId::Network) => &mut self.network,
             ServiceId::Page(PageId::Splash) => &mut self.splash,
             ServiceId::Page(PageId::Env) => &mut self.env,
+            ServiceId::Page(PageId::Text) => &mut self.text,
             ServiceId::Navigation => &mut self.nav,
             ServiceId::Light => &mut self.light,
         }
@@ -187,6 +198,11 @@ impl Services {
         self.get_mut(page).on_hide();
     }
 
+    /// One frame of the current page's own clock. Only the page on screen spends a frame.
+    pub fn tick(&mut self, page: PageId, step_ms: u16) {
+        self.get_mut(page).tick(step_ms);
+    }
+
     fn get_mut(&mut self, page: PageId) -> &mut dyn LocalPage {
         match page {
             PageId::Ambient => &mut self.ambient,
@@ -197,6 +213,7 @@ impl Services {
             PageId::Network => &mut self.network,
             PageId::Splash => &mut self.splash,
             PageId::Env => &mut self.env,
+            PageId::Text => &mut self.text,
         }
     }
 }
@@ -217,6 +234,8 @@ pub(super) enum Repaint {
     Overlay,
     /// When the page's own snapshot fields moved.
     When(fn(&FrameSnapshot, &FrameSnapshot) -> bool),
+    /// When those fields moved, or while the debug overlay is up.
+    WhenOrOverlay(fn(&FrameSnapshot, &FrameSnapshot) -> bool),
 }
 
 impl Repaint {
@@ -226,6 +245,7 @@ impl Repaint {
             Self::Always => true,
             Self::Overlay => overlay,
             Self::When(moved) => moved(prev, next),
+            Self::WhenOrOverlay(moved) => overlay || moved(prev, next),
         }
     }
 }
@@ -308,6 +328,7 @@ pub fn descriptor(page: PageId) -> Descriptor {
         PageId::Network => NetworkPage::descriptor(),
         PageId::Splash => SplashPage::descriptor(),
         PageId::Env => EnvPage::descriptor(),
+        PageId::Text => TextPage::descriptor(),
     }
 }
 

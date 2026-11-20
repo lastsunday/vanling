@@ -12,11 +12,16 @@ use iot_core::drivers::network::{
 };
 use iot_core::provision::SETUP_PASS_LEN;
 use iot_core::ui::panel::GLYPH;
+use iot_core::ui::text::{fit, write_u16, write_u64};
 
-use iot_core::ui::text::{write_u16, write_u64};
+/// Room a name needs in bytes: an SSID's own maximum, plus the mark that says it was cut.
+pub(super) const NAME_BYTES: usize = SSID_BYTES + 1;
 
-/// Glyphs a network name is given on a scan-list row.
-pub(super) const NETWORK_NAME_GLYPHS: usize = 24;
+/// Room a dialog line needs in bytes. Its text is ASCII, but the name it names is not.
+pub(super) const DIALOG_BYTES: usize = SSID_BYTES + 16;
+
+/// Pixels a network name is given on a scan-list row.
+pub(super) const NETWORK_NAME_W: usize = 24 * GLYPH;
 
 /// The key grid's own words: what each control prints, and what the reveal says while the
 /// draft is on screen.
@@ -156,13 +161,16 @@ pub fn format_bars(bars: u8, buf: &mut [u8; 4]) -> &[u8] {
     &buf[..]
 }
 
-/// A row's name: the SSID when the font can draw it, and the BSSID when it cannot.
-pub fn format_network_name(ap: AccessPoint, glyphs: usize, buf: &mut [u8; SSID_BYTES]) -> &[u8] {
-    let glyphs = match ap.ssid.as_display_text() {
-        Some(name) => write_name(name.as_bytes(), glyphs, buf),
-        None => write_bssid(&ap.bssid, buf),
-    };
-    &buf[..glyphs]
+/// A row's name: the SSID when the radio reported text, and the BSSID when it did not. The
+/// name is cut by pixels, because a hanzi is two cells wide and three bytes long.
+pub fn format_network_name(ap: AccessPoint, width: usize, buf: &mut [u8; NAME_BYTES]) -> &[u8] {
+    match ap.ssid.as_display_text() {
+        Some(name) => fit(name, width, buf),
+        None => {
+            let n = write_bssid(&ap.bssid, buf);
+            &buf[..n]
+        }
+    }
 }
 
 /// The consequence under the question: what the action costs, in the box's own width.
@@ -189,7 +197,7 @@ pub const SETUP_STARTING_BODY: &[u8] = b"STARTING";
 /// The setup access point's own name, derived from the board's address here rather than
 /// carried in the state: the network task derives it the same way, and two copies of one
 /// name are one copy too many.
-pub fn format_setup_name(mac: Option<[u8; 6]>, buf: &mut [u8; SSID_BYTES]) -> &[u8] {
+pub fn format_setup_name(mac: Option<[u8; 6]>, buf: &mut [u8; NAME_BYTES]) -> &[u8] {
     let Some(mac) = mac else {
         return b"";
     };
@@ -204,8 +212,8 @@ pub fn format_setup_name(mac: Option<[u8; 6]>, buf: &mut [u8; SSID_BYTES]) -> &[
 }
 
 /// The announcement's second line: the access point a phone has to join.
-pub fn format_setup_notice_body(mac: Option<[u8; 6]>, buf: &mut [u8; SSID_BYTES]) -> &[u8] {
-    let mut name = [0u8; SSID_BYTES];
+pub fn format_setup_notice_body(mac: Option<[u8; 6]>, buf: &mut [u8; NAME_BYTES]) -> &[u8] {
+    let mut name = [0u8; NAME_BYTES];
     let name = format_setup_name(mac, &mut name);
     if name.is_empty() {
         return b"";
@@ -223,7 +231,7 @@ const SETUP_PASS_OPEN: &[u8] = b"OPEN, NO PASSWORD";
 /// The access point's passphrase, or the fact that it has none.
 pub fn format_setup_pass<'a>(
     password: Option<&SetupPass>,
-    buf: &'a mut [u8; SSID_BYTES],
+    buf: &'a mut [u8; NAME_BYTES],
 ) -> &'a [u8] {
     let Some(password) = password else {
         let taken = SETUP_PASS_OPEN.len().min(buf.len());
@@ -254,10 +262,6 @@ const _: () = assert!(
     "what the radio is waiting on is wider than the line the box gives it"
 );
 const _: () = assert!(
-    SSID_BYTES <= DIALOG_GLYPHS,
-    "a name folded into the box's line does not fit the buffer it is folded in"
-);
-const _: () = assert!(
     JOINING_WORD.len() + 2 <= DIALOG_GLYPHS && JOINED_WORD.len() + 2 <= DIALOG_GLYPHS,
     "the join box's own word leaves no room for the network it is about, and its space between"
 );
@@ -276,7 +280,7 @@ const _: () = assert!(
 );
 
 /// The question itself: the verb, and the network it is about in quotes.
-pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG_GLYPHS]) -> &[u8] {
+pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG_BYTES]) -> &[u8] {
     let verb = control_label(confirm_verb(confirm));
     buf[..verb.len()].copy_from_slice(verb);
     let mut n = verb.len();
@@ -286,8 +290,8 @@ pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG
     buf[n] = b' ';
     buf[n + 1] = b'"';
     n += 2;
-    let mut name = [0u8; SSID_BYTES];
-    let name = format_network_name(ap, DIALOG_GLYPHS - n - 2, &mut name);
+    let mut name = [0u8; NAME_BYTES];
+    let name = format_network_name(ap, (DIALOG_GLYPHS - n - 2) * GLYPH, &mut name);
     buf[n..n + name.len()].copy_from_slice(name);
     n += name.len();
     buf[n] = b'"';
@@ -301,7 +305,7 @@ pub fn format_question(confirm: Confirm, link: LinkStatus, buf: &mut [u8; DIALOG
 pub fn format_joining_title(
     associated: bool,
     name: Option<AccessPoint>,
-    buf: &mut [u8; DIALOG_GLYPHS],
+    buf: &mut [u8; DIALOG_BYTES],
 ) -> &[u8] {
     let word = if associated {
         JOINED_WORD
@@ -315,8 +319,8 @@ pub fn format_joining_title(
     };
     buf[n] = b' ';
     n += 1;
-    let mut name = [0u8; SSID_BYTES];
-    let name = format_network_name(ap, DIALOG_GLYPHS - n, &mut name);
+    let mut name = [0u8; NAME_BYTES];
+    let name = format_network_name(ap, (DIALOG_GLYPHS - n) * GLYPH, &mut name);
     buf[n..n + name.len()].copy_from_slice(name);
     &buf[..n + name.len()]
 }
@@ -331,18 +335,7 @@ pub fn joining_body(associated: bool) -> &'static [u8] {
     }
 }
 
-fn write_name(name: &[u8], glyphs: usize, buf: &mut [u8; SSID_BYTES]) -> usize {
-    if name.len() <= glyphs {
-        buf[..name.len()].copy_from_slice(name);
-        return name.len();
-    }
-    let kept = glyphs - 1;
-    buf[..kept].copy_from_slice(&name[..kept]);
-    buf[kept] = b'~';
-    glyphs
-}
-
-fn write_bssid(bssid: &[u8; 6], buf: &mut [u8; SSID_BYTES]) -> usize {
+fn write_bssid(bssid: &[u8; 6], buf: &mut [u8; NAME_BYTES]) -> usize {
     const HEX: &[u8; 16] = b"0123456789ABCDEF";
     let mut n = 0;
     for (index, octet) in bssid.iter().enumerate() {
@@ -420,12 +413,50 @@ mod tests {
     }
 
     #[test]
+    fn a_chinese_name_is_drawn_whole_and_cut_by_pixels() {
+        let ap = AccessPoint {
+            ssid: iot_core::drivers::network::Ssid::from_octets("网络设置".as_bytes()),
+            bssid: [0xaa; 6],
+            ..AccessPoint::default()
+        };
+        let mut buf = [0u8; NAME_BYTES];
+        assert_eq!(
+            format_network_name(ap, 12 * 4, &mut buf),
+            "网络设置".as_bytes()
+        );
+        assert_eq!(
+            format_network_name(ap, 12 * 2 + 6, &mut buf),
+            "网络~".as_bytes(),
+            "the mark takes one cell of the room"
+        );
+        assert_eq!(
+            format_network_name(ap, 12 * 2, &mut buf),
+            "网~".as_bytes(),
+            "a hanzi is two cells, so the cut does not split one"
+        );
+    }
+
+    #[test]
+    fn a_name_that_is_not_text_falls_back_to_its_bssid() {
+        let ap = AccessPoint {
+            ssid: iot_core::drivers::network::Ssid::from_octets(b"Caf\xe9"),
+            bssid: [0x01, 0x23, 0x45, 0x67, 0x89, 0xab],
+            ..AccessPoint::default()
+        };
+        let mut buf = [0u8; NAME_BYTES];
+        assert_eq!(
+            format_network_name(ap, NETWORK_NAME_W, &mut buf),
+            b"01:23:45:67:89:AB"
+        );
+    }
+
+    #[test]
     fn the_join_box_names_the_row_the_page_handed_over() {
         let ap = AccessPoint {
             ssid: iot_core::drivers::network::Ssid::from_octets(b"neighbour"),
             ..AccessPoint::default()
         };
-        let mut buf = [0u8; DIALOG_GLYPHS];
+        let mut buf = [0u8; DIALOG_BYTES];
         assert_eq!(
             format_joining_title(false, Some(ap), &mut buf),
             b"JOINING neighbour"
@@ -439,7 +470,7 @@ mod tests {
             ssid: iot_core::drivers::network::Ssid::from_octets(b"cafe"),
             ..AccessPoint::default()
         };
-        let mut buf = [0u8; DIALOG_GLYPHS];
+        let mut buf = [0u8; DIALOG_BYTES];
         assert_eq!(
             format_joining_title(true, Some(ap), &mut buf),
             b"JOINED cafe"
@@ -449,7 +480,7 @@ mod tests {
 
     #[test]
     fn a_join_with_no_row_says_only_the_stage() {
-        let mut buf = [0u8; DIALOG_GLYPHS];
+        let mut buf = [0u8; DIALOG_BYTES];
         assert_eq!(format_joining_title(false, None, &mut buf), b"JOINING");
         assert_eq!(format_joining_title(true, None, &mut buf), b"JOINED");
     }

@@ -3,11 +3,11 @@
 use crate::services::network::shape;
 use crate::services::network::shape::{LIST_ROW_H, LIST_ROWS, LIST_TOP, band_lines_top};
 use crate::services::network::view::text::{
-    HIDE_LABEL, NETWORK_NAME_GLYPHS, format_bars, format_network_name, key_label,
+    HIDE_LABEL, NAME_BYTES, NETWORK_NAME_W, format_bars, format_network_name, key_label,
 };
 use crate::shared::intent::{Key, MAX_CANDIDATES};
 use crate::shared::model::{Entry, NetworkView};
-use iot_core::drivers::network::{ApList, LinkStatus, SSID_BYTES};
+use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::geometry::ControlRect;
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 use iot_core::ui::Canvas;
@@ -21,7 +21,7 @@ const OPEN_MARKER: &[u8] = b"OPEN";
 const SAVED_MARKER: &[u8] = b"*";
 
 const _: () = assert!(
-    MARGIN + NETWORK_NAME_GLYPHS * GLYPH <= SAVED_MARKER_RIGHT as usize,
+    MARGIN + NETWORK_NAME_W <= SAVED_MARKER_RIGHT as usize,
     "the saved mark is drawn over the name slot the list gives a row"
 );
 const _: () = assert!(
@@ -75,7 +75,7 @@ fn draw_list(canvas: &mut Canvas<'_>, draft: NetworkView, link: LinkStatus, aps:
                 }
                 let top = band_lines_top(band);
                 canvas.draw_text(
-                    format_network_name(ap, NETWORK_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
+                    format_network_name(ap, NETWORK_NAME_W, &mut [0u8; NAME_BYTES]),
                     MARGIN,
                     top,
                 );

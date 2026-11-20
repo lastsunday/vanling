@@ -25,7 +25,12 @@ pub(super) fn repaint_due(
         Mode::Continuous => {}
     }
     if since_ms < step {
-        return false;
+        // The frame that ends an animation is drawn even inside the floor: the glide's last
+        // offset would otherwise never reach the glass.
+        let settled = prev.page == next.page && prev.animating() && !next.animating();
+        if !settled {
+            return false;
+        }
     }
     descriptor(page).repaints_on(prev, next, overlay)
 }

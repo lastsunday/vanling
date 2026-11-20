@@ -2,15 +2,16 @@
 
 use crate::services::network::controller::{ControlKind, answers, confirm_verb};
 use crate::services::network::shape::{
-    DIALOG_BODY_TOP, DIALOG_GLYPHS, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP, DIALOG_TOP, DIALOG_W,
-    DIALOG_X, DialogChoice, dialog_answer_box,
+    DIALOG_BODY_TOP, DIALOG_H, DIALOG_INSET, DIALOG_TITLE_TOP, DIALOG_TOP, DIALOG_W, DIALOG_X,
+    DialogChoice, dialog_answer_box,
 };
 use crate::services::network::view::text::{
-    SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label, format_joining_title,
-    format_question, format_setup_notice_body, format_setup_pass, joining_body,
+    DIALOG_BYTES, NAME_BYTES, SETUP_NOTICE_TITLE, SETUP_STARTING_BODY, body, control_label,
+    format_joining_title, format_question, format_setup_notice_body, format_setup_pass,
+    joining_body,
 };
 use crate::shared::model::{NetworkView, SetupWait};
-use iot_core::drivers::network::{AccessPoint, LinkStatus, SSID_BYTES};
+use iot_core::drivers::network::{AccessPoint, LinkStatus};
 use iot_core::ui::Canvas;
 use iot_core::ui::Rect;
 use iot_core::ui::panel::ROW_PITCH;
@@ -93,7 +94,7 @@ pub(crate) fn draw(
 /// The box is on the glass the moment the panel asks for the access point, before the
 /// radio has been reconfigured for it.
 fn draw_setup_starting(canvas: &mut Canvas<'_>, mac: Option<[u8; 6]>) {
-    let mut name = [0u8; SSID_BYTES];
+    let mut name = [0u8; NAME_BYTES];
     Dialog::new(SETUP_NOTICE_TITLE)
         .line(format_setup_notice_body(mac, &mut name))
         .line(SETUP_STARTING_BODY)
@@ -107,8 +108,8 @@ fn draw_notice(
     mac: Option<[u8; 6]>,
 ) {
     let answers = answers(link);
-    let mut name = [0u8; SSID_BYTES];
-    let mut pass = [0u8; SSID_BYTES];
+    let mut name = [0u8; NAME_BYTES];
+    let mut pass = [0u8; NAME_BYTES];
     let asked = match draft.setup_wait {
         Some(SetupWait::Open(open)) => Some(open),
         _ => None,
@@ -131,7 +132,7 @@ fn draw_notice(
 }
 
 fn draw_joining(canvas: &mut Canvas<'_>, link: LinkStatus, shown_ap: Option<AccessPoint>) {
-    let mut title = [0u8; DIALOG_GLYPHS];
+    let mut title = [0u8; DIALOG_BYTES];
     let associated = link.ap.is_some();
     Dialog::new(format_joining_title(associated, shown_ap, &mut title))
         .line(joining_body(associated))
@@ -142,7 +143,7 @@ fn draw_confirm(canvas: &mut Canvas<'_>, draft: NetworkView, link: LinkStatus) {
     let Some(confirm) = draft.confirm else {
         return;
     };
-    let mut question = [0u8; DIALOG_GLYPHS];
+    let mut question = [0u8; DIALOG_BYTES];
     let title = format_question(confirm, link, &mut question);
     Dialog::new(title)
         .line(body(confirm))

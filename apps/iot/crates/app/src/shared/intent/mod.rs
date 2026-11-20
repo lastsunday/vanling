@@ -61,6 +61,8 @@ pub enum BusinessIntent {
     Network(NetworkIntent),
     Audio(AudioIntent),
     Playback(PlaybackAction),
+    /// What a finger asks of a page's own scroll regions.
+    Text(TextIntent),
     /// One light surface and the verb it is asked for. The instance is routing, not part of
     /// the verb: the record's `apply` only ever sees the action.
     Light {
@@ -111,6 +113,38 @@ pub enum LinkIntent {
 pub enum AudioIntent {
     Start,
     Stop,
+}
+
+/// What one swipe asks of a scroll region: which region, how many lines it steps, and the
+/// speed it was released at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextIntent {
+    /// A finger landed in a region: the region is now held.
+    Press {
+        id: u8,
+        area: u8,
+        y: i16,
+    },
+    /// That finger moved, in panel pixels.
+    Drag {
+        id: u8,
+        x: u16,
+        y: u16,
+        at_ms: u32,
+    },
+    /// The finger lifted. `lines` and `speed` are the swipe's fallback when no drag sample
+    /// arrived; a gesture that was dragged keeps its own velocity instead.
+    Release {
+        id: u8,
+        area: u8,
+        lines: i8,
+        speed: u16,
+    },
+    Scroll {
+        area: u8,
+        lines: i8,
+        speed: u16,
+    },
 }
 
 /// The lamp's verbs. `Cycle` is the only one that leaves `Off`; the rest need a mode to act

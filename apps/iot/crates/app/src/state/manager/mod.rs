@@ -86,6 +86,11 @@ impl DeviceManager {
         self.state.dropped_intents = count;
     }
 
+    /// One frame of the current page's own clock: a scroll glide, a bounce on its way home.
+    pub fn tick_pages(&mut self, step_ms: u16) {
+        self.services.tick(self.state.page(), step_ms);
+    }
+
     /// What the device is committed to: the page's proposal with the build override applied.
     pub fn demand(&self) -> &EffectiveDemand {
         self.demand.current()

@@ -46,31 +46,6 @@ pub const fn line_height() -> usize {
     Face::new().height()
 }
 
-/// The widest it is possible to break the run without splitting a word.
-pub fn min_content(text: &[u8]) -> usize {
-    let mut widest = 0;
-    let mut run = 0;
-    let mut at = 0;
-    let mut previous = None;
-    while let Some(cluster) = Cluster::next(text, at) {
-        at = cluster.end;
-        if cluster.ch == '\n' {
-            widest = widest.max(run);
-            run = 0;
-            previous = None;
-            continue;
-        }
-        let breaks = previous.is_none_or(|previous: Class| cluster.breaks_after(previous));
-        if breaks {
-            widest = widest.max(run);
-            run = 0;
-        }
-        run += cluster.width;
-        previous = Some(cluster.class);
-    }
-    widest.max(run)
-}
-
 /// The width the run takes on one line.
 pub fn max_content(text: &[u8]) -> usize {
     let mut widest = 0;
@@ -78,7 +53,8 @@ pub fn max_content(text: &[u8]) -> usize {
     let mut at = 0;
     while let Some(cluster) = Cluster::next(text, at) {
         at = cluster.end;
-        if cluster.ch == '\n' {
+        if let Some(next) = hard_break(text, cluster) {
+            at = next;
             widest = widest.max(run);
             run = 0;
             continue;
@@ -106,8 +82,8 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize) -> Paragraph {
         let mut previous = None;
         let mut first = true;
         while let Some(cluster) = Cluster::next(text, cursor) {
-            if cluster.ch == '\n' {
-                broke = Some((cluster.end, end, used, gaps, false));
+            if let Some(next) = hard_break(text, cluster) {
+                broke = Some((next, end, used, gaps, false));
                 break;
             }
             let break_before =
@@ -190,6 +166,15 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize) -> Paragraph {
         }
     }
     paragraph
+}
+
+/// Where a hard line break ends, or `None` when `cluster` is not one. `\r\n` is one break.
+fn hard_break(text: &[u8], cluster: Cluster) -> Option<usize> {
+    match cluster.ch {
+        '\n' => Some(cluster.end),
+        '\r' => Some(cluster.end + usize::from(text.get(cluster.end) == Some(&b'\n'))),
+        _ => None,
+    }
 }
 
 fn previous_cluster(text: &[u8], start: usize, end: usize) -> Option<Cluster> {
@@ -387,10 +372,27 @@ mod tests {
     }
 
     #[test]
-    fn min_content_is_the_longest_word_and_max_content_the_whole_run() {
-        assert_eq!(min_content(b"AB CDE F"), 3 * 6);
+    fn a_newline_is_a_hard_break_and_a_blank_line_survives() {
+        assert_eq!(lines(b"a\nb", 100), vec![(0, 1), (2, 3)]);
+        assert_eq!(lines(b"a\n\nb", 100), vec![(0, 1), (2, 2), (3, 4)]);
+    }
+
+    #[test]
+    fn a_carriage_return_breaks_and_its_line_feed_does_not_break_twice() {
+        assert_eq!(lines(b"a\rb", 100), vec![(0, 1), (2, 3)]);
+        assert_eq!(lines(b"a\r\nb", 100), vec![(0, 1), (3, 4)]);
+    }
+
+    #[test]
+    fn max_content_stops_at_every_kind_of_line_break() {
+        assert_eq!(max_content(b"AB\nCDEF"), 4 * 6);
+        assert_eq!(max_content(b"AB\rCDEF"), 4 * 6);
+        assert_eq!(max_content(b"AB\r\nCDEF"), 4 * 6);
+    }
+
+    #[test]
+    fn max_content_is_the_whole_run_on_one_line() {
         assert_eq!(max_content(b"AB CDE F"), 8 * 6);
-        assert_eq!(min_content("中文".as_bytes()), 12);
         assert_eq!(max_content("中文".as_bytes()), 24);
     }
 

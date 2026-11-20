@@ -5,576 +5,59 @@
 //! the tree, so a hit test can run the same declaration without a canvas and land on the same
 //! boxes.
 //!
-//! The vocabulary is Flutter's: [`BoxConstraints`], `Flex` with grow/shrink/basis, `Wrap`
-//! runs, `Stack` positioning, and a scroll box that clips. Measurement is top-down and each
-//! container hands its children the constraints its own box leaves.
+//! The vocabulary is Flutter's: [`BoxConstraints`], flex with grow/shrink/basis, wrapping runs,
+//! stack positioning, and a scroll box that clips. Measurement is top-down and each container
+//! hands its children the constraints its own box leaves.
+
+mod constraints;
+mod node;
+mod scroll;
+mod style;
+
+pub use self::constraints::{BoxConstraints, PX};
+pub use self::node::NodeId;
+pub(crate) use self::node::{NodeInfo, NodeKind};
+pub use self::scroll::{ScrollId, ScrollInfo};
+pub use self::style::{Align, Axis, Flow, Inset, Justify, Length, Style, TextAlign};
+
+use self::constraints::{INFINITY, Point, Size, Subpx, pixels, tight};
+use self::node::{MAX_NODES, Measured, NONE, Node};
 
 use super::typeset;
+use crate::ui::Rect;
 
-/// Boxes one declaration may hold. The fullest page (the Attitude debug grid) uses 41, and
-/// every node is 160 B of the panel core's stack, so the arena is sized to the page with room
-/// to grow rather than to a round number.
-pub const MAX_NODES: usize = 48;
-pub const NONE: u16 = u16::MAX;
-
-/// Subpixels per pixel. Fractions exist only between a container's edges and its children's;
-/// the final rectangles are whole pixels.
-pub const UNIT: i32 = 64;
-/// A finite stand-in for "no limit", far enough from overflow for a 320 px panel.
-pub const INFINITY: i32 = 1 << 24;
-
-pub type Sub = i32;
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Length {
-    #[default]
-    Auto,
-    Px(i16),
-    Percent(i16),
-}
-
-impl Length {
-    pub const fn px(value: i16) -> Self {
-        Self::Px(value)
-    }
-
-    pub const fn pct(value: i16) -> Self {
-        Self::Percent(value)
-    }
-
-    fn resolve(self, base: Sub) -> Option<Sub> {
-        match self {
-            Self::Auto => None,
-            Self::Px(value) => Some(Sub::from(value) * UNIT),
-            Self::Percent(value) => Some(base / 100 * Sub::from(value)),
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Edges {
-    pub left: i16,
-    pub top: i16,
-    pub right: i16,
-    pub bottom: i16,
-}
-
-impl Edges {
-    pub const fn all(value: i16) -> Self {
-        Self {
-            left: value,
-            top: value,
-            right: value,
-            bottom: value,
-        }
-    }
-
-    fn horizontal(self) -> Sub {
-        (self.left as Sub + self.right as Sub) * UNIT
-    }
-
-    fn vertical(self) -> Sub {
-        (self.top as Sub + self.bottom as Sub) * UNIT
-    }
-
-    fn left(self) -> Sub {
-        self.left as Sub * UNIT
-    }
-
-    fn top(self) -> Sub {
-        self.top as Sub * UNIT
-    }
-}
-
-/// Where an absolutely positioned child sits: a side that was named, or none. `None` and
-/// `Some(0)` are different answers, which is why this is not [`Edges`].
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Inset {
-    pub left: Option<i16>,
-    pub top: Option<i16>,
-    pub right: Option<i16>,
-    pub bottom: Option<i16>,
-}
-
-impl Inset {
-    const NONE: Self = Self {
-        left: None,
-        top: None,
-        right: None,
-        bottom: None,
-    };
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Axis {
-    #[default]
-    Column,
-    Row,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Align {
-    #[default]
-    Start,
-    Center,
-    End,
-    Stretch,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Justify {
-    #[default]
-    Start,
-    Center,
-    End,
-    SpaceBetween,
-    SpaceAround,
-    SpaceEvenly,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub enum Display {
-    #[default]
-    Flex,
-    Wrap,
-    Stack,
-    Scroll,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
-pub struct Style {
-    pub width: Length,
-    pub height: Length,
-    pub min_width: Length,
-    pub min_height: Length,
-    pub max_width: Length,
-    pub max_height: Length,
-    pub padding: Edges,
-    pub margin: Edges,
-    pub inset: Inset,
-    pub gap: i16,
-    pub display: Display,
-    pub axis: Axis,
-    pub justify: Justify,
-    pub align: Align,
-    pub align_self: Align,
-    pub align_content: Justify,
-    pub grow: u16,
-    pub shrink: u16,
-    pub basis: Length,
-    pub absolute: bool,
-    pub text_align: Align,
-    pub nowrap: bool,
-    pub max_lines: u16,
-    pub offset: i16,
-    pub tag: u16,
-    pub fill: bool,
-    pub border: bool,
-}
-
-impl Style {
-    pub const fn new() -> Self {
-        Self {
-            width: Length::Auto,
-            height: Length::Auto,
-            min_width: Length::Auto,
-            min_height: Length::Auto,
-            max_width: Length::Auto,
-            max_height: Length::Auto,
-            padding: Edges::all(0),
-            margin: Edges::all(0),
-            inset: Inset::NONE,
-            gap: 0,
-            display: Display::Flex,
-            axis: Axis::Column,
-            justify: Justify::Start,
-            align: Align::Start,
-            align_self: Align::Start,
-            align_content: Justify::Start,
-            grow: 0,
-            shrink: 0,
-            basis: Length::Auto,
-            absolute: false,
-            text_align: Align::Start,
-            nowrap: false,
-            max_lines: typeset::MAX_LINES as u16,
-            offset: 0,
-            tag: 0,
-            fill: false,
-            border: false,
-        }
-    }
-
-    pub const fn row(mut self) -> Self {
-        self.axis = Axis::Row;
-        self
-    }
-
-    pub const fn column(mut self) -> Self {
-        self.axis = Axis::Column;
-        self
-    }
-
-    pub const fn wrap(mut self) -> Self {
-        self.display = Display::Wrap;
-        self
-    }
-
-    pub const fn stack(mut self) -> Self {
-        self.display = Display::Stack;
-        self
-    }
-
-    pub const fn scroll(mut self) -> Self {
-        self.display = Display::Scroll;
-        self
-    }
-
-    pub const fn size(mut self, width: i16, height: i16) -> Self {
-        self.width = Length::Px(width);
-        self.height = Length::Px(height);
-        self
-    }
-
-    pub const fn width(mut self, value: i16) -> Self {
-        self.width = Length::Px(value);
-        self
-    }
-
-    pub const fn height(mut self, value: i16) -> Self {
-        self.height = Length::Px(value);
-        self
-    }
-
-    pub const fn min_width(mut self, value: i16) -> Self {
-        self.min_width = Length::Px(value);
-        self
-    }
-
-    pub const fn max_width(mut self, value: i16) -> Self {
-        self.max_width = Length::Px(value);
-        self
-    }
-
-    pub const fn grow(mut self, value: u16) -> Self {
-        self.grow = value;
-        self
-    }
-
-    pub const fn shrink(mut self, value: u16) -> Self {
-        self.shrink = value;
-        self
-    }
-
-    pub const fn basis(mut self, value: i16) -> Self {
-        self.basis = Length::Px(value);
-        self
-    }
-
-    pub const fn pad(mut self, value: i16) -> Self {
-        self.padding = Edges::all(value);
-        self
-    }
-
-    pub const fn padding(mut self, left: i16, top: i16, right: i16, bottom: i16) -> Self {
-        self.padding = Edges {
-            left,
-            top,
-            right,
-            bottom,
-        };
-        self
-    }
-
-    pub const fn gap(mut self, value: i16) -> Self {
-        self.gap = value;
-        self
-    }
-
-    pub const fn center(mut self) -> Self {
-        self.justify = Justify::Center;
-        self.align = Align::Center;
-        self
-    }
-
-    pub const fn middle(mut self) -> Self {
-        self.align = Align::Center;
-        self
-    }
-
-    pub const fn stretch(mut self) -> Self {
-        self.align = Align::Stretch;
-        self
-    }
-
-    pub const fn end(mut self) -> Self {
-        self.align = Align::End;
-        self
-    }
-
-    pub const fn between(mut self) -> Self {
-        self.justify = Justify::SpaceBetween;
-        self
-    }
-
-    pub const fn content(mut self, value: Justify) -> Self {
-        self.align_content = value;
-        self
-    }
-
-    pub const fn absolute(mut self) -> Self {
-        self.absolute = true;
-        self
-    }
-
-    pub const fn left(mut self, value: i16) -> Self {
-        self.inset.left = Some(value);
-        self
-    }
-
-    pub const fn top(mut self, value: i16) -> Self {
-        self.inset.top = Some(value);
-        self
-    }
-
-    pub const fn right(mut self, value: i16) -> Self {
-        self.inset.right = Some(value);
-        self
-    }
-
-    pub const fn bottom(mut self, value: i16) -> Self {
-        self.inset.bottom = Some(value);
-        self
-    }
-
-    pub const fn text(mut self, align: Align) -> Self {
-        self.text_align = align;
-        self
-    }
-
-    pub const fn nowrap(mut self) -> Self {
-        self.nowrap = true;
-        self
-    }
-
-    pub const fn lines(mut self, value: u16) -> Self {
-        self.max_lines = value;
-        self
-    }
-
-    pub const fn offset(mut self, value: i16) -> Self {
-        self.offset = value;
-        self
-    }
-
-    pub const fn tag(mut self, value: u16) -> Self {
-        self.tag = value;
-        self
-    }
-
-    /// Paints the box's own paper: the ground turned over, under everything inside it.
-    pub const fn filled(mut self) -> Self {
-        self.fill = true;
-        self
-    }
-
-    /// Draws a one-pixel outline around the box.
-    pub const fn bordered(mut self) -> Self {
-        self.border = true;
-        self
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct BoxConstraints {
-    pub min_w: Sub,
-    pub max_w: Sub,
-    pub min_h: Sub,
-    pub max_h: Sub,
-}
-
-impl BoxConstraints {
-    pub const fn loose(width: Sub, height: Sub) -> Self {
-        Self {
-            min_w: 0,
-            max_w: width,
-            min_h: 0,
-            max_h: height,
-        }
-    }
-
-    pub const fn tight(width: Sub, height: Sub) -> Self {
-        Self {
-            min_w: width,
-            max_w: width,
-            min_h: height,
-            max_h: height,
-        }
-    }
-
-    fn deflate(self, padding: Edges) -> Self {
-        let horizontal = padding.horizontal();
-        let vertical = padding.vertical();
-        Self {
-            min_w: (self.min_w - horizontal).max(0),
-            max_w: (self.max_w - horizontal).max(0),
-            min_h: (self.min_h - vertical).max(0),
-            max_h: (self.max_h - vertical).max(0),
-        }
-    }
-
-    fn enforce(self, style: &Style) -> Self {
-        let mut constraints = self;
-        if let Some(width) = style.width.resolve(self.max_w) {
-            constraints.min_w = width.max(0);
-            constraints.max_w = width.max(0);
-        }
-        if let Some(height) = style.height.resolve(self.max_h) {
-            constraints.min_h = height.max(0);
-            constraints.max_h = height.max(0);
-        }
-        if let Some(value) = style.min_width.resolve(self.max_w) {
-            constraints.min_w = constraints.min_w.max(value);
-        }
-        if let Some(value) = style.min_height.resolve(self.max_h) {
-            constraints.min_h = constraints.min_h.max(value);
-        }
-        if let Some(value) = style.max_width.resolve(self.max_w) {
-            constraints.max_w = constraints.max_w.min(value);
-        }
-        if let Some(value) = style.max_height.resolve(self.max_h) {
-            constraints.max_h = constraints.max_h.min(value);
-        }
-        constraints.min_w = constraints.min_w.clamp(0, constraints.max_w);
-        constraints.min_h = constraints.min_h.clamp(0, constraints.max_h);
-        constraints
-    }
-
-    fn constrain(self, width: Sub, height: Sub) -> Size {
-        Size {
-            w: width.clamp(self.min_w, self.max_w),
-            h: height.clamp(self.min_h, self.max_h),
-        }
-    }
-
-    fn main(self, horizontal: bool) -> (Sub, Sub) {
-        if horizontal {
-            (self.min_w, self.max_w)
-        } else {
-            (self.min_h, self.max_h)
-        }
-    }
-
-    fn cross(self, horizontal: bool) -> (Sub, Sub) {
-        if horizontal {
-            (self.min_h, self.max_h)
-        } else {
-            (self.min_w, self.max_w)
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Size {
-    pub w: Sub,
-    pub h: Sub,
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-pub struct Point {
-    pub x: Sub,
-    pub y: Sub,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum Kind {
-    Box,
-    Text { start: u16, len: u16 },
-    Custom { slot: u8 },
-}
-
-/// The width a text node was measured at. `Default` is a pair no constraint produces, so a
-/// freshly declared node never reads as already measured.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct Measured {
-    min_w: Sub,
-    max_w: Sub,
-}
-
-impl Default for Measured {
-    fn default() -> Self {
-        Self {
-            min_w: Sub::MIN,
-            max_w: Sub::MIN,
-        }
-    }
-}
-
+/// The nodes of one declaration, linked in the order they were pushed.
 #[derive(Clone, Copy, Debug)]
-struct Node {
-    style: Style,
-    kind: Kind,
-    parent: u16,
-    first: u16,
-    last: u16,
-    next: u16,
-    offset: Point,
-    measured: Size,
-    /// The constraints `measured` came from. A text node is asked for its size many times in
-    /// one declaration — flex measures, then places, then measures again — and every ask is a
-    /// full pass of glyph lookups in flash unless the answer is kept.
-    measured_at: Measured,
-    alloc: Sub,
-    rect: super::Rect,
-    clip: super::Rect,
-    clipped: bool,
-}
-
-impl Default for Node {
-    fn default() -> Self {
-        Self {
-            style: Style::new(),
-            kind: Kind::Box,
-            parent: NONE,
-            first: NONE,
-            last: NONE,
-            next: NONE,
-            offset: Point::default(),
-            measured: Size::default(),
-            measured_at: Measured::default(),
-            alloc: 0,
-            rect: super::Rect::default(),
-            clip: super::Rect::default(),
-            clipped: false,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct NodeInfo {
-    pub kind: Kind,
-    pub style: Style,
-    pub rect: super::Rect,
-    pub clip: super::Rect,
-    pub clipped: bool,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct NodeId(pub u16);
-
-impl NodeId {
-    pub const NONE: Self = Self(NONE);
-
-    pub fn is_none(self) -> bool {
-        self.0 == NONE
-    }
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Tree {
+pub(crate) struct Tree {
     nodes: [Node; MAX_NODES],
     len: u16,
     root: u16,
+    scrolls: [ScrollSlot; MAX_SCROLL_AREAS],
+}
+
+/// The named scroll boxes one declaration may report. The text page uses two.
+const MAX_SCROLL_AREAS: usize = 4;
+
+/// One named scroll box's last layout: the node it belongs to, and what it reported then.
+#[derive(Clone, Copy, Debug)]
+struct ScrollSlot {
+    id: ScrollId,
+    node: u16,
+    offset: i16,
+    content: i16,
+    viewport: i16,
+}
+
+impl Default for ScrollSlot {
+    fn default() -> Self {
+        Self {
+            id: ScrollId::NONE,
+            node: NONE,
+            offset: 0,
+            content: 0,
+            viewport: 0,
+        }
+    }
 }
 
 impl Default for Tree {
@@ -584,32 +67,25 @@ impl Default for Tree {
 }
 
 impl Tree {
-    pub fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self {
             nodes: [Node::default(); MAX_NODES],
             len: 0,
             root: NONE,
+            scrolls: [ScrollSlot::default(); MAX_SCROLL_AREAS],
         }
     }
 
-    pub fn len(&self) -> usize {
+    pub(crate) fn len(&self) -> usize {
         usize::from(self.len)
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.len == 0
-    }
-
-    pub fn root(&self) -> NodeId {
-        NodeId(self.root)
-    }
-
-    pub fn parent(&self, id: NodeId) -> Option<NodeId> {
+    pub(crate) fn parent(&self, id: NodeId) -> Option<NodeId> {
         let parent = self.nodes.get(usize::from(id.0))?.parent;
         (parent != NONE).then_some(NodeId(parent))
     }
 
-    pub fn push(&mut self, style: Style, kind: Kind, parent: NodeId) -> NodeId {
+    pub(crate) fn push(&mut self, style: Style, kind: NodeKind, parent: NodeId) -> NodeId {
         if usize::from(self.len) >= MAX_NODES {
             debug_assert!(false, "the page ran out of nodes");
             return NodeId::NONE;
@@ -639,13 +115,13 @@ impl Tree {
         NodeId(id)
     }
 
-    pub fn rect(&self, id: NodeId) -> super::Rect {
+    pub(crate) fn rect(&self, id: NodeId) -> Rect {
         self.nodes
             .get(usize::from(id.0))
-            .map_or_else(super::Rect::default, |node| node.rect)
+            .map_or_else(Rect::default, |node| node.rect)
     }
 
-    pub fn info(&self, id: NodeId) -> NodeInfo {
+    pub(crate) fn info(&self, id: NodeId) -> NodeInfo {
         let node = &self.nodes[usize::from(id.0)];
         NodeInfo {
             kind: node.kind,
@@ -656,33 +132,87 @@ impl Tree {
         }
     }
 
-    pub fn tag_of(&self, id: NodeId) -> u16 {
-        self.nodes
-            .get(usize::from(id.0))
-            .map_or(0, |node| node.style.tag)
+    pub(crate) fn rects(&self) -> impl Iterator<Item = Rect> + '_ {
+        self.nodes[..usize::from(self.len)]
+            .iter()
+            .map(|node| node.rect)
+    }
+
+    pub(crate) fn text_rects(&self) -> impl Iterator<Item = Rect> + '_ {
+        self.nodes[..usize::from(self.len)]
+            .iter()
+            .filter(|node| matches!(node.kind, NodeKind::Text { .. }))
+            .map(|node| node.rect)
+    }
+
+    pub(crate) fn paint_rect(&self, slot: u8) -> Option<Rect> {
+        self.nodes[..usize::from(self.len)]
+            .iter()
+            .find(|node| node.kind == NodeKind::Paint { slot })
+            .map(|node| node.rect)
+    }
+
+    /// The last layout of the scroll box named `area`, if the declaration made one.
+    pub(crate) fn scroll_info(&self, area: ScrollId) -> Option<ScrollInfo> {
+        if area.is_none() {
+            return None;
+        }
+        self.scrolls
+            .iter()
+            .find(|slot| slot.id == area && slot.node != NONE)
+            .map(|slot| ScrollInfo {
+                id: slot.id,
+                rect: self.rect(NodeId(slot.node)),
+                offset: slot.offset,
+                content: slot.content,
+                viewport: slot.viewport,
+            })
+    }
+
+    /// Keeps what one named scroll box reported. A box measured twice in one layout — loose
+    /// by its parent, then at its allotted size — is recorded by its placement, so the slot is
+    /// found by node rather than appended.
+    fn record_scroll(&mut self, id: NodeId, area: ScrollId, content: Subpx, viewport: Subpx) {
+        if area.is_none() {
+            return;
+        }
+        let node = self.nodes[usize::from(id.0)];
+        let slot = ScrollSlot {
+            id: area,
+            node: id.0,
+            offset: node.style.scroll_offset,
+            content: pixels(content) as i16,
+            viewport: pixels(viewport) as i16,
+        };
+        if let Some(existing) = self.scrolls.iter_mut().find(|slot| slot.node == id.0) {
+            *existing = slot;
+            return;
+        }
+        if let Some(free) = self.scrolls.iter_mut().find(|slot| slot.node == NONE) {
+            *free = slot;
+            return;
+        }
+        debug_assert!(false, "the page ran out of scroll areas");
     }
 
     /// The last tagged node under `(x, y)`: later declarations are on top.
-    pub fn tag_at(&self, x: i32, y: i32) -> Option<u16> {
-        let mut found = None;
-        for id in 0..self.len {
-            let node = &self.nodes[usize::from(id)];
-            if node.style.tag != 0 && node.rect.contains(x, y) {
-                found = Some(node.style.tag);
-            }
-        }
-        found
+    pub(crate) fn tag_at(&self, x: i32, y: i32) -> Option<u16> {
+        self.nodes[..usize::from(self.len)]
+            .iter()
+            .filter(|node| node.style.tag != 0 && node.rect.contains(x, y))
+            .map(|node| node.style.tag)
+            .next_back()
     }
 
     /// Lays the tree out into `constraints` and fixes every node's pixel rectangle.
-    pub fn finish(&mut self, constraints: BoxConstraints, text: &[u8]) {
+    pub(crate) fn layout(&mut self, constraints: BoxConstraints, text: &[u8]) {
         if self.root == NONE {
             return;
         }
         self.layout_node(NodeId(self.root), constraints, text);
         let root = NodeId(self.root);
         let size = self.nodes[usize::from(root.0)].measured;
-        self.nodes[usize::from(root.0)].rect = super::Rect {
+        self.nodes[usize::from(root.0)].rect = Rect {
             x: 0,
             y: 0,
             w: pixels(size.w),
@@ -694,16 +224,20 @@ impl Tree {
     fn layout_node(&mut self, id: NodeId, constraints: BoxConstraints, text: &[u8]) -> Size {
         let node = self.nodes[usize::from(id.0)];
         let constraints = constraints.enforce(&node.style);
-        let at = Measured {
-            min_w: constraints.min_w,
-            max_w: constraints.max_w,
-        };
+        let at = Measured::of(constraints);
         if self.nodes[usize::from(id.0)].measured_at == at {
             return self.nodes[usize::from(id.0)].measured;
         }
         let size = match node.kind {
-            Kind::Text { start, len } => self.layout_text(&node, start, len, constraints, text),
-            Kind::Box | Kind::Custom { .. } => self.layout_box(id, &node, constraints, text),
+            NodeKind::Text { start, len } => {
+                let inner = constraints.deflate(node.style.padding);
+                let measured = self.layout_text(&node, start, len, inner, text);
+                Size {
+                    w: measured.w + node.style.padding.horizontal(),
+                    h: measured.h + node.style.padding.vertical(),
+                }
+            }
+            NodeKind::Box | NodeKind::Paint { .. } => self.layout_box(id, &node, constraints, text),
         };
         let size = constraints.constrain(size.w, size.h);
         let slot = &mut self.nodes[usize::from(id.0)];
@@ -722,12 +256,25 @@ impl Tree {
     ) -> Size {
         let run = &text[usize::from(start)..usize::from(start) + usize::from(len)];
         let line_height = typeset::line_height();
-        let available = pixels(constraints.max_w).max(1);
-        let natural = typeset::max_content(run).min(available as usize);
+        if node.style.nowrap {
+            // A definite width is the whole answer for a run that cannot wrap; measuring it
+            // would walk the face once per glyph for a width the caller already fixed.
+            let width = if constraints.min_w == constraints.max_w && constraints.max_w < INFINITY {
+                constraints.max_w
+            } else {
+                typeset::max_content(run) as Subpx * PX
+            };
+            return Size {
+                w: width,
+                h: line_height as Subpx * PX,
+            };
+        }
+        let natural = typeset::max_content(run);
+        let available = pixels(constraints.max_w).max(1) as usize;
         let width = if constraints.min_w == constraints.max_w {
-            available as usize
+            available
         } else {
-            natural
+            natural.min(available)
         };
         let paragraph = typeset::wrap(
             run,
@@ -735,8 +282,8 @@ impl Tree {
             usize::from(node.style.max_lines).min(typeset::MAX_LINES),
         );
         Size {
-            w: width as Sub * UNIT,
-            h: (paragraph.count * line_height) as Sub * UNIT,
+            w: width as Subpx * PX,
+            h: (paragraph.count * line_height) as Subpx * PX,
         }
     }
 
@@ -748,11 +295,11 @@ impl Tree {
         text: &[u8],
     ) -> Size {
         let inner = constraints.deflate(node.style.padding);
-        let size = match node.style.display {
-            Display::Flex => self.layout_flex(id, node, inner, text, false),
-            Display::Wrap => self.layout_flex(id, node, inner, text, true),
-            Display::Stack => self.layout_stack(id, node, constraints, inner, text),
-            Display::Scroll => self.layout_scroll(id, node, constraints, inner, text),
+        let size = match node.style.flow {
+            Flow::Flex => self.layout_flex(id, node, inner, text, false),
+            Flow::Wrap => self.layout_flex(id, node, inner, text, true),
+            Flow::Stack => self.layout_stack(id, node, constraints, inner, text),
+            Flow::Scroll => self.layout_scroll(id, node, constraints, inner, text),
         };
         Size {
             w: size.w + node.style.padding.horizontal(),
@@ -768,17 +315,16 @@ impl Tree {
         text: &[u8],
         wraps: bool,
     ) -> Size {
-        let _ = &text;
         let horizontal = node.style.axis == Axis::Row;
         let (main_min, main_max) = inner.main(horizontal);
         let (cross_min, cross_max) = inner.cross(horizontal);
-        let gap = node.style.gap as Sub * UNIT;
+        let gap = node.style.gap as Subpx * PX;
+        let basis_base = if horizontal { inner.max_w } else { inner.max_h };
 
         let mut count = 0usize;
         let mut grow = 0u32;
         let mut shrink = 0u32;
         let mut base_total = 0i32;
-        let mut cross_natural = 0i32;
         let mut child = self.nodes[usize::from(id.0)].first;
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
@@ -799,15 +345,26 @@ impl Tree {
                         max_h: INFINITY,
                     }
                 };
-                let measured = self.layout_node(NodeId(child), loose, text);
-                let (main_size, cross_size) = if horizontal {
-                    (measured.w, measured.h)
+                // A child with an explicit basis discards whatever its natural main size would
+                // have been, so measuring it here is a full text pass thrown away — and a scroll
+                // box with `basis(0)` would be measured at the unbounded width the loose
+                // constraints hand it. The placement pass below measures it once, at the size it
+                // was actually given. A wrapping flex still needs every natural size to break
+                // its runs.
+                let explicit = if wraps {
+                    None
                 } else {
-                    (measured.h, measured.w)
+                    child_node.style.basis.resolve(basis_base)
+                };
+                let main_size = match explicit {
+                    Some(basis) => basis,
+                    None => {
+                        let measured = self.layout_node(NodeId(child), loose, text);
+                        if horizontal { measured.w } else { measured.h }
+                    }
                 };
                 self.nodes[usize::from(child)].alloc = main_size;
                 base_total += main_size;
-                cross_natural = cross_natural.max(cross_size);
                 grow += u32::from(child_node.style.grow);
                 shrink += u32::from(child_node.style.shrink);
                 count += 1;
@@ -817,7 +374,7 @@ impl Tree {
         if count == 0 {
             return Size::default();
         }
-        let gaps = gap * (count as Sub - 1);
+        let gaps = gap * (count as Subpx - 1);
         let definite = length_of(
             &node.style,
             !horizontal,
@@ -926,7 +483,7 @@ impl Tree {
         }
     }
 
-    fn stretch_cross(&mut self, id: NodeId, horizontal: bool, cross: Sub, text: &[u8]) {
+    fn stretch_cross(&mut self, id: NodeId, horizontal: bool, cross: Subpx, text: &[u8]) {
         let mut child = self.nodes[usize::from(id.0)].first;
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
@@ -959,17 +516,17 @@ impl Tree {
         id: NodeId,
         node: &Node,
         inner: BoxConstraints,
-        _text: &[u8],
+        text: &[u8],
         horizontal: bool,
-        main: Sub,
+        main: Subpx,
     ) -> Size {
-        let gap = node.style.gap as Sub * UNIT;
-        let (cross_min, cross_max) = inner.cross(horizontal);
+        let gap = node.style.gap as Subpx * PX;
+        let (cross_min, _) = inner.cross(horizontal);
+        let mut content_cross = 0i32;
+        let mut runs = 0usize;
         let mut child = self.nodes[usize::from(id.0)].first;
         let mut run_main = 0i32;
         let mut run_cross = 0i32;
-        let mut content_cross = 0i32;
-        let mut runs = 0usize;
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
@@ -982,12 +539,10 @@ impl Tree {
                 };
                 if run_main > 0 && run_main + gap + main_size > main {
                     content_cross += run_cross + gap;
+                    runs += 1;
                     run_main = 0;
                     run_cross = 0;
-                    runs += 1;
                 }
-                self.nodes[usize::from(child)].alloc = main_size;
-                self.nodes[usize::from(child)].offset = Point { x: run_main, y: 0 };
                 run_main += main_size + gap;
                 run_cross = run_cross.max(cross_size);
             }
@@ -995,7 +550,6 @@ impl Tree {
         }
         content_cross += run_cross;
         let runs = runs + 1;
-        let _ = cross_max;
         let definite_cross = length_of(
             &node.style,
             horizontal,
@@ -1003,53 +557,91 @@ impl Tree {
         );
         let cross = definite_cross.unwrap_or(content_cross).max(cross_min);
         let (lead, spacing) = justify(node.style.align_content, cross - content_cross, runs);
-        // A second walk assigns run and item offsets now that run heights and the leading
-        // space are known.
-        let mut child = self.nodes[usize::from(id.0)].first;
-        let mut run_main = 0i32;
-        let mut run_cross = 0i32;
         let mut y = lead.max(0);
-        let mut x = 0i32;
-        while child != NONE {
-            let next = self.nodes[usize::from(child)].next;
-            let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
-                let size = self.nodes[usize::from(child)].measured;
-                let (main_size, cross_size) = if horizontal {
-                    (size.w, size.h)
-                } else {
-                    (size.h, size.w)
-                };
-                if run_main > 0 && run_main + gap + main_size > main {
-                    y += run_cross + gap + spacing;
-                    run_main = 0;
-                    run_cross = 0;
-                    x = 0;
+        let mut cursor = self.nodes[usize::from(id.0)].first;
+        while cursor != NONE {
+            // One run at a time: find where it ends and how wide it is across the axis.
+            let mut end = NONE;
+            let mut run_cross = 0i32;
+            let mut probe = 0i32;
+            let mut child = cursor;
+            while child != NONE {
+                let next = self.nodes[usize::from(child)].next;
+                let child_node = self.nodes[usize::from(child)];
+                if !child_node.style.absolute {
+                    let measured = self.nodes[usize::from(child)].measured;
+                    let (main_size, cross_size) = if horizontal {
+                        (measured.w, measured.h)
+                    } else {
+                        (measured.h, measured.w)
+                    };
+                    if probe > 0 && probe + gap + main_size > main {
+                        end = child;
+                        break;
+                    }
+                    probe += main_size + gap;
+                    run_cross = run_cross.max(cross_size);
                 }
-                let inner_cross = align_offset(
-                    node.style.align,
-                    child_node.style.align_self,
-                    cross_size,
-                    run_cross,
-                );
-                let offset = if horizontal {
-                    Point {
-                        x: x + run_main,
-                        y: y + inner_cross,
-                    }
-                } else {
-                    Point {
-                        x: y + inner_cross,
-                        y: x + run_main,
-                    }
-                };
-                self.nodes[usize::from(child)].offset = offset;
-                run_main += main_size + gap;
-                run_cross = run_cross.max(cross_size);
+                child = next;
             }
-            child = next;
+            let mut x = 0i32;
+            let mut child = cursor;
+            while child != end {
+                let next = self.nodes[usize::from(child)].next;
+                let child_node = self.nodes[usize::from(child)];
+                if !child_node.style.absolute {
+                    let measured = self.nodes[usize::from(child)].measured;
+                    let (main_size, cross_size) = if horizontal {
+                        (measured.w, measured.h)
+                    } else {
+                        (measured.h, measured.w)
+                    };
+                    let cross_size = if node.style.align == Align::Stretch {
+                        let constraints = if horizontal {
+                            BoxConstraints {
+                                min_w: main_size,
+                                max_w: main_size,
+                                min_h: run_cross,
+                                max_h: run_cross,
+                            }
+                        } else {
+                            BoxConstraints {
+                                min_w: run_cross,
+                                max_w: run_cross,
+                                min_h: main_size,
+                                max_h: main_size,
+                            }
+                        };
+                        let stretched = self.layout_node(NodeId(child), constraints, text);
+                        if horizontal { stretched.h } else { stretched.w }
+                    } else {
+                        cross_size
+                    };
+                    let inner_cross = align_offset(
+                        node.style.align,
+                        child_node.style.align_self,
+                        cross_size,
+                        run_cross,
+                    );
+                    let offset = if horizontal {
+                        Point {
+                            x,
+                            y: y + inner_cross,
+                        }
+                    } else {
+                        Point {
+                            x: y + inner_cross,
+                            y: x,
+                        }
+                    };
+                    self.nodes[usize::from(child)].offset = offset;
+                    x += main_size + gap;
+                }
+                child = next;
+            }
+            cursor = end;
+            y += run_cross + gap + spacing;
         }
-        let _ = (run_cross, x);
         if horizontal {
             Size { w: main, h: cross }
         } else {
@@ -1147,12 +739,21 @@ impl Tree {
         };
         let mut content = 0;
         let mut cross = 0;
+        let mut count = 0;
+        let gap = node.style.gap as Subpx * PX;
+        // A box with no room across has no content to measure: wrapping a paragraph into a
+        // zero-width box reports one line per glyph, and a loose pass asks for that width
+        // before the parent hands out the real one.
+        let across = if horizontal { inner.max_h } else { inner.max_w };
         let mut child = self.nodes[usize::from(id.0)].first;
-        while child != NONE {
+        while across > 0 && child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
             if !child_node.style.absolute {
                 let size = self.layout_node(NodeId(child), unbounded, text);
+                if count > 0 {
+                    content += gap;
+                }
                 if horizontal {
                     content += size.w;
                     cross = cross.max(size.h);
@@ -1160,6 +761,7 @@ impl Tree {
                     content += size.h;
                     cross = cross.max(size.w);
                 }
+                count += 1;
             }
             child = next;
         }
@@ -1176,21 +778,40 @@ impl Tree {
                 content
             });
         let viewport = if horizontal { width } else { height };
-        let shift = -(i32::from(node.style.offset) * UNIT).min((content - viewport).max(0));
+        let shift = -(i32::from(node.style.scroll_offset) * PX);
+        self.record_scroll(id, node.style.scroll_area, content, viewport);
+        let room = if horizontal { height } else { width };
+        let mut cursor = 0;
         let mut child = self.nodes[usize::from(id.0)].first;
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
             if !child_node.style.absolute {
-                self.nodes[usize::from(child)].offset = if horizontal {
-                    Point { x: shift, y: 0 }
+                let (main, across) = if horizontal {
+                    (child_node.measured.w, child_node.measured.h)
                 } else {
-                    Point { x: 0, y: shift }
+                    (child_node.measured.h, child_node.measured.w)
                 };
+                let cross_at = match node.style.align {
+                    Align::Center => (room - across).max(0) / 2,
+                    Align::End => (room - across).max(0),
+                    _ => 0,
+                };
+                self.nodes[usize::from(child)].offset = if horizontal {
+                    Point {
+                        x: shift + cursor,
+                        y: cross_at,
+                    }
+                } else {
+                    Point {
+                        x: cross_at,
+                        y: shift + cursor,
+                    }
+                };
+                cursor += main + gap;
             }
             child = next;
         }
-        let _ = cross;
         Size {
             w: width,
             h: height,
@@ -1199,7 +820,7 @@ impl Tree {
 
     fn absolute(&mut self, id: NodeId, origin: Point) {
         let node = self.nodes[usize::from(id.0)];
-        let scroll = node.style.display == Display::Scroll;
+        let scroll = node.style.flow == Flow::Scroll;
         let clip = if scroll { node.rect } else { node.clip };
         let clipped = node.clipped || scroll;
         let content = Point {
@@ -1214,7 +835,7 @@ impl Tree {
                 y: content.y + child_node.offset.y,
             };
             let size = child_node.measured;
-            let rect = super::Rect {
+            let rect = Rect {
                 x: pixels(position.x),
                 y: pixels(position.y),
                 w: pixels(position.x + size.w) - pixels(position.x),
@@ -1229,7 +850,7 @@ impl Tree {
     }
 }
 
-fn distribute(nodes: &mut [Node; MAX_NODES], parent: NodeId, amount: Sub, grow: bool) {
+fn distribute(nodes: &mut [Node; MAX_NODES], parent: NodeId, amount: Subpx, grow: bool) {
     let weight = |node: &Node| {
         if grow {
             u32::from(node.style.grow)
@@ -1254,7 +875,7 @@ fn distribute(nodes: &mut [Node; MAX_NODES], parent: NodeId, amount: Sub, grow: 
         let node = &mut nodes[usize::from(child)];
         let weight = weight(node);
         if weight > 0 {
-            let share = amount * weight as Sub / total as Sub;
+            let share = amount * weight as Subpx / total as Subpx;
             if grow {
                 node.alloc += share;
                 left -= share;
@@ -1284,13 +905,7 @@ fn distribute(nodes: &mut [Node; MAX_NODES], parent: NodeId, amount: Sub, grow: 
     }
 }
 
-/// The one value a tight axis allows, so a child absolutely positioned against the edge can
-/// find that edge before the parent's own size is clamped.
-fn tight(min: Sub, max: Sub) -> Option<Sub> {
-    (min == max && max < INFINITY).then_some(max)
-}
-
-fn length_of(style: &Style, vertical: bool, base: Sub) -> Option<Sub> {
+fn length_of(style: &Style, vertical: bool, base: Subpx) -> Option<Subpx> {
     if vertical {
         style.height.resolve(base)
     } else {
@@ -1298,7 +913,7 @@ fn length_of(style: &Style, vertical: bool, base: Sub) -> Option<Sub> {
     }
 }
 
-fn align_offset(align: Align, own: Align, size: Sub, space: Sub) -> Sub {
+fn align_offset(align: Align, own: Align, size: Subpx, space: Subpx) -> Subpx {
     let align = if own == Align::Start { align } else { own };
     match align {
         Align::Start | Align::Stretch => 0,
@@ -1307,7 +922,7 @@ fn align_offset(align: Align, own: Align, size: Sub, space: Sub) -> Sub {
     }
 }
 
-fn justify(justify: Justify, leftover: Sub, count: usize) -> (Sub, Sub) {
+fn justify(justify: Justify, leftover: Subpx, count: usize) -> (Subpx, Subpx) {
     let leftover = leftover.max(0);
     match justify {
         Justify::Start => (0, 0),
@@ -1316,38 +931,34 @@ fn justify(justify: Justify, leftover: Sub, count: usize) -> (Sub, Sub) {
         Justify::SpaceBetween => (
             0,
             if count > 1 {
-                leftover / (count as Sub - 1)
+                leftover / (count as Subpx - 1)
             } else {
                 0
             },
         ),
         Justify::SpaceAround => {
-            let each = leftover / count as Sub;
+            let each = leftover / count as Subpx;
             (each / 2, each)
         }
         Justify::SpaceEvenly => {
-            let each = leftover / (count as Sub + 1);
+            let each = leftover / (count as Subpx + 1);
             (each, each)
         }
     }
 }
 
-fn absolute_offset(style: &Style, size: Size, width: Sub, height: Sub) -> (Sub, Sub) {
+fn absolute_offset(style: &Style, size: Size, width: Subpx, height: Subpx) -> (Subpx, Subpx) {
     let horizontal = match (style.inset.left, style.inset.right) {
-        (Some(left), _) => left as Sub * UNIT,
-        (None, Some(right)) => width - size.w - right as Sub * UNIT,
+        (Some(left), _) => left as Subpx * PX,
+        (None, Some(right)) => width - size.w - right as Subpx * PX,
         (None, None) => 0,
     };
     let vertical = match (style.inset.top, style.inset.bottom) {
-        (Some(top), _) => top as Sub * UNIT,
-        (None, Some(bottom)) => height - size.h - bottom as Sub * UNIT,
+        (Some(top), _) => top as Subpx * PX,
+        (None, Some(bottom)) => height - size.h - bottom as Subpx * PX,
         (None, None) => 0,
     };
     (horizontal, vertical)
-}
-
-fn pixels(value: Sub) -> i32 {
-    (value + UNIT / 2).div_euclid(UNIT)
 }
 
 #[cfg(test)]

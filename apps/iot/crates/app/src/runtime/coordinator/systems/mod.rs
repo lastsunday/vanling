@@ -5,6 +5,7 @@ mod demand;
 mod governor;
 mod network;
 mod notice;
+mod page;
 mod playback;
 
 use alloc::boxed::Box;
@@ -21,6 +22,7 @@ pub(crate) use self::demand::DemandSystem;
 pub(crate) use self::governor::GovernorSystem;
 pub(crate) use self::network::NetworkSystem;
 pub(crate) use self::notice::NoticeSystem;
+pub(crate) use self::page::PageSystem;
 pub(crate) use self::playback::PlaybackSystem;
 
 /// One pass takes at most [`crate::runtime::feature::input::INTENT_SLOTS`] intents and each can carry a command,

@@ -398,17 +398,32 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 软件 canary 在每次上下文切换时检查栈底以下的哨兵，并以出错的任务名 panic——比静默破坏内存好。
 ---
 
-## 面板的字模：Fusion Pixel 12 px 等宽，GB2312 一套字（`[测试]`，2026-11-20）
+## 面板的字模：Fusion Pixel 12 px 等宽，GB2312 + Big5 一套字（`[测试]`，2026-11-20）
 
-字模在 `apps/iot/crates/core/src/ui/font.rs`，表是 `crates/core/assets/font/ui12.bin`（232,156 B），由 `cargo run -p iot-tool -- font` 从 `crates/tool/assets/fonts/ui12.bdf`（1.0 MB，随字体附 MIT 与 OFL 两份许可）裁出。BDF 是 TakWolf 的 Fusion Pixel 12px Mono `zh_Hans`，`SIZE 12 75 75`、`FONT_ASCENT 10`、`FONT_DESCENT 2`；子集取 GB2312 的 7,475 个字形。
+字模在 `apps/iot/crates/core/src/ui/font.rs`，表是 `crates/core/assets/font/ui12.bin`（486,881 B），由 `cargo run -p iot-tool -- font` 从 `crates/tool/assets/fonts/ui12.bdf`（2.1 MB，随字体附 MIT 与 OFL 两份许可）裁出。BDF 是 TakWolf 的 Fusion Pixel 12px Mono：`zh_Hans` 的 GB2312 7,475 个字形为底，再用 `font --merge` 并入 `zh_hant` 的 Big5 全表（`big5.txt`，13,706 个码点），共 15,466 个字形。Big5 有 866 个码点（805 个次常用汉字 + 61 个符号）上游 `zh_hant` 本身没有字形，按 `MISSING` 画 □；其余 12,840 个都有。`SIZE 12 75 75`、`FONT_ASCENT 10`、`FONT_DESCENT 2`。
 
 - **表格式 `VLF1`**：32 B 头（字形数、行高、升部、降部）+ 每字形码点 `u16`、打包度量 `u32`、位图偏移 `u32`、位图。码点有序，二分查找；`Face::glyph/advance/measure/glyphs` 是唯一入口。
 - **等宽**：ASCII 步进 6 列，汉字 12 列——一个汉字正好两格，网络名、口令与中英混排都落在同一张网格上。行高 12、行距 13（`LINE`/`ROW_PITCH`），升部 10 行、降部 2 行。
 - **面板度量跟着字面走**：页脚 12 行（`FOOTER_ROWS`）、内容底边 228（`CONTENT_BOTTOM`）、左右边距 10（`MARGIN`）、触控最小 44 px（`TOUCH_MIN`）。`panel.rs` 的 `FACE_HEIGHT == LINE` 与 `the_panel_is_measured_in_the_face_it_draws_with` 把「字号改了而版面没改」挡在编译/测试里。
-- **网络页的按压目标因此变高**：列表 3 行 × 45 px（`LIST_ROW_H >= TOUCH_MIN`），动作条顶边 184，键格 45 px，确认框 118 px、每行 34 格（`SSID_BYTES <= DIALOG_GLYPHS` 是编译期断言）。
-- **回归**：`font.rs` 钉住表头、ASCII/汉字步进（`NETWORK` 7×6、`中文` 24）、缺字画 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框；`panel.rs` 钉住负号与字号一致；`typeset.rs` 钉住禁则与截断；`services/tests.rs` 的 16 行黄金哈希钉住整页像素。
+- **网络页的按压目标因此变高**：列表 3 行 × 45 px（`LIST_ROW_H >= TOUCH_MIN`），动作条顶边 184，键格 45 px，确认框 118 px、每行 34 格。网络名按像素截断（`ui::text::fit`），缓冲区按 UTF-8 字节而不是字形数：`NAME_BYTES = SSID_BYTES + 1`（截断标记占一字节）、`DIALOG_BYTES` 另留前缀与引号。
+- **回归**：`font.rs` 钉住表头、ASCII/汉字步进（`NETWORK` 7×6、`中文` 24）、缺字画 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框，以及简体/繁体/Big5 样张的覆盖；`panel.rs` 钉住负号与字号一致；`typeset.rs` 钉住禁则与截断；`services/tests.rs` 的 18 行黄金哈希钉住整页像素（`text` 页两行是新增的，其余 16 行未变）。
 
-字模在 flash：`ui12.bin` 232,156 B；BDF 只在工具侧，不进镜像。
+字模在 flash：`ui12.bin` 486,881 B；BDF 只在工具侧，不进镜像。
+
+## Text 页：两段独立滚动区（`[测试]`，2026-11-20）
+
+Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排的换行长文，`GLYPHS` 是逐行字模样张。两块各 306×90 px，内容 132 / 216 px，可滚 42 / 126 px。
+
+- **布局不夹偏移**：`Style::scroll_area(id)` 只命名并记录矩形与可滚距离，`Ui::scroll_info(id)` 读回；限界与回弹留在页面的 `ScrollState`，因为只有它知道越界多远。
+- **构造时量两次**：面板 320×228 与内容都是静态的；第一次空跑拿到区宽，`typeset::wrap` 按该宽度断一次，第二次带着断好的行再布局并 `measure` 两区矩形与行程。
+- **跟手**：按下记 `(id, area, y, at_ms)`；越过 2 px 死区后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag(area, delta)` 直接改偏移，越界半程阻尼。被按住的区 `tick` 不弹回；第二次按下会先释放上一个区。抬手 `fling` 用最近样本的平均速度（第一个样本直接采用），拖动过的抬手不补行。
+- **滑动/滑行**：没有拖动过的快速上下滑仍先走 3 行（36 px），再按手势平均 `distance/held` 起滑；≥250 px/s 才滑，封顶 1600 px/s，每 20 ms tick ×0.875，<150 px/s 停，滑行约 `0.16·v0`。停手约 100 ms 没有新样本就把速度清零。
+- **回弹**：越界上限是 `viewport/4`（区装得下或关掉回弹时为 0），越界后额外 ×0.5 阻尼，松手后每 tick 补一半差距，≤1 px 吸附。`ScrollConfig { bounce, bar }` 是页面唯一的开关，两者都不改布局，所以切换无需重测。
+- **滚动条**：右侧 2 px 槽常驻；thumb 高 `max(8, viewport²/(viewport+max))`，位置 `(viewport-height)·clamp(offset,0,max)/max`，`max == 0` 或关掉时隐藏。thumb 用 `bordered()` 而不是 `filled()`——Text 页不声明底色，`fill_rect` 没有 ground 可翻，2 px 边框读起来是实心且与字形一样反色。
+- **动起来**：`PageSystem` 每 `STEP_MS` 调 `LocalPage::tick`，`FrameSnapshot::animating()` 让渲染器保持 `TimeDriven`；`Repaint::WhenOrOverlay` 在 40 ms 重绘地板内补画收尾那一帧。
+- **布局只量一次**：flex 跳过带显式 `basis` 的子节点的自然主轴测量（该值本来就被丢弃），零横向空间的滚动盒不排内容。Text 页的段落只在构造时 `wrap` 一次，声明是一行一个 `nowrap` + 显式宽度的节点，`layout_text` 对它们跳过 `max_content`，一帧不再逐字查字模表；18 行整页黄金哈希不动。
+- **`[实测]` S3**（240 MHz，`IOT_BOOT_PAGE=text`，DEBUG 日志）：首窗 `11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms`，稳态 `5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)`；改前同页是 `6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms`。主栈 86,216 B、峰值 30,364 B，无 panic。静止页不重绘，拖动时的逐帧开销只能靠手指实测。
+- **回归**：`services::text::tests` 钉住两区都可滚且互不影响、滑点在区内才路由、拖动跟手、抬手滑行不补行、快速滑动仍补 3 行、拖动后的点击不补行、横向/区外忽略、`on_hide` 归零、样张无缺字、节点数上限、ASCII 单格与样张对齐；`shared::kit::scroll::tests` 钉住速度阈值、滑行距离、回弹归位、按住不弹与两个开关；`services::tests::a_text_scroll_moves_one_region_and_its_thumb` 钉住偏移进画面且 thumb 跟着走。
 
 ## 一帧的声明占用（`[测试]`，2026-11-20）
 

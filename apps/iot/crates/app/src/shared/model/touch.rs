@@ -88,6 +88,17 @@ impl TouchState {
                 self.bump_two_finger_runs(before);
                 self.view.press_count = self.view.press_count.wrapping_add(1);
             }
+            GestureEvent::Drag { id, x, y, .. } => {
+                let before = self.live_point_count();
+                if let Some(slot) = self.point_slot(id)
+                    && let Some(live) = self.points[slot]
+                    && let Some(dir) = direction_between(live.x, live.y, x, y, MOVE_DEADBAND_PX)
+                {
+                    self.live_dir[slot] = dir.code();
+                }
+                self.upsert_point(id, x, y);
+                self.bump_two_finger_runs(before);
+            }
             GestureEvent::Ghost => {
                 self.view.ghost_count = self.view.ghost_count.saturating_add(1);
             }

@@ -49,7 +49,7 @@ pub(super) fn draw_marked(canvas: &mut Canvas<'_>, text: &[u8], left: usize, top
     let (right, bottom) = (left + text_width(canvas, text), top + LINE);
     for y in top.saturating_sub(1)..=bottom {
         for x in left.saturating_sub(1)..=right {
-            canvas.draw_pixel(x as isize, y as isize);
+            canvas.invert_pixel(x as isize, y as isize);
         }
     }
     canvas.draw_text(text, left, top);

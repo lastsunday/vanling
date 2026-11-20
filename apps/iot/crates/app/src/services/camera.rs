@@ -113,7 +113,7 @@ mod tests {
     use alloc::vec;
     use iot_core::drivers::camera::CameraCounters;
     use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-    use iot_core::ui::{BoxConstraints, Canvas, Screen, UNIT, Ui};
+    use iot_core::ui::{BoxConstraints, Canvas, PX, Screen, Ui};
 
     const WIDTH: usize = PANEL_COLUMNS;
     const HEIGHT: usize = CONTENT_BOTTOM + iot_core::ui::panel::FOOTER_ROWS;
@@ -123,8 +123,8 @@ mod tests {
             let mut canvas = Canvas::new(frame, WIDTH, HEIGHT, None);
             let mut ui = Ui::new_with_height(&mut canvas, Screen::default(), CONTENT_BOTTOM);
             CameraPage::view_frame(snapshot, &mut ui, readout);
-            ui.finish(
-                BoxConstraints::tight(PANEL_COLUMNS as i32 * UNIT, CONTENT_BOTTOM as i32 * UNIT),
+            ui.paint(
+                BoxConstraints::tight(PANEL_COLUMNS as i32 * PX, CONTENT_BOTTOM as i32 * PX),
                 &mut |_, _, _| {},
             );
         }

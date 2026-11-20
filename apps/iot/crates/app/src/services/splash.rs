@@ -5,7 +5,7 @@ use crate::shared::model::DeviceState;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, InputEvent};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-use iot_core::ui::{Align, Style, Ui};
+use iot_core::ui::{Style, TextAlign, Ui};
 
 /// The splash holds one question — a boot hold asks for setup — and the product's name.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -31,7 +31,7 @@ impl super::LocalPage for SplashPage {
                 .gap(24),
             |ui| {
                 for line in [b"VANLING".as_slice(), b"HOLD BOOT", b"SETUP"] {
-                    ui.text(line, Style::new().nowrap().text(Align::Center));
+                    ui.text(line, Style::new().nowrap().text_align(TextAlign::Center));
                 }
             },
         );

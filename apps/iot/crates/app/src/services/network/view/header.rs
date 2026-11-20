@@ -1,11 +1,11 @@
 //! The header's three rows: the page's title and window, the link, and the draft or address.
 
 use crate::services::network::view::text::{
-    format_address, format_bars, format_network_name, format_phase, format_psk, format_setup_name,
-    format_window,
+    NAME_BYTES, format_address, format_bars, format_network_name, format_phase, format_psk,
+    format_setup_name, format_window,
 };
 use crate::shared::model::NetworkView;
-use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus, SSID_BYTES};
+use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus};
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
 use iot_core::ui::Canvas;
 use iot_core::ui::panel::{GLYPH, MARGIN, RIGHT, ROW_PITCH};
@@ -24,8 +24,8 @@ const BARS_GLYPHS: usize = 4;
 /// Right edge of the phase word: one blank cell left of the signal bars.
 const PHASE_RIGHT: isize = (RIGHT - BARS_GLYPHS * GLYPH - GLYPH) as isize;
 
-/// Glyphs a network name is given on the header's network row.
-const HEADER_NAME_GLYPHS: usize = 24;
+/// Pixels a network name is given on the header's network row.
+const HEADER_NAME_W: usize = 24 * GLYPH;
 
 /// Glyphs of the masked passphrase on the row above the keyboard: the whole row, so a draft
 /// longer than it is marked rather than silently truncated.
@@ -36,7 +36,7 @@ const _: () = assert!(
     "the list's window runs into this board's own address on the header's title row"
 );
 const _: () = assert!(
-    MARGIN + (3 + HEADER_NAME_GLYPHS) * GLYPH < PHASE_RIGHT as usize,
+    MARGIN + 3 * GLYPH + HEADER_NAME_W < PHASE_RIGHT as usize,
     "the name of the header's network runs into the phase word beside it"
 );
 
@@ -63,7 +63,7 @@ pub(crate) fn draw(
     }
     if link.shows_setup_box() {
         if let Some(mac) = mac {
-            let mut name = [0u8; SSID_BYTES];
+            let mut name = [0u8; NAME_BYTES];
             let name = format_setup_name(Some(mac), &mut name);
             labelled(canvas, b"AP", name, ROW1);
         }
@@ -71,7 +71,7 @@ pub(crate) fn draw(
         labelled(
             canvas,
             b"AP",
-            format_network_name(ap, HEADER_NAME_GLYPHS, &mut [0u8; SSID_BYTES]),
+            format_network_name(ap, HEADER_NAME_W, &mut [0u8; NAME_BYTES]),
             ROW1,
         );
     }
@@ -171,7 +171,7 @@ mod tests {
     /// the phase word beside it or the draft under it.
     fn name_band(frame: &[u8]) -> Vec<u8> {
         let left = MARGIN * 2;
-        let right = (MARGIN + HEADER_NAME_GLYPHS * GLYPH) * 2;
+        let right = (MARGIN + HEADER_NAME_W) * 2;
         (ROW1..ROW2)
             .flat_map(|y| {
                 let row = y * PANEL_COLUMNS * 2;

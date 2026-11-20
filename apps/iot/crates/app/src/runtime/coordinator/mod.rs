@@ -18,8 +18,8 @@ use iot_core::boot::Readiness;
 
 use self::pacing::{FramePacer, Wait};
 pub(crate) use self::systems::{
-    CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PlaybackSystem,
-    Schedule,
+    CaptureSystem, DemandSystem, GovernorSystem, NetworkSystem, NoticeSystem, PageSystem,
+    PlaybackSystem, Schedule,
 };
 
 pub async fn run_loop(

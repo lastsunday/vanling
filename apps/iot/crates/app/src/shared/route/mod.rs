@@ -32,6 +32,7 @@ pub enum PageId {
     /// The transient the boot lands through, never on: it has a timeout and is not bootable.
     Splash,
     Env,
+    Text,
 }
 
 /// One page's row in the route table: the properties that follow from being that page.
@@ -152,10 +153,18 @@ static ENV: Route = Route {
     timeout_ms: None,
 };
 
+static TEXT: Route = Route {
+    path: "text",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
 impl PageId {
     /// Every page, in the button's order: the wire code is its index, and [`Self::next_page`]
     /// walks it.
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 9] = [
         Self::Ambient,
         Self::Attitude,
         Self::Audio,
@@ -164,6 +173,7 @@ impl PageId {
         Self::Network,
         Self::Splash,
         Self::Env,
+        Self::Text,
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
@@ -180,6 +190,7 @@ impl PageId {
             Self::Network => &NETWORK,
             Self::Splash => &SPLASH,
             Self::Env => &ENV,
+            Self::Text => &TEXT,
         }
     }
 
@@ -351,27 +362,27 @@ mod tests {
                 camera,
                 network,
             };
-        let env = PageId::Env;
-        assert_eq!(lap(Backed::NONE), [env]);
+        let bare = [PageId::Env, PageId::Text];
+        assert_eq!(lap(Backed::NONE), bare);
         assert_eq!(
             lap(board(true, false, false, false, false)),
-            [PageId::Attitude, env]
+            [PageId::Attitude, PageId::Env, PageId::Text]
         );
         assert_eq!(
             lap(board(false, true, false, false, false)),
-            [PageId::Audio, env]
+            [PageId::Audio, PageId::Env, PageId::Text]
         );
         assert_eq!(
             lap(board(false, false, true, false, false)),
-            [PageId::Speaker, env]
+            [PageId::Speaker, PageId::Env, PageId::Text]
         );
         assert_eq!(
             lap(board(false, false, false, true, false)),
-            [PageId::Camera, env]
+            [PageId::Camera, PageId::Env, PageId::Text]
         );
         assert_eq!(
             lap(board(false, false, false, false, true)),
-            [PageId::Network, env]
+            [PageId::Network, PageId::Env, PageId::Text]
         );
         assert_eq!(
             lap(board(true, true, true, true, true)),
@@ -381,7 +392,8 @@ mod tests {
                 PageId::Speaker,
                 PageId::Camera,
                 PageId::Network,
-                env
+                PageId::Env,
+                PageId::Text
             ]
         );
     }

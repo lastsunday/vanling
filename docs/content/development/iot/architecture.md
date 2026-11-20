@@ -80,8 +80,8 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `services/` | 产品服务（页面与设备自己的 `nav`/`light`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
-| `services/{ambient,attitude,camera,env,splash}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页 |
+| `services/` | 产品服务（页面与设备自己的 `nav`/`light`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
+| `services/{ambient,attitude,camera,env,splash,text}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译、动作条与命中；`shape.rs` 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；`view/` 按带拆（`header` / `content` / `overlay`，词在 `text.rs`），带之间的层序由 `shape::Band` 决定；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
@@ -90,7 +90,7 @@ weight = 10
 | `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
 | `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
 | `shared/snapshot.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 `PageSnapshot` |
-| `shared/kit/` | 页面壳 `Panel`（声明 → 布局 → 绘制的调度）、跨页版面 `chrome`（页边距、行距、标签槽）与文字词汇 `text`；只认像素与快照，不认页面 |
+| `shared/kit/` | 页面壳 `Panel`（声明 → 布局 → 绘制的调度）、跨页版面 `chrome`（页边距、行距、标签槽）、文字词汇 `text` 与滚动状态 `scroll`（偏移、滑行、回弹、两个开关）；只认像素与快照，不认页面 |
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
@@ -140,31 +140,37 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 ### 页面模型
 
-每个页面是一个具体类型，分两层回答。`Service` 是各操作平台共用的一面：`apply(&mut self, &BusinessIntent, &mut DeviceState) -> (Option<Command>, Effects)`——自己那条记录先落地，返回设备还欠的事与要出核心的命令，一条意图恰好调到它的一个所有者。`LocalPage: Service` 是本地平台面：`bind` 把一个本地手势译成业务意图（`Option`，含义什么都没有时是 `None`），`publish` 把页面私有的本地 UI 状态交给帧快照（口令草稿、键位、确认框，远程平台看不到），`view` 声明整页（`&FrameSnapshot, &mut Ui`，不取 `self`），`descriptor` 描述它怎么占屏，`on_show`/`on_hide` 默认空实现。`view` 与 `descriptor` 的 `where Self: Sized` 让 `&dyn LocalPage` 仍是本地手势表要的 trait 对象。
+每个页面是一个具体类型，分两层回答。`Service` 是各操作平台共用的一面：`apply(&mut self, &BusinessIntent, &mut DeviceState) -> (Option<Command>, Effects)`——自己那条记录先落地，返回设备还欠的事与要出核心的命令，一条意图恰好调到它的一个所有者。`LocalPage: Service` 是本地平台面：`bind` 把一个本地手势译成业务意图（`Option`，含义什么都没有时是 `None`），`publish` 把页面私有的本地 UI 状态交给帧快照（口令草稿、键位、确认框，远程平台看不到），`view` 声明整页（`&FrameSnapshot, &mut Ui`，不取 `self`），`descriptor` 描述它怎么占屏，`tick` 推进页面自己的时钟，`on_show`/`on_hide` 默认空实现。`view` 与 `descriptor` 的 `where Self: Sized` 让 `&dyn LocalPage` 仍是本地手势表要的 trait 对象。
 
-`Descriptor` 是一页的面板答案：声明函数指针、自绘槽函数指针、底色、是否相机帧、重绘步长与触发条件。构建器默认「无自绘槽、无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn)}` 之一，而不是一段带空形参的函数。
+`Descriptor` 是一页的面板答案：声明函数指针、自绘槽函数指针、底色、是否相机帧、重绘步长与触发条件。构建器默认「无自绘槽、无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn), WhenOrOverlay(fn)}` 之一，而不是一段带空形参的函数。
 
 渲染答案分两层：`LocalPage::view` 用 `Ui` 的 `row`/`column`/`stack`/`wrap`/`scroll`/`text`/`custom` 声明整页，`services::paint` 取 `descriptor(page).view` 交给 `Panel`（布局一次、画字与盒子、再按槽调 `descriptor(page).custom`），最后盖角标；其余四个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`）。
 
+长内容页把滚动留在页面：`Style::scroll_area(id)` 给滚动盒命名，布局沿轴累加子节点（含 `gap`）并把矩形与可滚动距离记进 `Tree`，`Ui::scroll_info(id)` 读回；`shared::kit::scroll::ScrollState<N>` 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。`measure` 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag` 直接改偏移（越界半程阻尼），抬手用 `fling` 接手：速度带符号、阈值以下只回弹。被按住的区 `tick` 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 `Repaint::WhenOrOverlay`，`FrameSnapshot::animating()` 为真时渲染器保持 `TimeDriven`；`PageSystem` 在 `schedule.tick` 里把 `STEP_MS` 交给 `DeviceManager::tick_pages`，偏移因此与快照同帧。
+
+`text` 页在构造时断行一次：`typeset::wrap` 的每行按字节范围与宽度存进快照，声明时各是一个 `nowrap` + 显式宽度的文本节点；`layout_text` 对 nowrap 且宽度已定的节点跳过 `max_content`，一帧不再逐字查字模表。`\n`、`\r`、`\r\n` 都按硬换行处理。
+
 ### 渲染管线：声明一次，布局一次，落墨一次
 
-页面不持有控件树，也不自己算坐标：`view` 跑完就留下一份声明，`Ui` 把它布局成整数矩形，然后画字与盒子。命中测试用同一份声明跑 `Ui::layout`，不建画布。
+页面不持有控件树，也不自己算坐标：`view` 跑完就留下一份声明，`Ui` 把它布局成整数矩形，然后画字与盒子。命中测试用同一份声明跑 `Ui::headless`，不建画布。
 
 | 层 | 做什么 | 词汇 |
 | --- | --- | --- |
-| `ui::layout` | 1/64 px 定点布局；测量自上而下，容器把去掉内边距后的约束交给子节点；最终边按像素取整，相邻盒子的共享边落在同一像素 | `BoxConstraints`、`Length`、`Style`、`Flex`（grow/shrink/basis）、`Wrap` 多 run、`Stack` 绝对定位、`Scroll` 裁剪、`Align`/`Justify` |
+| `ui::layout` | 1/64 px 定点布局；测量自上而下，容器把去掉内边距后的约束交给子节点；最终边按像素取整，相邻盒子的共享边落在同一像素 | `BoxConstraints`、`Length`、`Style`、`Flow`、`Flex`（grow/shrink/basis）、`Wrap` 多 run、`Stack` 绝对定位、`Scroll` 裁剪、`Align`/`Justify`/`TextAlign` |
+| `ui::declare` | `Ui` 的声明构建器与落墨驱动：`view` 期间攒树，结束后布局一次、按槽回调，再画字与盒子 | `Ui::{row, column, stack, wrap, scroll, text, custom, paint, headless, rects}` |
+| `ui::paint` | 每个已布局节点的墨：文字 run、自绘槽、底色与裁剪；单行不换行的 run 直接画 | `NodeKind`、`draw_text` |
 | `ui::typeset` | UAX #14 子集 + CLReq 禁则：行首不落 `。`、行尾不留 `「`；测量与绘制共用同一个断行器，`…` 截断 | `Paragraph { lines, count, truncated }`、`wrap`、`next_char` |
-| `ui::font` | Fusion Pixel 12 px 等宽字模，GB2312 子集；ASCII 步进 6 px、汉字 12 px，升部 10 行 | `Face::glyph/advance/measure/glyphs` |
+| `ui::font` | Fusion Pixel 12 px 等宽字模，GB2312 + Big5（15,466 字形）；ASCII 步进 6 px、汉字 12 px，升部 10 行 | `Face::{glyph, advance, measure, has, glyphs}` |
 | `ui::panel` | 从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距 | `PANEL_COLUMNS`、`CONTENT_BOTTOM`、`LINE`、`ROW_PITCH`、`TOUCH_MIN` |
 | `ui::canvas` | 像素、裁剪与填充/描边；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char, draw_text, push_clip}` |
 
 页面组合有两条硬规矩：读数行一律走 `chrome::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
 
-自绘叶子（波形、刻度盘、网络带）走槽派发：`Ui::custom(style, slot)` 只记槽号，`Ui::finish` 布局后按槽回调页面的 `Custom`。页面的 `view` 与自绘函数都不认识帧缓冲以外的世界，`Panel` 只认识一块 `Canvas` 与它属于哪块屏幕。
+自绘叶子（波形、刻度盘、网络带）走槽派发：`Ui::custom(style, slot)` 只记槽号，`Ui::paint` 布局后按槽回调页面的 `Custom`。页面的 `view` 与自绘函数都不认识帧缓冲以外的世界，`Panel` 只认识一块 `Canvas` 与它属于哪块屏幕。
 
-布局是纯函数，但一帧里同一节点会被问很多次：flex 先测量再摆放，`grow` 级联还会换一组约束再问。`Tree` 因此在每个节点上记 `measured_at`（`enforce` 之后的 `min_w`/`max_w`）与对应的 `measured`，同约束第二次问直接返回，约束变了才重测；新声明拿 `Node::default()` 的哨兵键，上一帧的尺寸不会冒充这一帧。像素层按「一次求边界、整段写」组织：glyph 按行取位图、空字节跳过八个像素，`fill_rect` 每行只求一次裁剪交集，`Start` 且单行的 `draw_text` 不跑断行器，`Screen::fill` 一次写两个像素。这些只改路径不改画面，整页黄金哈希守着。
+布局是纯函数，但一帧里同一节点会被问很多次：flex 先测量再摆放，`grow` 级联还会换一组约束再问。`Tree` 因此在每个节点上记 `measured_at`（`enforce` 之后的四条约束压进一个 `u64`）与对应的 `measured`，同约束第二次问直接返回，约束变了才重测（高度单独变化也算）；新声明拿 `Node::default()` 的哨兵键，上一帧的尺寸不会冒充这一帧。像素层按「一次求边界、整段写」组织：glyph 按行取位图、空字节跳过八个像素，`fill_rect` 每行只求一次裁剪交集，`Start` 且单行的 `draw_text` 不跑断行器，`Screen::fill` 一次写两个像素。这些只改路径不改画面，整页黄金哈希守着。
 
-`Services` 持有八个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
+`Services` 持有九个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
 生命周期由 `state/manager/write.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_screen()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
 

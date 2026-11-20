@@ -154,7 +154,7 @@ S3 的构建走 `scripts/iot-xtensa.sh`：先试本机 esp 工具链，不全则
 
 ## 启动页与 bench 镜像
 
-`IOT_BOOT_PAGE`（`.cargo/config.toml`，默认 `ambient`）决定固件开机停在哪一页 —— `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。`network` 没有对应的 moon 任务，同一条命令手写：
+`IOT_BOOT_PAGE`（`.cargo/config.toml`，默认 `ambient`）决定固件开机停在哪一页 —— `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。`network` 没有对应的 moon 任务，同一条命令手写：
 
 ```sh
 cd apps/iot
