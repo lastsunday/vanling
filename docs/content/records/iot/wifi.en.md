@@ -609,9 +609,11 @@ carries a `phy_init` for the same reason.
 The tables are named after the **board**: `scripts/iot-image.sh` has always looked for
 `partitions/<board>.csv`, and the layout is a board fact anyway. A 6 MB slot does not fit
 inside espflash's assumed 4 MB, so every S3 flash and image task passes `--flash-size 16mb`.
-**The C6's table does not move**: 1 MB holds its largest image, the probe, at 597,264 B. It
-is still a file — the image task and the flash task then have exactly one place that knows
-the layout.
+**The C6's table is a file too**, so the image task and the flash task have exactly one place
+that knows the layout. As of 2026-10-22 its 1 MB factory slot held the largest image, the probe,
+at 597,264 B; from 2026-11-20 the product image also carries the 12 px glyph table and the C6's
+`iot:image` artifact is 1,213,168 B, so the factory slot is **2 MB** (an 8 MB part has the room).
+See the glyph section in `hardware-constraints.md`.
 
 ## Where a credential lives (the `creds` partition)
 
@@ -2569,6 +2571,8 @@ C6 `820,384 / 1,048,576 B` (78.24%).
 - **Glyphs**: Spleen 5×8 (Frederic Cambus, BSD-2-Clause), natively five columns by eight rows, so
   `m/M/w/W`, `0` and `\\` share one face; `FONT_H` stays 8, `OVERLAY_ROW_GAP` 5, pitch 9×13. The
   licence and regression are in `hardware-constraints.md` under "The panel's glyph table".
+  **Replaced on 2026-11-20 by Fusion Pixel at 12 px, monospaced, with a GB2312 subset**; the cell,
+  the line pitch and the touch geometry all moved with it, see the new glyph section there.
 - **On the boards** (2026-10-21 product image, both reset once without BOOT held): the S3's splash
   ends at `00:00:03.367`, `[DISPLAY] main stack 65720 B` matches `nm`, and
   `[WIFI] this build was given no network and this device has saved none; it runs offline` follows;

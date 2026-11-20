@@ -1,10 +1,12 @@
 # The flash layout this board's firmware is built against.
 #
-# `espflash` writes this layout by default for an 8 MB part, and this board's
-# firmware still fits it: the network probe, which is the largest thing built for
-# this part, merges to 597,264 B against the 1 MB factory slot (56.96%). The Wi-Fi
-# driver blobs are cheaper here than on the S3 — a RISC-V blob rather than an Xtensa
-# one — so the 6 MB the product board needed is not needed here.
+# `espflash` writes this layout by default for an 8 MB part, except for the factory
+# slot: 2 MB rather than 1 MB. The product image carries the panel's 232,156 B glyph
+# table even on a board with no panel, because the screen renderer is part of the
+# product's wiring rather than a board feature; with it the image no longer fits a
+# 1 MB slot. The Wi-Fi driver blobs are still cheaper here than on the S3 — a RISC-V
+# blob rather than an Xtensa one — so the 6 MB the product board needs is not needed
+# here.
 #
 # Kept as a file rather than relying on the default so that a flash task and an
 # image task cannot disagree about the layout — the merged image in `dist/` has to
@@ -20,7 +22,7 @@
 # Name,Type,SubType,Offset,Size,Flags
 nvs,data,nvs,0x9000,0x6000,
 phy_init,data,phy,,0x1000,
-factory,app,factory,,1M,
+factory,app,factory,,2M,
 # The saved networks: two 4 KB slots, which is the whole region the store in
 # `core/src/drivers/credentials.rs` is built for. Last, because it is the only
 # partition the firmware writes and nothing above it depends on it.

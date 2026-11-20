@@ -43,14 +43,14 @@ weight = 10
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
 - **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `ScreenSurface`）。板模块只做选引脚与装配，元件本身跨板通用
-- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground，`font` 与 `text/number` 只做字模与数字排版；它不认页面、快照、网络、产品或芯片。页面壳（`shared::kit::painter::Painter`）、原语/组合件、页面视图与网络词汇都在 `iot-app`，因此仍可在宿主机测试而不依赖屏幕
+- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground；`font` 只做字模，`typeset` 做禁则与换行，`layout` 是 Flutter 词汇的盒模型（flex/wrap/stack/scroll），`panel` 是从字面推出的面板度量。它不认页面、快照、网络、产品或芯片；页面壳（`shared::kit::{panel::Panel, chrome}`）、页面视图与网络几何都在 `iot-app`，因此仍可在宿主机测试而不依赖屏幕
 - **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `ScreenPainter` 接缝把 `ScreenTarget`/`ScreenContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `FrameSnapshot` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app 的 bin 入口（`main.rs`、`bin/*.rs`）
 - **iot-bsp-esp**：板差异收敛在 `type Board` 别名、`HEAP_BYTES`/`SETUP_HOST` 常量与每芯片的 `start_executors`（feed 落点 `Feed::Interrupt`/`Inline`），前者每板一个 `#[cfg(feature)]`、后者每芯片一个；开机流程本身共用且不含 `#[cfg]`
 - **iot-app**：应用层，产品名 `vanling`；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统
 - **命名约定**：板层用板名、应用层用产品名，不重复
-- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模与数字排版在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `overlay`/`geometry`/`light`（含 RGB565 打包与反色），因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::intent`、几何在 `app::services::network::layout`
+- **纯逻辑但只有 bsp 内部用的模块留在 bsp**：`hardware.rs`（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 `Sound` 是哪个 `.mid`、以及它怎么变成一帧）在 `iot-app`：板子的 `Speaker::play` 收的是 `Box<dyn SampleSource>`，帧而不是名字。字模、排版与布局在 `iot-core::ui`；页面壳、视图层与网络词在 `iot-app`。`core` 里留下 `geometry`/`light`（含 RGB565 打包与反色），因为页面与 `intent` 两边都要读；键盘属于 Network 页，术语在 `app::shared::intent`、几何在 `app::services::network::shape`
 - **main 入口**：产品二进制入口（`bin/*-probe.rs` 是各自的探针入口）；芯片 init、堆、执行器与 `Wiring` 都在 `main.rs`，芯片族分支留在 `start_executors`。产品与面板 bench 共用这条启动路径，`panel-bench` feature 只决定最后调 `lib::run` 还是 `bench::run`
 - **iot-tool 在这条链之外**：唯一不属于设备的 crate，读写本仓的源文件（目前只有 `midi`，生成声音目录的 `.mid`）。**零依赖**——固件一改不该把生成固件资产的那个东西改坏。裸金属的 `--workspace` 只剩 `lefthook.yml` 里那一条，已 `--exclude iot-tool`；`moon` 各任务都显式带 `-p`，本来就不碰它。入口是 `moon run iot:test-tool` 与 `moon run iot:gen-midi-assets`
 
@@ -80,17 +80,17 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `services/` | 产品服务（页面与设备自己的 `nav`/`light`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `layout` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`paint`/`descriptor`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
-| `services/{ambient,attitude,camera,env,splash}.rs` | 只有一块画布的单文件页：页面类型上的 `paint` 直接画 |
+| `services/` | 产品服务（页面与设备自己的 `nav`/`light`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
+| `services/{ambient,attitude,camera,env,splash}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
-| `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译与动作条，`bands.rs` 决定哪几条带在屏上；`layout/` 一条带一份命中几何（`content.rs` 列表与键格、`toolbar.rs` 动作条、`dialog.rs` 确认框）；`view/` 一一对应（`header` / `content` / `overlay`，词在 `text.rs`）；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
+| `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译、动作条与命中；`shape.rs` 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；`view/` 按带拆（`header` / `content` / `overlay`，词在 `text.rs`），带之间的层序由 `shape::Band` 决定；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读） |
 | `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`PageId` 是目的地，`route()` 是穷尽 `match`，`ALL` 是唯一次序（按钮也照它走） |
 | `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
 | `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
 | `shared/snapshot.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 `PageSnapshot` |
-| `shared/kit/` | 页面壳 `Painter`、版面常量、文字排版、band/overlay 原语与控件；只认像素与快照，不认页面 |
+| `shared/kit/` | 页面壳 `Panel`（声明 → 布局 → 绘制的调度）、跨页版面 `chrome`（页边距、行距、标签槽）与文字词汇 `text`；只认像素与快照，不认页面 |
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
@@ -124,12 +124,12 @@ runtime::feature::input    → { shared::{intent, model}, runtime::workers }
 runtime::feature::network  → { assets, shared::intent, state, runtime::{feature::input, workers} }
 runtime::feature::playback → { shared::model, runtime::{feature::input, workers} }
 runtime::workers           → { shared::model }
-bench             → { lib::run_with, services::network::{controller, layout}, shared::{intent, model}, state, runtime::{feature::{input, playback}, system} }
+bench             → { lib::run_with, services::network::{controller, shape}, shared::{intent, model}, state, runtime::{feature::{input, playback}, system} }
 ```
 
 - **页面之间不互相 import**：页面只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
 - **`services` 是唯一认识所有服务的模块**：每页一个具体类型（`AmbientPage`…`NetworkPage`），`Services::apply` 是唯一的业务分派表，一条 `BusinessIntent` 组一条臂；`state` 只经 `Services::bind`/`apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `services::paint` 与 `services::descriptor(page)` 上的读取取答案；页面只读 `shared`（含 `DeviceState`、`FrameSnapshot`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
-- **`shared/kit` 不认页面**：`Painter` 提供 `draw_*` 记号，哪个页面画什么由 `services::paint` 决定
+- **`shared/kit` 不认页面**：`Panel` 把页面的声明布局成盒子再落墨，`chrome` 只提供跨页共用的边距、行距与标签槽；哪个页面声明什么由 `services::descriptor(page).view` 决定，页面自己画的槽由 `descriptor(page).custom` 决定
 - `shared` 是叶子：不依赖 `state`/`services`/`render`/`runtime`。`DeviceState`、`PageSnapshot` 与 `NetworkView` 放在这里，就是为了让页面、快照和渲染都只朝下看
 - `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`snapshot`（帧与页面视图）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
 - `shared/model` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读）
@@ -140,11 +140,29 @@ bench             → { lib::run_with, services::network::{controller, layout}, 
 
 ### 页面模型
 
-每个页面是一个具体类型，分两层回答。`Service` 是各操作平台共用的一面：`apply(&mut self, &BusinessIntent, &mut DeviceState) -> (Option<Command>, Effects)`——自己那条记录先落地，返回设备还欠的事与要出核心的命令，一条意图恰好调到它的一个所有者。`LocalPage: Service` 是本地平台面：`bind` 把一个本地手势译成业务意图（`Option`，含义什么都没有时是 `None`），`publish` 把页面私有的本地 UI 状态交给帧快照（口令草稿、键位、确认框，远程平台看不到），`paint` 画出整页（`&FrameSnapshot, &mut Painter`，不取 `self`），`descriptor` 描述它怎么占屏，`on_show`/`on_hide` 默认空实现。`paint` 与 `descriptor` 的 `where Self: Sized` 让 `&dyn LocalPage` 仍是本地手势表要的 trait 对象。
+每个页面是一个具体类型，分两层回答。`Service` 是各操作平台共用的一面：`apply(&mut self, &BusinessIntent, &mut DeviceState) -> (Option<Command>, Effects)`——自己那条记录先落地，返回设备还欠的事与要出核心的命令，一条意图恰好调到它的一个所有者。`LocalPage: Service` 是本地平台面：`bind` 把一个本地手势译成业务意图（`Option`，含义什么都没有时是 `None`），`publish` 把页面私有的本地 UI 状态交给帧快照（口令草稿、键位、确认框，远程平台看不到），`view` 声明整页（`&FrameSnapshot, &mut Ui`，不取 `self`），`descriptor` 描述它怎么占屏，`on_show`/`on_hide` 默认空实现。`view` 与 `descriptor` 的 `where Self: Sized` 让 `&dyn LocalPage` 仍是本地手势表要的 trait 对象。
 
-`Descriptor` 是一页的面板答案：画法（函数指针）、底色、是否相机帧、重绘步长与触发条件。构建器默认「无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn)}` 之一，而不是一段带空形参的函数。
+`Descriptor` 是一页的面板答案：声明函数指针、自绘槽函数指针、底色、是否相机帧、重绘步长与触发条件。构建器默认「无自绘槽、无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn)}` 之一，而不是一段带空形参的函数。
 
-渲染答案分两层：`Painter` 的 `draw_*` 落一个记号（像素、一行字、一个键），`LocalPage::paint` 组合一整页，`services::paint` 取 `descriptor(page).paint` 再盖角标；其余四个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`）。
+渲染答案分两层：`LocalPage::view` 用 `Ui` 的 `row`/`column`/`stack`/`wrap`/`scroll`/`text`/`custom` 声明整页，`services::paint` 取 `descriptor(page).view` 交给 `Panel`（布局一次、画字与盒子、再按槽调 `descriptor(page).custom`），最后盖角标；其余四个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`）。
+
+### 渲染管线：声明一次，布局一次，落墨一次
+
+页面不持有控件树，也不自己算坐标：`view` 跑完就留下一份声明，`Ui` 把它布局成整数矩形，然后画字与盒子。命中测试用同一份声明跑 `Ui::layout`，不建画布。
+
+| 层 | 做什么 | 词汇 |
+| --- | --- | --- |
+| `ui::layout` | 1/64 px 定点布局；测量自上而下，容器把去掉内边距后的约束交给子节点；最终边按像素取整，相邻盒子的共享边落在同一像素 | `BoxConstraints`、`Length`、`Style`、`Flex`（grow/shrink/basis）、`Wrap` 多 run、`Stack` 绝对定位、`Scroll` 裁剪、`Align`/`Justify` |
+| `ui::typeset` | UAX #14 子集 + CLReq 禁则：行首不落 `。`、行尾不留 `「`；测量与绘制共用同一个断行器，`…` 截断 | `Paragraph { lines, count, truncated }`、`wrap`、`next_char` |
+| `ui::font` | Fusion Pixel 12 px 等宽字模，GB2312 子集；ASCII 步进 6 px、汉字 12 px，升部 10 行 | `Face::glyph/advance/measure/glyphs` |
+| `ui::panel` | 从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距 | `PANEL_COLUMNS`、`CONTENT_BOTTOM`、`LINE`、`ROW_PITCH`、`TOUCH_MIN` |
+| `ui::canvas` | 像素、裁剪与填充/描边；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char, draw_text, push_clip}` |
+
+页面组合有两条硬规矩：读数行一律走 `chrome::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
+
+自绘叶子（波形、刻度盘、网络带）走槽派发：`Ui::custom(style, slot)` 只记槽号，`Ui::finish` 布局后按槽回调页面的 `Custom`。页面的 `view` 与自绘函数都不认识帧缓冲以外的世界，`Panel` 只认识一块 `Canvas` 与它属于哪块屏幕。
+
+布局是纯函数，但一帧里同一节点会被问很多次：flex 先测量再摆放，`grow` 级联还会换一组约束再问。`Tree` 因此在每个节点上记 `measured_at`（`enforce` 之后的 `min_w`/`max_w`）与对应的 `measured`，同约束第二次问直接返回，约束变了才重测；新声明拿 `Node::default()` 的哨兵键，上一帧的尺寸不会冒充这一帧。像素层按「一次求边界、整段写」组织：glyph 按行取位图、空字节跳过八个像素，`fill_rect` 每行只求一次裁剪交集，`Start` 且单行的 `draw_text` 不跑断行器，`Screen::fill` 一次写两个像素。这些只改路径不改画面，整页黄金哈希守着。
 
 `Services` 持有八个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
@@ -164,7 +182,7 @@ bench             → { lib::run_with, services::network::{controller, layout}, 
 | 形态 | 谁算显示 | 线上传什么 | 复用 `services` |
 | --- | --- | --- | --- |
 | WebUI | 浏览器 | 语义事实（链路、配置、电平、健康） | 只复用 `Service` |
-| 远程显示 | 设备（`LocalPage` + `Painter`） | 画面 | 不（画完才发） |
+| 远程显示 | 设备（`LocalPage` + `Panel`） | 画面 | 不（画完才发） |
 | 远程控制 | 设备 | 命令 | 只复用 `Service::apply` |
 
 把 `FrameSnapshot` 发出去就是远程显示，不是 WebUI。`Descriptor`（底图、相机帧、重绘节流）与 `PageSnapshot`（例如正在输入的口令草稿）是设备内概念，任何远程形态都不该看到。

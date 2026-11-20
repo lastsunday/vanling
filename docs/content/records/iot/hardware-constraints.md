@@ -398,16 +398,55 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 软件 canary 在每次上下文切换时检查栈底以下的哨兵，并以出错的任务名 panic——比静默破坏内存好。
 ---
 
-## 面板的字模：Spleen 5×8，一套字（`[测试]`，2026-10-22）
+## 面板的字模：Fusion Pixel 12 px 等宽，GB2312 一套字（`[测试]`，2026-11-20）
 
-字模在 `apps/iot/crates/core/src/ui/font.rs`：95 个可打印 ASCII，5 列 × 8 行、列优先、bit 0 是顶行；节距仍是 9×13（`FONT_W 5 + OVERLAY_GAP 4`、`FONT_H 8 + OVERLAY_ROW_GAP 5`）。
+字模在 `apps/iot/crates/core/src/ui/font.rs`，表是 `crates/core/assets/font/ui12.bin`（232,156 B），由 `cargo run -p iot-tool -- font` 从 `crates/tool/assets/fonts/ui12.bdf`（1.0 MB，随字体附 MIT 与 OFL 两份许可）裁出。BDF 是 TakWolf 的 Fusion Pixel 12px Mono `zh_Hans`，`SIZE 12 75 75`、`FONT_ASCENT 10`、`FONT_DESCENT 2`；子集取 GB2312 的 7,475 个字形。
 
-- **第一次换是因为开口**：Adafruit `glcdfont` 的 `a/e/g/p/r/t/y` 在 5×7 里只剩 1 px 的开口，网络名和口令读不快。m5x7（Daniel Linssen，CC0）在同样的 5 列里画出 2 px 开口 —— 但它的 `m/M/w/W` 是 7 列、`0` 与 `O` 同形、`\` 缺字，这五处只能沿用 Adafruit，一句带 `m`/`w` 的话就混了两套笔画，上板后比换之前更难看（2026-10-22 的使用反馈）。
-- **现在是 Spleen 5×8**（Frederic Cambus，BSD-2-Clause）：5×8 版本只含可打印 ASCII，字形原生就是 5 列 8 行，`m/M/w/W`、`0`、`\` 全在同一套里；不用拼字，也没有被裁掉的降部行。
-- **只加一行**：`FONT_H` 7→8、`OVERLAY_ROW_GAP` 6→5，`ROW_PITCH` 仍是 13。FPS 徽标 `232 + 8 = 240` 刚好填满页脚，音频页 `WAVE_TOP 42` 刚好落在第二行字下方 —— 两处都是编译期等号断言，改字号时先断在这里。
-- **回归**：`iot:test` 钉「非空格有墨」「形近字不同形」（`l/1`、`I/l`、`0/O`、`c/e`、`u/v`、`g/q`、`p/q`、`y/v`、`m/w`、`M/W`）与「降部到得了底行」（`g/p/q/y/j`）。换表时 `0/O` 真的同形，是第二条测试先报的。
+- **表格式 `VLF1`**：32 B 头（字形数、行高、升部、降部）+ 每字形码点 `u16`、打包度量 `u32`、位图偏移 `u32`、位图。码点有序，二分查找；`Face::glyph/advance/measure/glyphs` 是唯一入口。
+- **等宽**：ASCII 步进 6 列，汉字 12 列——一个汉字正好两格，网络名、口令与中英混排都落在同一张网格上。行高 12、行距 13（`LINE`/`ROW_PITCH`），升部 10 行、降部 2 行。
+- **面板度量跟着字面走**：页脚 12 行（`FOOTER_ROWS`）、内容底边 228（`CONTENT_BOTTOM`）、左右边距 10（`MARGIN`）、触控最小 44 px（`TOUCH_MIN`）。`panel.rs` 的 `FACE_HEIGHT == LINE` 与 `the_panel_is_measured_in_the_face_it_draws_with` 把「字号改了而版面没改」挡在编译/测试里。
+- **网络页的按压目标因此变高**：列表 3 行 × 45 px（`LIST_ROW_H >= TOUCH_MIN`），动作条顶边 184，键格 45 px，确认框 118 px、每行 34 格（`SSID_BYTES <= DIALOG_GLYPHS` 是编译期断言）。
+- **回归**：`font.rs` 钉住表头、ASCII/汉字步进（`NETWORK` 7×6、`中文` 24）、缺字画 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框；`panel.rs` 钉住负号与字号一致；`typeset.rs` 钉住禁则与截断；`services/tests.rs` 的 16 行黄金哈希钉住整页像素。
 
-字模在 flash：`[u8; 95 × 5] = 475 B`，与旧表同尺寸；静态墙前后都是 65,720 B（下限 65,536 B，余量 184 B）。
+字模在 flash：`ui12.bin` 232,156 B；BDF 只在工具侧，不进镜像。
+
+## 一帧的声明占用（`[测试]`，2026-11-20）
+
+布局层不保留树：`Ui` 在一次 `view` 里攒下声明，布局一次、落墨一次。节点数组 `MAX_NODES = 48`，每个节点 160 B；当前最满的一页是 Attitude 的调试网格，42 个节点。`Ui` 整体 9,784 B，落在面板核 24 KiB 栈的预算内，`ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` 把它钉在 10 KiB 以内。
+
+## 数字不能带动布局（`[测试]`，2026-11-20）
+
+Attitude 页曾把三列读数都写成 `grow(1)`：flex 的起点是每列的**内容宽**，位数一变列宽就重新分配，整块文本跟着左右跳。修法分两层：
+
+- **读数行定宽**：标签 4 格 + 空格 + 值右对齐到 7 格（`chrome::READING = 72 px`），值超出 7 格时保留自身宽度而不截断，行长因此不随数字变；
+- **列宽显式**：三列各 `width(72)`，与内容无关；表盘 `absolute().right(MARGIN).bottom(0)` 放在 `stack` 的右下角，声明在文字之后，z 序在上。
+
+顺带补了两处引擎缺口：`stack` 被父级 stretch 时，绝对定位子节点拿到的仍是内容宽（现在按 tight 约束定边）；`inset` 原来用 `0` 兼表「未设置」，`right(0)`/`bottom(0)` 因此无从表达，改为 `Option<i16>`。
+
+回归：`services::attitude::tests::{the_numbers_do_not_move_the_layout, the_dial_owns_the_bottom_right_corner}`（零样本与负满位样本逐节点 rect 相同；表盘贴内容区右下边且不与文字相交）和 `ui::layout::tests::{a_stretched_stack_reaches_its_parents_edge, an_inset_of_zero_means_the_edge_not_an_unset_side}`。
+
+## 一帧的绘制：布局把同一段文本量了五十遍（`[实测]`/`[测试]`，2026-11-20）
+
+`[实测]` 起点是 Attitude 页每帧约 104 ms、Ambient `worst render 92 ms`。归因不靠猜：临时把 `Screen::paint` 里的 render 拆成 `fill` / `layout` / `draw` 三段，串口打出 `[PAINT] Attitude body 0.70 ms, layout 98.9 ms, finish 102.4 ms` —— 布局占 97%，落墨连同第二遍布局约 3.5 ms。
+
+布局贵在重复测量：host 上数出 `wrap` 每帧 2,394 次，而 Attitude 只有 45 个文本节点，约 53 次/节点。flex 的每一趟都要问子节点尺寸（测量、摆放、再测量），`grow` 级联还会换一组约束再问；`layout_text` 每次都从头跑 `max_content` + `wrap`，两者都在 flash 里二分查字形（单次 advance ≈ 800–900 cycles）。
+
+修法是在节点上记住尺寸对应的约束：`Node::measured_at: Measured { min_w, max_w }` 存 `enforce` 之后的宽度，`layout_node` 命中即返回；`Tree::push` 用 `..Node::default()` 构造，默认是一对任何约束都不会产生的哨兵，新声明因此天然未测；宽度真变会重测，`a_text_node_re_measures_when_the_width_changes` 钉住这一点。
+
+| 读数（S3，240 MHz） | 改前 | 改后 |
+| --- | --- | --- |
+| `wrap` 调用/帧（host） | 2,394 | 41 |
+| 扫过的文本字节/帧（host） | 28,656 | 4,708 |
+| Attitude `[PAINT]` | body 0.70 / layout 98.9 / finish 102.4 ms | body 0.71 / layout 3.9 / finish 4.5 ms |
+| Ambient `[DISPLAY]` | `worst render 92 ms (fill 2)`，`held 646 ms (29%)` | `worst render 25–33 ms (fill 1–2)`，`held 42–243 ms (1–11%)` |
+| Attitude 整帧（host，release） | 1.104 ms | 96 µs |
+| Splash `[PAINT]` | finish 1.65 ms | finish 0.47 ms |
+
+`finish` 里还含一遍布局（此时全部命中）与落墨；产品路径只调一次 `finish`，所以这一段就是整帧的绘制。
+
+像素层同时收紧，画面一字节不变（16 行整页黄金哈希不动）：`draw_glyph` 按行取位图、空字节跳过八个像素，盒子与裁剪只在入口求一次交；`fill_rect` 每行求一次 span 后整段写；`draw_text` 对 `Start` 且不换行的 run 直接画，不再跑断行器；`Screen::fill` 两个像素一次写。`[DISPLAY]` 行因此多了 `worst render N (fill M)`，把填充与绘制分开，作为后续回归指标。
+
+Ambient 仍剩每帧 224 次 `wrap`、7 次不同约束的测量：那是 `grow` 级联（2^depth）造成的，继续压要改 flex 的测量顺序，本轮不动。整帧另有 15.36 ms 的线上地板（153,600 B / 80 MHz），重绘再快也不会低于它。
 
 ## panic 复位与看门狗：冻结时唯一的出路是重启（`[测试]`/`[实测]`/`[据称]`，2026-11-08）
 

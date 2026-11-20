@@ -1,8 +1,8 @@
 use super::*;
-use crate::services::network::layout;
-use crate::services::network::layout::LIST_ROWS;
+use crate::services::network::shape;
 use crate::shared::intent::*;
 use crate::shared::intent::{CHARS, Key, Layer, MULTITAP_WINDOW_MS};
+use crate::shared::model::LIST_ROWS;
 use crate::state::test_support::*;
 use crate::state::{Boot, DeviceManager, PageId};
 use iot_core::drivers::input::FINGER_LONG_PRESS;
@@ -84,7 +84,7 @@ fn tap_on(manager: &mut DeviceManager, x: u16, y: u16) -> Option<Command> {
 }
 
 fn tap_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
-    let y = (layout::LIST_TOP + band * layout::LIST_ROW_H + layout::LIST_ROW_H / 2) as u16;
+    let y = (shape::LIST_TOP + band * shape::LIST_ROW_H + shape::LIST_ROW_H / 2) as u16;
     tap_on(manager, 30, y)
 }
 
@@ -142,11 +142,11 @@ fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
         id: 0,
         direction: SwipeDirection::Up,
         x: 30,
-        y: (layout::LIST_TOP + layout::LIST_ROW_H * 2) as u16,
+        y: (shape::LIST_TOP + shape::LIST_ROW_H * 2) as u16,
         end_x: 30,
-        end_y: layout::LIST_TOP as u16,
+        end_y: shape::LIST_TOP as u16,
         held_ms: 40,
-        distance_px: (layout::LIST_ROW_H * 2) as u16,
+        distance_px: (shape::LIST_ROW_H * 2) as u16,
     }));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state(), manager.services());
@@ -157,7 +157,7 @@ fn tap_strip(manager: &mut DeviceManager) -> Option<Command> {
     tap_on(
         manager,
         160,
-        (layout::TOOLBAR_TOP + layout::TOOLBAR_H / 2) as u16,
+        (shape::TOOLBAR_TOP + shape::TOOLBAR_H / 2) as u16,
     )
 }
 
@@ -165,12 +165,12 @@ fn tap_strip_left(manager: &mut DeviceManager) -> Option<Command> {
     tap_on(
         manager,
         40,
-        (layout::TOOLBAR_TOP + layout::TOOLBAR_H / 2) as u16,
+        (shape::TOOLBAR_TOP + shape::TOOLBAR_H / 2) as u16,
     )
 }
 
 fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
-    let y = (layout::LIST_TOP + band * layout::LIST_ROW_H + layout::LIST_ROW_H / 2) as u16;
+    let y = (shape::LIST_TOP + band * shape::LIST_ROW_H + shape::LIST_ROW_H / 2) as u16;
     let operation = op(InputEvent::Gesture(GestureEvent::LongPress {
         id: 0,
         x: 30,
@@ -182,8 +182,8 @@ fn hold_band(manager: &mut DeviceManager, band: usize) -> Option<Command> {
     business.and_then(|intent| manager.apply_business(intent))
 }
 
-fn tap_answer(manager: &mut DeviceManager, choice: layout::DialogChoice) -> Option<Command> {
-    let box_ = layout::dialog_answer_box(choice);
+fn tap_answer(manager: &mut DeviceManager, choice: shape::DialogChoice) -> Option<Command> {
+    let box_ = shape::dialog_answer_box(choice);
     tap_on(
         manager,
         (box_.x + box_.w / 2) as u16,

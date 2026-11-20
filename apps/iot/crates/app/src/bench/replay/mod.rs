@@ -8,10 +8,10 @@ pub(crate) use self::slot::Slot;
 
 use alloc::vec::Vec;
 
-use crate::services::network::controller::Band;
-use crate::services::network::layout;
-use crate::services::network::layout::DialogChoice;
-use crate::services::network::layout::LIST_ROWS;
+use crate::services::network::shape;
+use crate::services::network::shape::Band;
+use crate::services::network::shape::DialogChoice;
+use crate::services::network::shape::LIST_ROWS;
 use crate::shared::intent::Confirm;
 use crate::shared::intent::Key;
 use crate::shared::intent::{Intent, recognize};
@@ -233,14 +233,14 @@ impl PanelBench {
             at_ms: 0,
         });
         for tap in &script {
-            let rect = layout::key_box(tap.cell).expect("a script only taps cells the grid has");
+            let rect = shape::key_box(tap.cell).expect("a script only taps cells the grid has");
             touches.push(Touch::At {
                 x: (rect.x + rect.w / 2) as u16,
                 y: (rect.y + rect.h / 2) as u16,
                 at_ms: tap.at_ms,
             });
         }
-        let ok = layout::key_box(layout::cell_of(Key::Connect).expect("the grid has connect"))
+        let ok = shape::key_box(shape::cell_of(Key::Connect).expect("the grid has connect"))
             .expect("a cell of the grid");
         touches.push(Touch::At {
             x: (ok.x + ok.w / 2) as u16,

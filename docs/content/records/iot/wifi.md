@@ -291,7 +291,7 @@ let station = board.take_wifi();             // 射频是哪个 part 的：这�
 
 `phy_init` 原本**故意没写**：esp-radio 的 Xtensa 构建把驱动的标定恢复钩子实现成 `todo!()`（`ld/esp32s3_provides.x` 把 `misc_nvs_restore` 绑到它，blob 里是未定义引用），而驱动看得见标定分区就会走那条路。`[实测]` **这条路走不到** —— 分区在场时 `esp_wifi_init` 不 panic，扫描正常。分区保留，它就是驱动第一次开机写下标定数据的地方。C6 那张也带 `phy_init`，同一个用途。
 
-表按**板子**命名：`scripts/iot-image.sh` 一直按板名找 `partitions/<board>.csv`，而布局本来就是板级事实。6 MB 的槽装不进 espflash 默认的 4 MB，所以每个 S3 烧录/镜像任务都带 `--flash-size 16mb`。**C6 那张不动**（1 MB，实测装得下探针的 597,264 B），但同样写成文件：镜像任务和烧录任务对布局只有一处认知。
+表按**板子**命名：`scripts/iot-image.sh` 一直按板名找 `partitions/<board>.csv`，而布局本来就是板级事实。6 MB 的槽装不进 espflash 默认的 4 MB，所以每个 S3 烧录/镜像任务都带 `--flash-size 16mb`。**C6 那张也写成文件**：镜像任务和烧录任务对布局只有一处认知。2026-10-22 时 1 MB 装得下探针的 597,264 B；2026-11-20 起产品镜像也带 12 px 字模，`iot:image` 的 C6 产物到 1,213,168 B，factory 因此改为 **2 MB**（8 MB 的 flash 余量足够），见 `hardware-constraints.md` 的字模一节。
 
 ## 凭据落在哪（`creds` 分区）
 
@@ -1175,7 +1175,7 @@ done 页正常出现，设备随后加入网络。这 68 ms 究竟坏在「浏�
 
 - **AP 的默认口令按入口**（2026-11-08 起作废，启动页也带口令，见「设置模式的 AP 不再有『开放』的那一档」）：`setup_ap_starts_secured(panel, from_splash)` 决定 `secure_on_entry`。启动页进档开放（`OPEN, NO PASSWORD` + `PASS`）；运行中的 `AP`、`LEAVE`、被拒与命名构建的 `LEAVE` 在有屏板上默认 WPA2 + 随机 10 位（`PASS …` + `NO PASS`）。两个按钮只改这一轮，切走再回恢复入口默认；C6 无屏，始终开放。
 - **离线页恢复两格**：离线时 `LinkStatus.mode` 是 `NetworkMode::Browsing`（没有 host），Network 页因此仍是 `SCAN | AP`，但表头画的是链路相位而不是 `ST SETUP`，长按也不再是切档。`AP` 由 `NetworkCommand::SwitchHost` 接住，交回 `link()` 以 `SetupHost::AccessPoint` 进 `await_network()` 才起 AP；离线不自动进档、不广播，180 s 空闲仍由 `page_idle()` 收 AP。
-- **字模**：Spleen 5×8（Frederic Cambus，BSD-2-Clause），原生 5×8，`m/M/w/W`、`0`、`\` 同一套；`FONT_H` 8、`OVERLAY_ROW_GAP` 5、节距 9×13 不变。许可证与回归见 `hardware-constraints.md` 的「面板的字模」。
+- **字模**：Spleen 5×8（Frederic Cambus，BSD-2-Clause），原生 5×8，`m/M/w/W`、`0`、`\` 同一套；`FONT_H` 8、`OVERLAY_ROW_GAP` 5、节距 9×13 不变。许可证与回归见 `hardware-constraints.md` 的「面板的字模」。**2026-11-20 已换成 Fusion Pixel 12 px 等宽 + GB2312 子集**，字号、行距与触控几何都随之改变，见同文件的「面板的字模」新一节。
 - **上板读数**（2026-10-21 产品镜像，两块板各复位、不按 BOOT）：S3 启动页 `00:00:03.367` 结束，`[DISPLAY] main stack 65720 B` 与 `nm` 一致，随后 `[WIFI] this build was given no network and this device has saved none; it runs offline`；C6 `00:00:03.346` 结束，同样离线、无 AP。两块 `creds` 仍为空。
 - **镜像与墙**（2026-10-22）：S3 `1,057,616 / 6,291,456 B`（16.81%），C6 `821,328 / 1,048,576 B`（78.33%）；相对上一版 `+128 B` / `+64 B` 是入口判定与复位那几行的布局差异，未逐项拆分。`_stack_start_cpu0 − _stack_end_cpu0` = **65,688 B**（`0x3fce9710 − 0x3fcd9678`，余量 152 B）。
 - **未实测**：正常入口点 `AP` 后的 `[WIFI] setup mode for "vanling-1234" is open, under a passphrase` 要一次手指（2026-11-08 起启动页按住 BOOT 也打同一句，它不再开放，见「设置模式的 AP 不再有『开放』的那一档」）；Spleen 在 1× 面板上的观感（小写开口、`m/w` 的密度、降部）只有人眼能给答案；离线页的 `SCAN | AP` 两格、点 `AP` 后的 `PASS`/`NO PASS` 框也要手指点一次。

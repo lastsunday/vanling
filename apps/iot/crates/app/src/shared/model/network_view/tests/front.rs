@@ -27,7 +27,7 @@ fn the_strip_trades_a_link_for_setup_mode_and_closes_it_again() {
     link_up(&mut manager, b"neighbour");
     tap_strip(&mut manager);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Act),
+        tap_answer(&mut manager, shape::DialogChoice::Act),
         Some(Command::Network(NetworkCommand::Leave)),
         "the question is asked, and answered"
     );
@@ -179,7 +179,7 @@ fn the_setup_box_s_other_answer_asks_for_the_access_point_to_be_open() {
     let mut manager = on_network_page();
     setup_mode(&mut manager, true);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Keep),
+        tap_answer(&mut manager, shape::DialogChoice::Keep),
         Some(Command::Network(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: true
@@ -257,7 +257,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
     let mut manager = on_network_page();
     setup_mode(&mut manager, true);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Keep),
+        tap_answer(&mut manager, shape::DialogChoice::Keep),
         Some(Command::Network(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: true
@@ -268,7 +268,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         Some(SetupWait::Open(true))
     );
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Keep),
+        tap_answer(&mut manager, shape::DialogChoice::Keep),
         None,
         "the same answer is already on its way"
     );
@@ -307,7 +307,7 @@ fn a_passphrase_switch_waits_for_the_access_point_to_report_it() {
         "the box now says the access point is open, which is what was asked"
     );
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Keep),
+        tap_answer(&mut manager, shape::DialogChoice::Keep),
         Some(Command::Network(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: false

@@ -1,10 +1,11 @@
 //! The pixels a page is drawn into, and the only marks there are.
 
-use crate::geometry::ControlRect;
 use crate::light::{Rgb, invert_rgb565, rgb565};
-use crate::overlay::{CONTENT_BOTTOM, FONT_H, FONT_W, GLYPH_PITCH, OVERLAY_GAP};
 
-use super::font::FONT;
+use super::panel::CONTENT_BOTTOM;
+
+use super::Rect;
+use super::font::{Face, Glyph};
 
 /// A frame buffer and the operations every page draws with.
 pub struct Canvas<'a> {
@@ -12,6 +13,8 @@ pub struct Canvas<'a> {
     width: usize,
     height: usize,
     ground: Option<Rgb>,
+    clips: [Rect; 4],
+    depth: usize,
 }
 
 impl<'a> Canvas<'a> {
@@ -27,6 +30,8 @@ impl<'a> Canvas<'a> {
             width,
             height,
             ground,
+            clips: [Rect::default(); 4],
+            depth: 0,
         }
     }
 
@@ -48,42 +53,125 @@ impl<'a> Canvas<'a> {
         self.ground
     }
 
-    /// Inverts one pixel.
-    pub fn draw_pixel(&mut self, x: isize, y: isize) {
+    /// Narrows every following mark to `rect` until [`Canvas::pop_clip`].
+    pub fn push_clip(&mut self, rect: Rect) {
+        let rect = if self.depth == 0 {
+            rect
+        } else {
+            self.clips[self.depth - 1].intersect(rect)
+        };
+        self.clips[self.depth.min(self.clips.len() - 1)] = rect;
+        self.depth = (self.depth + 1).min(self.clips.len());
+    }
+
+    pub fn pop_clip(&mut self) {
+        self.depth = self.depth.saturating_sub(1);
+    }
+
+    fn clipped(&self, x: isize, y: isize) -> bool {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
-            return;
+            return false;
         }
-        let offset = (y as usize * self.width + x as usize) * 2;
+        if self.depth == 0 {
+            return true;
+        }
+        self.clips[self.depth - 1].contains(x as i32, y as i32)
+    }
+
+    /// Inverts one pixel whose bounds the caller has already checked.
+    fn invert(&mut self, x: usize, y: usize) {
+        let offset = (y * self.width + x) * 2;
         let packed = u16::from_be_bytes([self.frame[offset], self.frame[offset + 1]]);
         self.frame[offset..offset + 2].copy_from_slice(&invert_rgb565(packed).to_be_bytes());
     }
 
-    fn draw_char(&mut self, ch: u8, left: usize, top: usize) {
-        if !(0x20..=0x7E).contains(&ch) {
-            return;
+    /// The frame's rows and columns the box at `(left, top)`, `w`×`h`, may write in: the box
+    /// narrowed once to the frame and to the clip in force, so a glyph costs one intersection
+    /// rather than one per pixel.
+    fn reach(&self, left: isize, top: isize, w: isize, h: isize) -> (usize, usize, usize, usize) {
+        let (mut x0, mut y0) = (left.max(0), top.max(0));
+        let (mut x1, mut y1) = (
+            (left + w).min(self.width as isize),
+            (top + h).min(self.height as isize),
+        );
+        if self.depth > 0 {
+            let clip = self.clips[self.depth - 1];
+            x0 = x0.max(clip.x as isize);
+            y0 = y0.max(clip.y as isize);
+            x1 = x1.min(clip.right() as isize);
+            y1 = y1.min(clip.bottom() as isize);
         }
-        let base = usize::from(ch - 0x20) * FONT_W;
-        for (col, &bits) in FONT[base..base + FONT_W].iter().enumerate() {
-            for row in 0..FONT_H {
-                if bits & (1 << row) == 0 {
-                    continue;
+        if x0 >= x1 || y0 >= y1 {
+            return (0, 0, 0, 0);
+        }
+        (x0 as usize, y0 as usize, x1 as usize, y1 as usize)
+    }
+
+    /// Inverts one pixel.
+    pub fn draw_pixel(&mut self, x: isize, y: isize) {
+        if self.clipped(x, y) {
+            self.invert(x as usize, y as usize);
+        }
+    }
+
+    /// Lays a glyph down a row at a time: a blank byte of the row skips eight pixels, which is
+    /// most of a 6×12 cell, and nothing inside the box is checked again.
+    fn draw_glyph(&mut self, glyph: &Glyph<'_>, left: isize, top: isize) {
+        let (x0, y0, x1, y1) = self.reach(left, top, glyph.width as isize, glyph.height as isize);
+        let skip = (x0 as isize - left) as usize;
+        for y in y0..y1 {
+            let bits = glyph.row((y as isize - top) as usize);
+            let mut x = x0;
+            while x < x1 {
+                let at = skip + (x - x0);
+                let byte = bits[at / 8];
+                let first = at % 8;
+                let span = (8 - first).min(x1 - x);
+                if byte != 0 {
+                    for i in 0..span {
+                        if byte & (0x80 >> (first + i)) != 0 {
+                            self.invert(x + i, y);
+                        }
+                    }
                 }
-                self.draw_pixel(left as isize + col as isize, top as isize + row as isize);
+                x += span;
             }
         }
     }
 
-    /// Overdraws one run of text at a panel coordinate.
+    /// Overdraws one character at a panel coordinate, `top` being the top of the line box.
+    pub fn draw_char(&mut self, ch: char, left: isize, top: usize) {
+        let face = Face::new();
+        let glyph = face.glyph(ch);
+        let baseline = top as isize + face.ascent() as isize;
+        self.draw_glyph(
+            &glyph,
+            left + glyph.left,
+            baseline - glyph.top - glyph.height as isize,
+        );
+    }
+
+    /// Overdraws one run of text at a panel coordinate, `top` being the top of the line box.
     pub fn draw_text(&mut self, text: &[u8], left: usize, top: usize) {
-        for (glyph, &ch) in text.iter().enumerate() {
-            self.draw_char(ch, left + glyph * GLYPH_PITCH, top);
+        let face = Face::new();
+        let baseline = top as isize + face.ascent() as isize;
+        let mut pen = left as isize;
+        for glyph in face.glyphs(text) {
+            let glyph_top = baseline - glyph.top - glyph.height as isize;
+            self.draw_glyph(&glyph, pen + glyph.left, glyph_top);
+            pen += glyph.advance as isize;
         }
     }
 
-    /// [`Canvas::draw_text`] measured from the text's last column rather than its first,
-    /// so a value that grows a digit grows leftwards into empty space.
+    /// Columns a run occupies.
+    pub fn measure(&self, text: &[u8]) -> usize {
+        Face::new().measure(text)
+    }
+
+    /// [`Canvas::draw_text`] placed by its right edge, so a value that grows a digit grows
+    /// leftwards into empty space.
     pub fn draw_text_right(&mut self, text: &[u8], right: isize, top: usize) {
-        let left = right + OVERLAY_GAP as isize - text.len() as isize * GLYPH_PITCH as isize;
+        let left = right - self.measure(text) as isize;
         self.draw_text(text, left.max(0) as usize, top);
     }
 
@@ -143,19 +231,35 @@ impl<'a> Canvas<'a> {
 
     /// Fills `rect` with this frame's own ground turned over: the panel's one way of laying a
     /// paper down for drawing.
-    pub fn fill(&mut self, rect: ControlRect) {
+    pub fn fill_rect(&mut self, rect: Rect) {
         let Some(color) = self.ground else {
             return;
         };
         let surface = invert_rgb565(rgb565(color)).to_be_bytes();
-        let right = (rect.x + rect.w).min(self.width);
-        let bottom = (rect.y + rect.h).min(CONTENT_BOTTOM).min(self.height);
-        for y in rect.y..bottom {
-            for x in rect.x..right {
-                let offset = (y * self.width + x) * 2;
-                self.frame[offset..offset + 2].copy_from_slice(&surface);
+        let bottom = (rect.bottom().max(0) as usize)
+            .min(CONTENT_BOTTOM)
+            .min(self.height);
+        for y in rect.y.max(0) as usize..bottom {
+            let (x0, _, x1, _) = self.reach(rect.x as isize, y as isize, rect.w as isize, 1);
+            let start = (y * self.width + x0) * 2;
+            let row = &mut self.frame[start..start + (x1 - x0) * 2];
+            for pixel in row.as_chunks_mut::<2>().0 {
+                pixel.copy_from_slice(&surface);
             }
         }
+    }
+
+    /// Draws the one-pixel outline of `rect`.
+    pub fn stroke_rect(&mut self, rect: Rect) {
+        if rect.w <= 0 || rect.h <= 0 {
+            return;
+        }
+        let (left, top) = (rect.x as isize, rect.y as isize);
+        let (right, bottom) = (rect.right() as isize - 1, rect.bottom() as isize - 1);
+        self.draw_line(left, top, right, top);
+        self.draw_line(left, bottom, right, bottom);
+        self.draw_line(left, top, left, bottom);
+        self.draw_line(right, top, right, bottom);
     }
 }
 
@@ -193,12 +297,7 @@ mod tests {
     fn a_fill_paints_the_rect_with_the_ground_turned_over() {
         let mut bytes = frame();
         let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, Some(GROUND));
-        canvas.fill(ControlRect {
-            x: 2,
-            y: 3,
-            w: 4,
-            h: 5,
-        });
+        canvas.fill_rect(Rect::new(2, 3, 4, 5));
         let expected = invert_rgb565(rgb565(GROUND)).to_be_bytes();
         for y in 3..8 {
             for x in 2..6 {
@@ -227,12 +326,7 @@ mod tests {
         bytes[((10 * WIDTH) + 1) * 2..((10 * WIDTH) + 1) * 2 + 2].copy_from_slice(&ink);
 
         let mut canvas = Canvas::new(&mut bytes, WIDTH, TALL, Some(GROUND));
-        canvas.fill(ControlRect {
-            x: 4,
-            y: 8,
-            w: 16,
-            h: CONTENT_BOTTOM,
-        });
+        canvas.fill_rect(Rect::new(4, 8, 16, CONTENT_BOTTOM as i32));
 
         for y in 8..CONTENT_BOTTOM {
             for x in 4..20 {

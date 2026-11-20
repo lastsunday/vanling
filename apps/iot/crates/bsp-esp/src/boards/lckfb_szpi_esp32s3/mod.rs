@@ -69,8 +69,8 @@ const LCD_WIDTH: u16 = 320;
 const LCD_HEIGHT: u16 = 240;
 
 const _: () = assert!(
-    LCD_WIDTH as usize == iot_core::overlay::PANEL_COLUMNS
-        && LCD_HEIGHT as usize == iot_core::overlay::PANEL_ROWS,
+    LCD_WIDTH as usize == iot_core::ui::panel::PANEL_COLUMNS
+        && LCD_HEIGHT as usize == iot_core::ui::panel::PANEL_ROWS,
     "the panel this board mounts is not the shape the overlay layout is written for"
 );
 

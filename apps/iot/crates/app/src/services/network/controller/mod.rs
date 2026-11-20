@@ -1,11 +1,7 @@
 //! What one gesture means on the Network page, and what each control it offers does.
 
-pub mod bands;
-
-pub use self::bands::{Band, each_band, joining};
-
-use crate::services::network::layout;
-use crate::services::network::layout::ToolbarCell;
+use crate::services::network::shape;
+use crate::services::network::shape::{Band, ToolbarCell};
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{BusinessIntent, InputIntent, NetworkIntent};
 use crate::shared::model::{DeviceState, NetworkView};
@@ -40,7 +36,7 @@ pub(crate) fn bind(
             }
         }
         InputEvent::Button(ButtonEvent::Click) => {
-            Some(strip(draft, current.network.link).command(layout::ToolbarCell::Right))
+            Some(strip(draft, current.network.link).command(shape::ToolbarCell::Right))
         }
         _ => None,
     }
@@ -55,19 +51,19 @@ fn tap(
 ) -> Option<BusinessIntent> {
     if draft.keyboard {
         let entry = draft.entry?;
-        return layout::key_at(entry.layer(), x, y)
+        return shape::key_at(entry.layer(), x, y)
             .map(|key| BusinessIntent::Network(NetworkIntent::Key { key, at_ms }));
     }
     if let Some(answer) = answer_at(current, draft, x, y) {
         return Some(answer);
     }
-    if let Some(cell) = layout::toolbar_cell_at(x, y) {
+    if let Some(cell) = shape::toolbar_cell_at(x, y) {
         return Some(strip(draft, current.network.link).command(cell));
     }
     if !Band::Content.showing(draft, current.network.link) {
         return None;
     }
-    let band = layout::list_band_at(y)?;
+    let band = shape::list_band_at(y)?;
     ap_at(current, draft, band).map(|ap| BusinessIntent::Network(NetworkIntent::Choose(ap)))
 }
 
@@ -81,23 +77,23 @@ fn hold(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> Option<Bus
     if !Band::Content.showing(draft, current.network.link) {
         return None;
     }
-    let band = layout::list_band_at(y)?;
+    let band = shape::list_band_at(y)?;
     ap_at(current, draft, band).map(|ap| BusinessIntent::Network(NetworkIntent::AskForget(ap)))
 }
 
 fn answer_at(current: &DeviceState, draft: NetworkView, x: u16, y: u16) -> Option<BusinessIntent> {
     if current.network.link.shows_setup_box() {
         let answers = answers(current.network.link);
-        return match layout::dialog_choice_at(x, y) {
-            Some(layout::DialogChoice::Keep) => Some(answers.keep.command),
-            Some(layout::DialogChoice::Act) => Some(answers.act.command),
+        return match shape::dialog_choice_at(x, y) {
+            Some(shape::DialogChoice::Keep) => Some(answers.keep.command),
+            Some(shape::DialogChoice::Act) => Some(answers.act.command),
             None => None,
         };
     }
     let confirm: Confirm = draft.confirm?;
-    Some(match layout::dialog_choice_at(x, y) {
-        Some(layout::DialogChoice::Act) => BusinessIntent::Network(NetworkIntent::Answer(confirm)),
-        Some(layout::DialogChoice::Keep) | None => BusinessIntent::Network(NetworkIntent::Dismiss),
+    Some(match shape::dialog_choice_at(x, y) {
+        Some(shape::DialogChoice::Act) => BusinessIntent::Network(NetworkIntent::Answer(confirm)),
+        Some(shape::DialogChoice::Keep) | None => BusinessIntent::Network(NetworkIntent::Dismiss),
     })
 }
 

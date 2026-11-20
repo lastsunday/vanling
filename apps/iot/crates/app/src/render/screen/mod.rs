@@ -12,7 +12,7 @@ use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
-use crate::render::engine::ColorOutput;
+use crate::render::engine::{ColorOutput, Shown};
 use crate::render::{Appearance, Drive, LightAppearance, Renderer, Topic};
 use crate::services::descriptor;
 use crate::shared::model::LightState;
@@ -77,7 +77,7 @@ impl ScreenRenderer {
         }
         let shown = self.color.show(&mut *self.surface, step, declared, now_ms);
         self.surface
-            .set_backlight(shown.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
+            .set_backlight(duty(shown, LightState::BACKLIGHT_FLOOR_PCT));
     }
 
     fn paint_last(&mut self) {
@@ -143,6 +143,21 @@ impl ScreenRenderer {
     }
 }
 
+/// The panel's backlight for what the light is showing: a breath rides the same envelope its
+/// pixels do, remapped onto `floor_pct..=100` so the glass follows the colour instead of
+/// switching binary under it.
+fn duty(shown: Shown, floor_pct: u8) -> u8 {
+    let floor = floor_pct.min(100);
+    match shown {
+        Shown::Off => 0,
+        Shown::Solid => 100,
+        Shown::Breathing(sample) => {
+            u8::try_from(u32::from(floor) + u32::from(sample.phase) * u32::from(100 - floor) / 255)
+                .unwrap_or(100)
+        }
+    }
+}
+
 impl Renderer for ScreenRenderer {
     fn topics(&self) -> &[Topic] {
         &self.topics
@@ -187,7 +202,7 @@ impl Renderer for ScreenRenderer {
             return Drive::Idle;
         };
         self.surface
-            .set_backlight(shown.backlight(now_ms, LightState::BACKLIGHT_FLOOR_PCT));
+            .set_backlight(duty(shown, LightState::BACKLIGHT_FLOOR_PCT));
         self.paint_last();
         Drive::TimeDriven
     }
@@ -206,7 +221,7 @@ mod tests {
         CameraCounters, CameraSnapshot, FrameAdvance, FrameSource, WindowGeometry,
     };
     use iot_core::drivers::surface::{RgbLight, ScreenContext, ScreenTarget};
-    use iot_core::light::Rgb;
+    use iot_core::light::{Rgb, Sample};
 
     struct NullPainter;
 
@@ -567,7 +582,32 @@ mod tests {
         let LightAppearance::Breathing(breath) = light_appearance(LightState::boot()) else {
             panic!("the boot light breathes");
         };
-        assert_eq!(screen.borrow().color, breath.rgb(100));
+        assert_eq!(screen.borrow().color, breath.sample(100).color);
+    }
+
+    #[test]
+    fn the_backlight_follows_the_breath_the_pixels_do() {
+        assert_eq!(duty(Shown::Off, 12), 0);
+        assert_eq!(duty(Shown::Solid, 12), 100);
+        let trough = Sample {
+            color: Rgb(0, 0, 0),
+            phase: 0,
+        };
+        assert_eq!(
+            duty(Shown::Breathing(trough), 12),
+            12,
+            "the trough sits on the floor, not at black"
+        );
+        let peak = Sample {
+            color: Rgb(255, 255, 255),
+            phase: u8::MAX,
+        };
+        assert_eq!(duty(Shown::Breathing(peak), 12), 100);
+        assert_eq!(
+            duty(Shown::Breathing(peak), 120),
+            100,
+            "a floor above 100 is clamped"
+        );
     }
 
     #[test]

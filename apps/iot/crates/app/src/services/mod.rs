@@ -17,13 +17,14 @@ pub mod speaker;
 pub mod splash;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
-use crate::shared::kit::painter::Painter;
+use crate::shared::kit::panel::{Custom, Panel, View, no_custom};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::light::Rgb;
+use iot_core::ui::Ui;
 
 use self::ambient::AmbientPage;
 use self::attitude::AttitudePage;
@@ -56,14 +57,14 @@ pub trait LocalPage: Service {
     /// Hands the page's private UI state to the frame snapshot the local painter draws from.
     fn publish(&self, _out: &mut PageSnapshot) {}
 
-    /// The page's picture, drawn from the frame snapshot. `where Self: Sized` keeps
+    /// The page's picture, declared from the frame snapshot. `where Self: Sized` keeps
     /// `&dyn LocalPage` dyn-compatible for the input table.
-    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>)
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>)
     where
         Self: Sized;
 
     /// How this page occupies the panel. `where Self: Sized` for the same reason as
-    /// [`Self::paint`].
+    /// [`Self::view`].
     fn descriptor() -> Descriptor
     where
         Self: Sized;
@@ -233,7 +234,8 @@ impl Repaint {
 /// from, and how often a snapshot drift earns a repaint.
 #[derive(Debug, Clone, Copy)]
 pub struct Descriptor {
-    paint: fn(&FrameSnapshot, &mut Painter<'_>),
+    view: View,
+    custom: Custom,
     ground: Option<Rgb>,
     camera_frames: bool,
     repaint_ms: u64,
@@ -241,9 +243,10 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
-    pub(super) fn new(paint: fn(&FrameSnapshot, &mut Painter<'_>)) -> Self {
+    pub(super) fn new(view: View) -> Self {
         Self {
-            paint,
+            view,
+            custom: no_custom,
             ground: None,
             camera_frames: false,
             repaint_ms: REPAINT_FLOOR_MS,
@@ -253,6 +256,12 @@ impl Descriptor {
 
     pub(super) fn with_ground(mut self, ground: Option<Rgb>) -> Self {
         self.ground = ground;
+        self
+    }
+
+    /// The page's own ink for the custom slots its declaration leaves.
+    pub(super) fn with_custom(mut self, custom: Custom) -> Self {
+        self.custom = custom;
         self
     }
 
@@ -302,13 +311,11 @@ pub fn descriptor(page: PageId) -> Descriptor {
     }
 }
 
-/// Paints the page, plus the debug badge every page but the camera carries: camera frames
-/// arrive outside this dispatch, so that page paints its own badge.
-pub fn paint(page: PageId, snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
-    (descriptor(page).paint)(snapshot, painter);
-    if painter.debug && page != PageId::Camera {
-        painter.draw_fps();
-    }
+/// Draws the page. The footer is the panel's own and is drawn for every page that comes
+/// through here; a camera frame arrives outside this dispatch and draws its own.
+pub fn paint(page: PageId, snapshot: &FrameSnapshot, panel: &mut Panel<'_>) {
+    let descriptor = descriptor(page);
+    panel.view(snapshot, descriptor.view, descriptor.custom);
 }
 
 /// The lamp's table, for the pages whose only verb is the light. `None` when the gesture means

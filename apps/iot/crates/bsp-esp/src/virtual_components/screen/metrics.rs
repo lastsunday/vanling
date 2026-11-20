@@ -26,6 +26,8 @@ pub(super) struct CostSample {
     /// shorter frames.
     pub(super) hold: Duration,
     pub(super) worst_render: Duration,
+    /// The ground write inside the worst render: one pass over every pixel of the frame.
+    pub(super) worst_fill: Duration,
     /// The longest the coordinator was parked waiting for the bus to answer. Idle time, not
     /// held time — reported because a wait that grows is a panel falling behind, and because
     /// on a build with the bus inline this is the executor time the offload gave back.
@@ -43,6 +45,7 @@ pub(super) struct Metrics {
     cost_frames: u32,
     cost_anchor: Instant,
     worst_render: Duration,
+    worst_fill: Duration,
     worst_wait: Duration,
     worst_write: Duration,
     worst_chunk: Duration,
@@ -59,6 +62,7 @@ impl Metrics {
             cost_frames: 0,
             cost_anchor: Instant::now(),
             worst_render: Duration::ZERO,
+            worst_fill: Duration::ZERO,
             worst_wait: Duration::ZERO,
             worst_write: Duration::ZERO,
             worst_chunk: Duration::ZERO,
@@ -74,12 +78,14 @@ impl Metrics {
     pub(super) fn fold_frame(
         &mut self,
         render: Duration,
+        fill: Duration,
         wire: Wire,
         wait: Duration,
     ) -> Option<CostSample> {
         self.cost_frames += 1;
         if render > self.worst_render {
             self.worst_render = render;
+            self.worst_fill = fill;
         }
         if wait > self.worst_wait {
             self.worst_wait = wait;
@@ -101,6 +107,7 @@ impl Metrics {
             window,
             hold: self.hold,
             worst_render: self.worst_render,
+            worst_fill: self.worst_fill,
             worst_wait: self.worst_wait,
             worst_write: self.worst_write,
             worst_chunk: self.worst_chunk,
@@ -108,6 +115,7 @@ impl Metrics {
         self.cost_frames = 0;
         self.cost_anchor = now;
         self.worst_render = Duration::ZERO;
+        self.worst_fill = Duration::ZERO;
         self.worst_wait = Duration::ZERO;
         self.worst_write = Duration::ZERO;
         self.worst_chunk = Duration::ZERO;

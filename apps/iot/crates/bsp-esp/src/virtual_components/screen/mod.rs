@@ -30,6 +30,9 @@ pub(super) struct Pending {
     /// Whether the camera drew it: its failures are logged apart and do not force a repaint.
     pub(super) camera: bool,
     pub(super) render: Duration,
+    /// The ground write inside `render`: one pass over every pixel, so it is reported apart
+    /// from the page's own ink.
+    pub(super) fill: Duration,
 }
 
 /// ST7789 panel carrying the pages, the backlight and the camera's frame buffer.

@@ -109,11 +109,20 @@ pub fn scale_brightness(color: Rgb, brightness: u8) -> Rgb {
     )
 }
 
-/// Soft color-graduated breathing color at `elapsed_ms`, hue path per `group_len` (see
+/// One frame of a breathing schedule: the colour it paints, and where in the brightness
+/// envelope that frame sits.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Sample {
+    pub color: Rgb,
+    /// `0` at the trough, `255` at the peak; a flat envelope samples 255.
+    pub phase: u8,
+}
+
+/// Soft color-graduated breathing at `elapsed_ms`, hue path per `group_len` (see
 /// `group_hue`); `hue_span == 0` holds `base_hue` static — standalone is a parameter value,
 /// not a branch.
 #[allow(clippy::too_many_arguments)]
-pub fn breathe(
+pub fn sample(
     elapsed_ms: u32,
     breath_period_ms: u32,
     hue_period_ms: u32,
@@ -124,8 +133,14 @@ pub fn breathe(
     base_hue: u8,
     group: [u8; GROUP_CAPACITY],
     group_len: u8,
-) -> Rgb {
+) -> Sample {
     let value = smooth_brightness(elapsed_ms, breath_period_ms, min_brightness, max_brightness);
+    let floor = min_brightness.min(max_brightness);
+    let span = max_brightness.saturating_sub(floor);
+    let phase = match span {
+        0 => u8::MAX,
+        _ => (u16::from(value.saturating_sub(floor)) * 255 / u16::from(span)) as u8,
+    };
     let hue = group_hue(
         elapsed_ms,
         hue_period_ms,
@@ -134,7 +149,10 @@ pub fn breathe(
         group,
         group_len,
     );
-    hsv_to_rgb(hue, saturation, value)
+    Sample {
+        color: hsv_to_rgb(hue, saturation, value),
+        phase,
+    }
 }
 
 /// Hue at `elapsed_ms` along the configured path: `group_len == 0` walks the
@@ -175,32 +193,6 @@ fn hue_offset(hue_span: u8, hue_period_ms: u32, elapsed_ms: u32) -> u8 {
     (u32::from(hue_span) * u32::from(hue_phase(elapsed_ms, hue_period_ms)) / 256) as u8
 }
 
-/// Backlight duty for the breathing envelope at `elapsed_ms`: the same `[min_brightness,
-/// max_brightness]` wave the pixels ride, remapped to `[floor_pct, 100]` percent so the
-/// panel follows the pixels instead of switching binary on/off.
-pub fn backlight_level(
-    elapsed_ms: u32,
-    period_ms: u32,
-    min_brightness: u8,
-    max_brightness: u8,
-    floor_pct: u8,
-) -> u8 {
-    let min = u32::from(min_brightness.min(max_brightness));
-    let max = u32::from(max_brightness);
-    let span = max - min;
-    if span == 0 {
-        return 100;
-    }
-    let value = u32::from(smooth_brightness(
-        elapsed_ms,
-        period_ms,
-        min_brightness,
-        max_brightness,
-    ));
-    let room = 100 - u32::from(floor_pct.min(100));
-    (u32::from(floor_pct.min(100)) + (value - min) * room / span) as u8
-}
-
 /// Packs a colour into the panel's big-endian RGB565 word.
 pub fn rgb565(color: Rgb) -> u16 {
     let r = color.0 as u16;
@@ -220,6 +212,34 @@ pub fn invert_rgb565(packed: u16) -> u16 {
 
 #[cfg(test)]
 mod tests {
+    /// The colour half of [`sample`], so the envelope's tests read as ink comparisons.
+    fn breathe(
+        elapsed_ms: u32,
+        period_ms: u32,
+        hue_period_ms: u32,
+        hue_span: u8,
+        min_brightness: u8,
+        max_brightness: u8,
+        saturation: u8,
+        hue: u8,
+        group: [u8; GROUP_CAPACITY],
+        group_len: u8,
+    ) -> Rgb {
+        sample(
+            elapsed_ms,
+            period_ms,
+            hue_period_ms,
+            hue_span,
+            min_brightness,
+            max_brightness,
+            saturation,
+            hue,
+            group,
+            group_len,
+        )
+        .color
+    }
+
     use super::*;
 
     #[test]
@@ -494,13 +514,14 @@ mod tests {
     }
 
     #[test]
-    fn backlight_level_tracks_the_envelope_within_100() {
-        assert_eq!(backlight_level(0, 2000, 0, 255, 12), 12);
-        assert_eq!(backlight_level(1000, 2000, 0, 255, 12), 100);
-        assert_eq!(backlight_level(0, 2000, 0, 255, 20), 20);
-        assert_eq!(backlight_level(1000, 2000, 0, 255, 20), 100);
-        assert_eq!(backlight_level(0, 2000, 80, 80, 12), 100);
-        assert_eq!(backlight_level(1337, 5, 40, 40, 12), 100);
-        assert_eq!(backlight_level(0, 2000, 0, 255, 150), 100);
+    fn a_sample_reports_its_place_in_the_envelope_as_well_as_its_colour() {
+        let full = sample(0, 2000, 0, 0, 0, 255, 0, 0, [0; GROUP_CAPACITY], 0);
+        assert_eq!(full.phase, 0, "the trough is the bottom of the envelope");
+        assert_eq!(full.color, Rgb(0, 0, 0));
+        let peak = sample(1000, 2000, 0, 0, 0, 255, 0, 0, [0; GROUP_CAPACITY], 0);
+        assert_eq!(peak.phase, u8::MAX);
+        assert_eq!(peak.color, Rgb(255, 255, 255));
+        let flat = sample(0, 2000, 0, 0, 80, 80, 0, 0, [0; GROUP_CAPACITY], 0);
+        assert_eq!(flat.phase, u8::MAX, "a flat envelope is at its own peak");
     }
 }

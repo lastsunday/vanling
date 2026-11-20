@@ -1,18 +1,19 @@
 //! The Audio page: capture control and the meter the capture's envelope is drawn as.
 
+mod sweep;
+
 #[cfg(test)]
 mod tests;
 
+use iot_core::drivers::audio::{dbfs, spl};
+use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
+
 use crate::shared::intent::{AudioIntent, BusinessIntent, InputIntent, LightAction};
-use crate::shared::kit::bands::WAVE_TOP;
-use crate::shared::kit::painter::Painter;
-use crate::shared::kit::placement::PANEL_RIGHT;
+use crate::shared::kit::chrome;
 use crate::shared::kit::text::{format_dba, format_i32, format_u16};
 use crate::shared::model::{AudioPhase, Command, DeviceState, Effects};
 use crate::shared::snapshot::FrameSnapshot;
-use iot_core::drivers::audio::{dbfs, spl};
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct AudioPage;
@@ -56,83 +57,93 @@ impl super::LocalPage for AudioPage {
         }
     }
 
-    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
-        painter.draw_text(b"AUDIO", block_x(Block::First), overlay_row_top(0));
-        let fault = snapshot.audio.health.fault();
-        let dba_lsb = snapshot.audio.dba_lsb;
-        let offset = painter.spl_offset_db;
-        painter.draw_text_right(
-            format_dba(spl(dbfs(dba_lsb), offset), &mut [0u8; 12]),
-            PANEL_RIGHT,
-            overlay_row_top(0),
-        );
-        painter.draw_level(b"PK", dbfs(snapshot.audio.envelope.loudest()), 1);
-        painter.draw_level(b"RMS", dbfs(snapshot.audio.envelope.loudest_rms()), 2);
-        painter.draw_left(
-            b"ST",
-            match (fault, snapshot.audio.phase) {
-                (Some(_), _) => b"NO IN",
-                (None, AudioPhase::Idle) => b"IDLE",
-                (None, AudioPhase::Recording) => b"REC",
-                (None, AudioPhase::Stopped) => b"STOP",
-            },
-            Block::RightEdge,
-            1,
-        );
-        painter.draw_left(
-            b"MS",
-            format_i32(
-                i32::try_from(snapshot.audio.elapsed_ms).unwrap_or(i32::MAX),
-                &mut [0u8; 12],
-            ),
-            Block::RightEdge,
-            2,
-        );
-        painter.draw_left(
-            b"COL",
-            format_u16(
-                u16::from(snapshot.audio.envelope.committed()),
-                &mut [0u8; 6],
-            ),
-            Block::RightEdge,
-            3,
-        );
-        painter.draw_left(
-            b"RST",
-            format_u16(snapshot.audio.restarts, &mut [0u8; 6]),
-            Block::RightEdge,
-            4,
-        );
-        if snapshot.audio.envelope.clipped() {
-            painter.draw_text(b"CLIP", block_x(Block::RightEdge), overlay_row_top(5));
-        }
-        if let Some(reason) = fault {
-            painter.draw_text(reason.as_bytes(), block_x(Block::First), WAVE_TOP as usize);
-            painter.draw_text(
-                b"TAP RETRY",
-                block_x(Block::First),
-                WAVE_TOP as usize + ROW_PITCH,
-            );
-            return;
-        }
-        if snapshot.audio.phase == AudioPhase::Idle {
-            painter.draw_text(b"TAP TO REC", block_x(Block::First), WAVE_TOP as usize);
-            return;
-        }
-        let envelope = &snapshot.audio.envelope;
-        let peaks = envelope.weighted_released_peaks();
-        let levels = envelope.weighted_rms_columns();
-        let clip_age = envelope.clipped_age();
-        painter.draw_sweep(&peaks, &levels, clip_age);
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        let audio = &snapshot.audio;
+        let fault = audio.health.fault();
+        let offset = ui.screen().spl_offset_db;
+        chrome::page(ui, |ui| {
+            ui.row(Style::new().between(), |ui| {
+                chrome::title(ui, b"AUDIO");
+                ui.text(
+                    format_dba(spl(dbfs(audio.dba_lsb), offset), &mut [0u8; 12]),
+                    Style::new().nowrap(),
+                );
+            });
+            level(ui, b"PK", dbfs(audio.envelope.loudest()), offset);
+            level(ui, b"RMS", dbfs(audio.envelope.loudest_rms()), offset);
+            ui.row(Style::new().between(), |ui| {
+                chrome::reading(
+                    ui,
+                    b"ST",
+                    match (fault, audio.phase) {
+                        (Some(_), _) => b"NO IN",
+                        (None, AudioPhase::Idle) => b"IDLE",
+                        (None, AudioPhase::Recording) => b"REC",
+                        (None, AudioPhase::Stopped) => b"STOP",
+                    },
+                );
+                chrome::reading(
+                    ui,
+                    b"MS",
+                    format_i32(
+                        i32::try_from(audio.elapsed_ms).unwrap_or(i32::MAX),
+                        &mut [0u8; 12],
+                    ),
+                );
+            });
+            ui.row(Style::new().gap(12), |ui| {
+                chrome::reading(
+                    ui,
+                    b"COL",
+                    format_u16(u16::from(audio.envelope.committed()), &mut [0u8; 6]),
+                );
+                chrome::reading(ui, b"RST", format_u16(audio.restarts, &mut [0u8; 6]));
+                if audio.envelope.clipped() {
+                    ui.text(b"CLIP", Style::new().nowrap());
+                }
+            });
+            if let Some(reason) = fault {
+                ui.text(reason.as_bytes(), Style::new());
+                ui.text(b"TAP RETRY", Style::new().nowrap());
+                return;
+            }
+            if audio.phase == AudioPhase::Idle {
+                ui.text(b"TAP TO REC", Style::new().nowrap());
+                return;
+            }
+            ui.custom(Style::new().grow(1).stretch(), 0);
+        });
     }
 
     fn descriptor() -> super::Descriptor {
         // A capture poll closes two envelope columns every 20 ms; at the default step the
         // sweep would hold the executor 40% of the wall time on the S3.
-        super::Descriptor::new(Self::paint)
+        super::Descriptor::new(Self::view)
             .with_repaint_ms(super::REPAINT_FLOOR_MS * 2)
+            .with_custom(custom)
             .with_repaints(super::Repaint::When(audio_moved))
     }
+}
+
+/// The sweep is the page's only custom leaf: slot 0.
+fn custom(
+    snapshot: &FrameSnapshot,
+    screen: Screen,
+    _slot: u8,
+    canvas: &mut Canvas<'_>,
+    rect: Rect,
+) {
+    let envelope = &snapshot.audio.envelope;
+    let peaks = envelope.weighted_released_peaks();
+    let levels = envelope.weighted_rms_columns();
+    sweep::draw(
+        canvas,
+        rect,
+        &peaks,
+        &levels,
+        envelope.clipped_age(),
+        screen.probe,
+    );
 }
 
 fn audio_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
@@ -140,4 +151,37 @@ fn audio_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
         || prev.audio.envelope != next.audio.envelope
         || prev.audio.restarts != next.audio.restarts
         || prev.audio.dba_lsb != next.audio.dba_lsb
+}
+
+/// One level row: the decibels and the sound pressure they mean.
+fn level(ui: &mut Ui<'_, '_>, label: &[u8], decibels: i16, offset: i16) {
+    let mut buf = [0u8; 48];
+    let take = label.len().min(chrome::LABEL_BYTES);
+    buf[..take].copy_from_slice(&label[..take]);
+    let mut end = take;
+    while end < chrome::LABEL_BYTES {
+        buf[end] = b' ';
+        end += 1;
+    }
+    end = append(&mut buf, end, b" ");
+    end = append(
+        &mut buf,
+        end,
+        format_i32(i32::from(decibels), &mut [0u8; 12]),
+    );
+    end = append(&mut buf, end, b" DBFS ");
+    end = append(
+        &mut buf,
+        end,
+        format_i32(i32::from(spl(decibels, offset)), &mut [0u8; 12]),
+    );
+    end = append(&mut buf, end, b" SPL");
+    ui.text(&buf[..end], Style::new().nowrap());
+}
+
+fn append(buf: &mut [u8], at: usize, run: &[u8]) -> usize {
+    let end = (at + run.len()).min(buf.len());
+    let take = end - at;
+    buf[at..end].copy_from_slice(&run[..take]);
+    end
 }

@@ -9,7 +9,6 @@ pub mod drivers;
 pub mod geometry;
 pub mod horizon;
 pub mod light;
-pub mod overlay;
 pub mod provision;
 pub mod safe;
 pub mod stats;

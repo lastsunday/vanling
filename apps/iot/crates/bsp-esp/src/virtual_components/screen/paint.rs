@@ -65,6 +65,7 @@ impl Screen {
     pub(super) fn paint(&mut self, color: Rgb, painter: &dyn ScreenPainter, snapshot: &dyn Any) {
         let render_start = Instant::now();
         self.fill(color);
+        let fill = render_start.elapsed();
 
         let bytes = self.panel.frame_bytes();
         let context = self.context();
@@ -86,6 +87,7 @@ impl Screen {
         self.pending = Some(Pending {
             camera: false,
             render: render_start.elapsed(),
+            fill,
         });
     }
 
@@ -93,15 +95,17 @@ impl Screen {
     pub(super) fn fill(&mut self, color: Rgb) {
         self.owner.painted(color);
 
-        let width = usize::from(self.panel.width());
         let rgb565 = rgb565(color);
-        let hi = (rgb565 >> 8) as u8;
-        let lo = rgb565 as u8;
-        for px in self.frame.chunks_exact_mut(width * 2) {
-            for pixel in px.as_chunks_mut::<2>().0 {
-                pixel[0] = hi;
-                pixel[1] = lo;
-            }
+        let (hi, lo) = ((rgb565 >> 8) as u8, rgb565 as u8);
+        // Two pixels a store: a byte at a time is 153 600 iterations of one-byte writes on a
+        // path that runs twice per breathing frame.
+        let pair = [hi, lo, hi, lo];
+        let (blocks, rest) = self.frame.as_chunks_mut::<4>();
+        for block in blocks {
+            block.copy_from_slice(&pair);
+        }
+        for pixel in rest.as_chunks_mut::<2>().0 {
+            pixel.copy_from_slice(&pair[..2]);
         }
     }
 
@@ -132,11 +136,17 @@ impl Screen {
                 }
             }
         };
-        self.account_frame(pending.render, wire, started.elapsed());
+        self.account_frame(pending.render, pending.fill, wire, started.elapsed());
     }
 
-    pub(super) fn account_frame(&mut self, render: Duration, wire: Wire, wait: Duration) {
-        if let Some(cost) = self.metrics.fold_frame(render, wire, wait) {
+    pub(super) fn account_frame(
+        &mut self,
+        render: Duration,
+        fill: Duration,
+        wire: Wire,
+        wait: Duration,
+    ) {
+        if let Some(cost) = self.metrics.fold_frame(render, fill, wire, wait) {
             let percent = windowed_percent(cost.hold.as_micros(), cost.window.as_micros());
             let over_budget = percent > 25 || cost.worst_write.as_millis() > 20;
             log::log!(
@@ -145,12 +155,13 @@ impl Screen {
                 } else {
                     log::Level::Debug
                 },
-                "[DISPLAY] {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms, worst wait {} ms, worst write {} ms (longest chunk {} ms)",
+                "[DISPLAY] {} repaints in {} ms, held the executor {} ms ({}%), worst render {} ms (fill {}), worst wait {} ms, worst write {} ms (longest chunk {} ms)",
                 cost.frames,
                 cost.window.as_millis(),
                 cost.hold.as_millis(),
                 percent,
                 cost.worst_render.as_millis(),
+                cost.worst_fill.as_millis(),
                 cost.worst_wait.as_millis(),
                 cost.worst_write.as_millis(),
                 cost.worst_chunk.as_millis(),

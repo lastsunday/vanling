@@ -88,7 +88,7 @@ fn leaving_happens_when_the_question_is_answered_and_not_when_it_is_left_alone()
     link_up(&mut manager, b"neighbour");
 
     tap_strip(&mut manager);
-    let asked = tap_answer(&mut manager, layout::DialogChoice::Keep);
+    let asked = tap_answer(&mut manager, shape::DialogChoice::Keep);
     assert_eq!(manager.network_view().confirm, None);
     assert_eq!(asked, None, "the safe answer takes nothing down");
     assert_eq!(
@@ -99,7 +99,7 @@ fn leaving_happens_when_the_question_is_answered_and_not_when_it_is_left_alone()
 
     tap_strip(&mut manager);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Act),
+        tap_answer(&mut manager, shape::DialogChoice::Act),
         Some(Command::Network(NetworkCommand::Leave)),
         "and the request is on its way"
     );
@@ -167,7 +167,7 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     link_up(&mut manager, b"neighbour");
     tap_strip(&mut manager);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Act),
+        tap_answer(&mut manager, shape::DialogChoice::Act),
         Some(Command::Network(NetworkCommand::Leave)),
         "the answered question is the leave"
     );
@@ -190,7 +190,7 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     let mut manager = on_network_page();
     setup_mode(&mut manager, true);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Keep),
+        tap_answer(&mut manager, shape::DialogChoice::Keep),
         Some(Command::Network(NetworkCommand::SetupOpen {
             from: SetupHost::AccessPoint,
             open: true
@@ -208,7 +208,7 @@ fn each_panel_request_answers_with_its_own_command_on_the_spot() {
     marked(&mut manager, &["cafe"]);
     hold_band(&mut manager, 1);
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Act),
+        tap_answer(&mut manager, shape::DialogChoice::Act),
         Some(Command::Network(NetworkCommand::Forget(Ssid::from_octets(
             b"cafe"
         ))))

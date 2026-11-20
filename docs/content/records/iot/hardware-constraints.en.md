@@ -404,32 +404,107 @@ The software canary checks the sentinel below the stack floor on every context s
 
 ---
 
-## The panel's glyph table: Spleen 5×8, one face (`[test]`, 2026-10-22)
+## The panel's glyph table: Fusion Pixel at 12 px, monospaced, one GB2312 face (`[test]`, 2026-11-20)
 
-The table lives in `apps/iot/crates/core/src/ui/font.rs`: 95 printable ASCII glyphs, five columns by
-eight rows, column-major, bit 0 the top row. The pitch is still 9×13 (`FONT_W 5 + OVERLAY_GAP 4`,
-`FONT_H 8 + OVERLAY_ROW_GAP 5`).
+The table lives in `apps/iot/crates/core/src/ui/font.rs` and is `crates/core/assets/font/ui12.bin`
+(232,156 B), cut by `cargo run -p iot-tool -- font` from
+`crates/tool/assets/fonts/ui12.bdf` (1.0 MB, shipped with both the MIT and the OFL licence). The BDF
+is TakWolf's Fusion Pixel 12px Mono `zh_Hans`: `SIZE 12 75 75`, `FONT_ASCENT 10`, `FONT_DESCENT 2`;
+the subset carries GB2312's 7,475 glyphs.
 
-- **The first swap was for the counters**: Adafruit `glcdfont` leaves 1 px openings in `a/e/g/p/r/t/y`
-  at 5×7, and network names and passphrases are read slowly through them. m5x7 (Daniel Linssen, CC0)
-  draws 2 px openings in the same five columns — but its `m/M/w/W` are seven columns wide, its `0`
-  is its `O`, and `\` is missing; those five had to keep the Adafruit shapes, so any word carrying
-  `m` or `w` mixed two faces and read worse on the panel than the table it replaced (feedback,
-  2026-10-22).
-- **It is Spleen 5×8 now** (Frederic Cambus, BSD-2-Clause): the 5×8 cut carries printable ASCII
-  only, and every glyph is natively five columns by eight rows — `m/M/w/W`, `0` and `\` are all from
-  the same face, with no borrowed shapes and no cropped descender row.
-- **One row more, nothing else**: `FONT_H` 7→8 and `OVERLAY_ROW_GAP` 6→5 keep `ROW_PITCH` at 13.
-  The FPS badge at `232 + 8 = 240` fills the footer exactly, and the Audio page's `WAVE_TOP 42` sits
-  exactly under the second row — both are compile-time equality assertions, so a cell change stops
-  there first.
-- **Regression**: `iot:test` holds "every printable glyph has ink", "look-alike pairs are not one
-  bitmap" (`l/1`, `I/l`, `0/O`, `c/e`, `u/v`, `g/q`, `p/q`, `y/v`, `m/w`, `M/W`) and "the descenders
-  reach the bottom row" (`g/p/q/y/j`). The `0/O` pair was in fact identical after the first swap, and
-  the second test is what reported it.
+- **Table format `VLF1`**: a 32 B header (glyph count, line height, ascent, descent), then per glyph
+  a `u16` code point, a packed-metrics `u32`, a bitmap-offset `u32` and the bitmap. Code points are
+  sorted and searched by bisection; `Face::glyph/advance/measure/glyphs` is the only entry.
+- **Monospaced**: an ASCII cell advances 6 columns and a hanzi 12 — one hanzi is exactly two cells,
+  so network names, passphrases and mixed Chinese/ASCII text share one grid. Line height is 12 with
+  a pitch of 13 (`LINE`/`ROW_PITCH`), 10 rows of ascent and 2 of descent.
+- **Panel measurements follow the face**: a 12-row footer (`FOOTER_ROWS`), a content bottom of 228
+  (`CONTENT_BOTTOM`), a 10 px margin (`MARGIN`) and a 44 px minimum touch target (`TOUCH_MIN`).
+  `FACE_HEIGHT == LINE` and `the_panel_is_measured_in_the_face_it_draws_with` in `panel.rs` stop a
+  face change that leaves the layout behind, at compile time or in the test.
+- **The Network page's targets are taller because of it**: three 45 px list rows
+  (`LIST_ROW_H >= TOUCH_MIN`), an action strip at row 184, 45 px keys, and a 118 px confirmation box
+  with 34 cells per row (`SSID_BYTES <= DIALOG_GLYPHS` is a compile-time assertion).
+- **Regression**: `font.rs` holds the header, the ASCII/Han advances (`NETWORK` 7×6, `中文` 24), the
+  fallback mark for a missing code point, invalid UTF-8 not stalling, and `中` keeping its BDF box;
+  `panel.rs` holds the face and the line height together; `typeset.rs` holds the prohibitions and
+  truncation; the 16 golden hashes in `services/tests.rs` hold whole pages pixel for pixel.
 
-The table is flash: `[u8; 95 × 5] = 475 B`, the same size as the old one; the static wall is 65,720 B
-before and after (floor 65,536 B, 184 B spare).
+The table is flash: `ui12.bin` is 232,156 B; the BDF stays on the tool side and never enters the image.
+
+## What one frame's declaration costs (`[test]`, 2026-11-20)
+
+The layout layer keeps no tree: `Ui` collects a declaration while `view` runs, lays it out once and
+inks it once. The node array is `MAX_NODES = 48`, each node 160 B; the fullest page today is the
+Attitude debug grid at 42 nodes. The whole `Ui` is 9,784 B, inside the panel core's 24 KiB stack,
+and `ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` pins it under 10 KiB.
+
+## Numbers must not move the layout (`[test]`, 2026-11-20)
+
+The Attitude page once declared all three reading columns with `grow(1)`: flex starts each
+column at its **content** width, so a change in digit count redistributed the row and the whole
+block of text slid sideways. The fix has two layers:
+
+- **A fixed reading line**: a four-cell label, one cell of air and a seven-cell right-aligned
+  value (`chrome::READING = 72 px`); a value wider than its slot keeps its own width rather
+  than being cut, so a line never changes width with the number in it;
+- **Explicit column widths**: each column is `width(72)` and no longer depends on content; the
+  dial is `absolute().right(MARGIN).bottom(0)` inside a `stack`, declared after the text so it
+  paints on top.
+
+Two engine gaps fell out of it: an absolutely positioned child of a `stack` stretched by its
+parent still read the content width (it now takes the edge from the tight constraints), and
+`inset` used `0` to mean "unset", which left `right(0)`/`bottom(0)` unsayable; it is an
+`Option<i16>` now.
+
+Regression: `services::attitude::tests::{the_numbers_do_not_move_the_layout,
+the_dial_owns_the_bottom_right_corner}` (a zero sample and a full-width negative one lay out to
+identical rectangles; the dial hugs the content's bottom-right corner without touching text) and
+`ui::layout::tests::{a_stretched_stack_reaches_its_parents_edge,
+an_inset_of_zero_means_the_edge_not_an_unset_side}`.
+
+## A frame's paint: the layout measured the same run fifty times (`[measured]`/`[test]`, 2026-11-20)
+
+`[measured]` The starting point was the Attitude page at about 104 ms a frame and Ambient at
+`worst render 92 ms`. The attribution was measured, not guessed: `Screen::paint` was temporarily
+split into `fill` / `layout` / `draw`, and the console read `[PAINT] Attitude body 0.70 ms, layout
+98.9 ms, finish 102.4 ms` — layout took 97%, and inking plus the second layout pass about 3.5 ms.
+
+Layout was expensive because it measured repeatedly: the host counted 2,394 `wrap` calls a frame for
+45 text nodes on the Attitude page, about 53 per node. Every flex pass asks its children for a size
+(measure, place, measure again), and a `grow` cascade asks again under different constraints;
+`layout_text` ran `max_content` + `wrap` from the top each time, and both binary-search glyphs in
+flash (one advance ≈ 800–900 cycles).
+
+The fix remembers which constraints a node's size came from: `Node::measured_at: Measured {
+min_w, max_w }` holds the width after `enforce`, and `layout_node` returns on a hit. `Tree::push`
+builds with `..Node::default()`, whose default is a pair no constraint produces, so a fresh
+declaration never reads as measured; a width that really changes re-measures, pinned by
+`a_text_node_re_measures_when_the_width_changes`.
+
+| Reading (S3, 240 MHz) | before | after |
+| --- | --- | --- |
+| `wrap` calls per frame (host) | 2,394 | 41 |
+| text bytes swept per frame (host) | 28,656 | 4,708 |
+| Attitude `[PAINT]` | body 0.70 / layout 98.9 / finish 102.4 ms | body 0.71 / layout 3.9 / finish 4.5 ms |
+| Ambient `[DISPLAY]` | `worst render 92 ms (fill 2)`, `held 646 ms (29%)` | `worst render 25–33 ms (fill 1–2)`, `held 42–243 ms (1–11%)` |
+| Attitude whole frame (host, release) | 1.104 ms | 96 µs |
+| Splash `[PAINT]` | finish 1.65 ms | finish 0.47 ms |
+
+`finish` still contains one layout pass (every node hits) and the inking; the product path calls
+`finish` once, so that stretch is the whole frame's paint.
+
+The pixel layer tightened at the same time and the picture is byte-identical (the 16 whole-page
+golden hashes do not move): `draw_glyph` reads a glyph's bitmap row by row, skipping eight pixels
+for an empty byte, with the box and clip intersected once at the entrance; `fill_rect` takes one
+span per row and writes it whole; `draw_text` paints a `Start` run that fits without running the
+breaker; `Screen::fill` stores two pixels at a time. The `[DISPLAY]` line therefore grew
+`worst render N (fill M)`, splitting fill from paint as a standing regression metric.
+
+Ambient still does 224 `wrap` calls and 7 measurements under different constraints per frame: that
+is the `grow` cascade (2^depth), and squeezing it further means changing flex's measurement order,
+so this round leaves it. A frame also has a 15.36 ms wire floor (153,600 B / 80 MHz); no repaint
+can go below it.
 
 ## Panic reset and the watchdog: a reboot is the only way out of a freeze (`[test]`/`[measured]`/`[reported]`, 2026-11-08)
 

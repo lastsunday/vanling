@@ -1,16 +1,17 @@
 //! Network, setup and question text: the words the link's readings become.
 
 use crate::services::network::controller::{ControlKind, confirm_verb};
-use crate::services::network::layout::LIST_ROWS;
-use crate::services::network::layout::{DIALOG_ANSWER_W, DIALOG_GLYPHS, ToolbarCell, toolbar_cell};
+use crate::services::network::shape::{
+    DIALOG_ANSWER_W, DIALOG_GLYPHS, LIST_ROWS, ToolbarCell, toolbar_cell,
+};
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{Key, Layer};
 use crate::shared::model::Entry;
 use iot_core::drivers::network::{
     AccessPoint, Ipv4, LinkPhase, LinkStatus, NetworkError, SSID_BYTES, SetupPass,
 };
-use iot_core::overlay::{GLYPH_PITCH, OVERLAY_GAP};
 use iot_core::provision::SETUP_PASS_LEN;
+use iot_core::ui::panel::GLYPH;
 
 use iot_core::ui::text::{write_u16, write_u64};
 
@@ -54,19 +55,16 @@ pub const fn control_label(kind: ControlKind) -> &'static [u8] {
 }
 
 const _: () = assert!(
-    control_label(ControlKind::Cancel).len() * GLYPH_PITCH - OVERLAY_GAP
-        <= toolbar_cell(ToolbarCell::Left).w,
+    control_label(ControlKind::Cancel).len() * GLYPH <= toolbar_cell(ToolbarCell::Left).w,
     "the way out of setup mode does not fit the cell the strip gives it"
 );
 const _: () = assert!(
-    control_label(ControlKind::AccessPoint).len() * GLYPH_PITCH - OVERLAY_GAP
-        <= toolbar_cell(ToolbarCell::Right).w
-        && control_label(ControlKind::Panel).len() * GLYPH_PITCH - OVERLAY_GAP
-            <= toolbar_cell(ToolbarCell::Right).w,
+    control_label(ControlKind::AccessPoint).len() * GLYPH <= toolbar_cell(ToolbarCell::Right).w
+        && control_label(ControlKind::Panel).len() * GLYPH <= toolbar_cell(ToolbarCell::Right).w,
     "the host switch does not fit the cell the strip gives it"
 );
 const _: () = assert!(
-    control_label(ControlKind::NoPass).len() * GLYPH_PITCH - OVERLAY_GAP <= DIALOG_ANSWER_W,
+    control_label(ControlKind::NoPass).len() * GLYPH <= DIALOG_ANSWER_W,
     "the box's own answer cannot hold the word of what it does"
 );
 
@@ -247,8 +245,8 @@ const _: () = assert!(
     "a confirmation's consequence is wider than the line the box gives it"
 );
 const _: () = assert!(
-    control_label(ControlKind::Leave).len() * GLYPH_PITCH <= DIALOG_ANSWER_W
-        && control_label(ControlKind::Forget).len() * GLYPH_PITCH <= DIALOG_ANSWER_W,
+    control_label(ControlKind::Leave).len() * GLYPH <= DIALOG_ANSWER_W
+        && control_label(ControlKind::Forget).len() * GLYPH <= DIALOG_ANSWER_W,
     "a confirmation's own button cannot hold the word of the action it performs"
 );
 const _: () = assert!(
@@ -256,7 +254,7 @@ const _: () = assert!(
     "what the radio is waiting on is wider than the line the box gives it"
 );
 const _: () = assert!(
-    DIALOG_GLYPHS <= SSID_BYTES,
+    SSID_BYTES <= DIALOG_GLYPHS,
     "a name folded into the box's line does not fit the buffer it is folded in"
 );
 const _: () = assert!(

@@ -39,7 +39,9 @@ impl RenderSet {
         let topics: Vec<Topic> = slot.renderer.topics().to_vec();
         for topic in topics {
             if let Some(appearance) = self.differ.latest(topic) {
-                slot.drive = slot.renderer.on_appearance(appearance, now_ms);
+                slot.drive = slot
+                    .drive
+                    .or(slot.renderer.on_appearance(appearance, now_ms));
             }
         }
         self.slots.push(slot);
@@ -60,7 +62,9 @@ impl RenderSet {
             let topic = appearance.topic();
             for slot in slots.iter_mut() {
                 if slot.renderer.topics().contains(&topic) {
-                    slot.drive = slot.renderer.on_appearance(appearance, now_ms);
+                    slot.drive = slot
+                        .drive
+                        .or(slot.renderer.on_appearance(appearance, now_ms));
                 }
             }
         });
@@ -130,6 +134,50 @@ mod tests {
         state.surface_roles[0] = SurfaceRole::Lamp;
         state.lights[0] = LightState::boot();
         state
+    }
+
+    struct TwoTopics {
+        steps: Rc<RefCell<u32>>,
+    }
+
+    impl Renderer for TwoTopics {
+        fn topics(&self) -> &[Topic] {
+            &[Topic::Frame, Topic::Surface(0)]
+        }
+
+        fn on_appearance(&mut self, appearance: Appearance<'_>, _now_ms: u32) -> Drive {
+            match appearance {
+                Appearance::Frame(_) => Drive::TimeDriven,
+                _ => Drive::Idle,
+            }
+        }
+
+        fn step(&mut self, _now_ms: u32) -> Drive {
+            *self.steps.borrow_mut() += 1;
+            Drive::Idle
+        }
+    }
+
+    #[test]
+    fn a_later_appearance_does_not_erase_an_earlier_one_asking_for_time() {
+        let state = state();
+        let demand = EffectiveDemand::default();
+        let mut renderers = RenderSet::new();
+        let steps = Rc::new(RefCell::new(0));
+        renderers.register(
+            Box::new(TwoTopics {
+                steps: Rc::clone(&steps),
+            }),
+            0,
+        );
+
+        renderers.tick(&state, PageSnapshot::default(), &demand, 0);
+
+        assert_eq!(
+            *steps.borrow(),
+            1,
+            "the frame asked for time, and the surface behind it answered idle"
+        );
     }
 
     #[test]

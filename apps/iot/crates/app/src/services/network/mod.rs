@@ -2,20 +2,21 @@
 //! them, and the drawing that reads both.
 
 pub mod controller;
-pub mod layout;
+pub mod shape;
 mod view;
 
 #[cfg(test)]
 mod tests;
 
+use iot_core::drivers::input::{ButtonEvent, InputEvent};
 use iot_core::light::Rgb;
+use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
+use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent, NetworkIntent};
-use crate::shared::kit::painter::Painter;
 use crate::shared::model::{Command, DeviceState, Effects, NetworkView};
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
-use iot_core::drivers::input::{ButtonEvent, InputEvent};
 
 /// The page owns the one edit session the link never writes.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -68,28 +69,61 @@ impl super::LocalPage for NetworkPage {
         out.network = self.draft;
     }
 
-    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
         let link = snapshot.link;
-        let aps = snapshot.aps;
-        let setup = snapshot.pages.network;
-        let shown_ap = if setup.keyboard {
-            setup.selected
-        } else {
-            link.ap.or(setup.selected)
-        };
+        let draft = snapshot.pages.network;
 
-        controller::each_band(setup, link, |band| match band {
-            controller::Band::Header => painter.draw_header(
-                setup,
-                link,
-                shown_ap,
-                snapshot.mac,
-                aps.filter(|list| !list.is_empty()).map(|list| list.len()),
-            ),
-            controller::Band::Content => painter.draw_content(setup, link, aps),
-            controller::Band::Controls => painter.draw_strip(setup, link),
-            controller::Band::Overlay => painter.draw_box(setup, link, shown_ap, snapshot.mac),
-        });
+        ui.stack(
+            Style::new().size(PANEL_COLUMNS as i16, CONTENT_BOTTOM as i16),
+            |ui| {
+                ui.custom(
+                    Style::new()
+                        .absolute()
+                        .left(0)
+                        .top(0)
+                        .size(PANEL_COLUMNS as i16, shape::LIST_TOP as i16),
+                    view::HEADER,
+                );
+
+                if shape::Band::Content.showing(draft, link) {
+                    let bottom = if draft.keyboard {
+                        CONTENT_BOTTOM
+                    } else {
+                        shape::TOOLBAR_TOP
+                    };
+                    ui.custom(
+                        Style::new()
+                            .absolute()
+                            .left(0)
+                            .top(shape::LIST_TOP as i16)
+                            .size(PANEL_COLUMNS as i16, (bottom - shape::LIST_TOP) as i16),
+                        view::CONTENT,
+                    );
+                }
+
+                if shape::Band::Controls.showing(draft, link) {
+                    ui.custom(
+                        Style::new()
+                            .absolute()
+                            .left(0)
+                            .top(shape::TOOLBAR_TOP as i16)
+                            .size(PANEL_COLUMNS as i16, shape::TOOLBAR_H as i16),
+                        view::STRIP,
+                    );
+                }
+
+                if shape::Band::Overlay.showing(draft, link) {
+                    ui.custom(
+                        Style::new()
+                            .absolute()
+                            .left(0)
+                            .top(0)
+                            .size(PANEL_COLUMNS as i16, CONTENT_BOTTOM as i16),
+                        view::OVERLAY,
+                    );
+                }
+            },
+        );
     }
 
     fn on_hide(&mut self) {
@@ -97,9 +131,38 @@ impl super::LocalPage for NetworkPage {
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint)
+        super::Descriptor::new(Self::view)
             .with_ground(Some(Rgb(0, 0, 0)))
+            .with_custom(custom)
             .with_repaints(super::Repaint::When(network_moved))
+    }
+}
+
+/// The four bands, each a custom leaf of its own.
+fn custom(
+    snapshot: &FrameSnapshot,
+    _screen: Screen,
+    slot: u8,
+    canvas: &mut Canvas<'_>,
+    _rect: Rect,
+) {
+    let link = snapshot.link;
+    let aps = snapshot.aps;
+    let draft = snapshot.pages.network;
+    let mac = snapshot.mac;
+    let shown_ap = if draft.keyboard {
+        draft.selected
+    } else {
+        link.ap.or(draft.selected)
+    };
+    match slot {
+        view::HEADER => {
+            let list_len = aps.filter(|list| !list.is_empty()).map(|list| list.len());
+            view::header::draw(canvas, draft, link, shown_ap, mac, list_len);
+        }
+        view::CONTENT => view::content::draw(canvas, draft, link, aps),
+        view::STRIP => view::draw_strip(canvas, draft, link),
+        _ => view::overlay::draw(canvas, draft, link, shown_ap, mac),
     }
 }
 

@@ -143,7 +143,7 @@ fn a_hold_on_a_saved_row_asks_to_forget_it() {
     assert_eq!(manager.network_view().selected, None);
 
     assert_eq!(
-        tap_answer(&mut manager, layout::DialogChoice::Act),
+        tap_answer(&mut manager, shape::DialogChoice::Act),
         Some(Command::Network(NetworkCommand::Forget(Ssid::from_octets(
             b"cafe"
         )))),
@@ -419,7 +419,7 @@ fn the_row_a_link_was_left_from_opens_a_new_draft() {
     );
 
     tap_strip(&mut manager);
-    tap_answer(&mut manager, layout::DialogChoice::Act);
+    tap_answer(&mut manager, shape::DialogChoice::Act);
     manager.apply_business(BusinessIntent::Link(LinkIntent::Status(
         LinkStatus::default(),
     )));

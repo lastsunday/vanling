@@ -4,27 +4,16 @@ use crate::render::LightAppearance;
 use crate::shared::model::Breath;
 use iot_core::demand::Mode;
 use iot_core::drivers::surface::RgbLight;
-use iot_core::light::Rgb;
+use iot_core::light::{Rgb, Sample};
 
 use super::renderer::Drive;
 
-/// What one painted appearance is: nothing, one colour, or a breath that keeps moving.
+/// What one painted appearance is: nothing, one colour, or one frame of a breath.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Shown {
     Off,
     Solid,
-    Breathing(Breath),
-}
-
-impl Shown {
-    /// The screen's backlight for this appearance; lamps never ask.
-    pub(crate) fn backlight(self, now_ms: u32, floor_pct: u8) -> u8 {
-        match self {
-            Self::Off => 0,
-            Self::Solid => 100,
-            Self::Breathing(breath) => breath.backlight(now_ms, floor_pct),
-        }
-    }
+    Breathing(Sample),
 }
 
 /// Writes appearances to a surface: dedupes a slow one, steps a breathing one.
@@ -95,8 +84,9 @@ impl ColorOutput {
             }
             LightAppearance::Breathing(breath) => {
                 self.breath = Some(breath);
-                self.write(light, repaint_step, breath.rgb(now_ms));
-                Shown::Breathing(breath)
+                let sample = breath.sample(now_ms);
+                self.write(light, repaint_step, sample.color);
+                Shown::Breathing(sample)
             }
         }
     }
@@ -119,9 +109,9 @@ impl ColorOutput {
         repaint_step: u8,
         now_ms: u32,
     ) -> Option<Shown> {
-        let breath = self.breath?;
-        self.write(light, repaint_step, breath.rgb(now_ms));
-        Some(Shown::Breathing(breath))
+        let sample = self.breath?.sample(now_ms);
+        self.write(light, repaint_step, sample.color);
+        Some(Shown::Breathing(sample))
     }
 
     fn write<R: RgbLight + ?Sized>(&mut self, light: &mut R, repaint_step: u8, color: Rgb) {

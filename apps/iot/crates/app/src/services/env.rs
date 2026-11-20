@@ -1,11 +1,10 @@
 //! The Env page: one line of text for now, and no gesture of its own.
 
-use iot_core::overlay::{Block, block_x, overlay_row_top};
-
 use crate::shared::intent::{BusinessIntent, InputIntent};
-use crate::shared::kit::painter::Painter;
+use crate::shared::kit::chrome;
 use crate::shared::model::DeviceState;
 use crate::shared::snapshot::FrameSnapshot;
+use iot_core::ui::Ui;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct EnvPage;
@@ -17,11 +16,11 @@ impl super::LocalPage for EnvPage {
         None
     }
 
-    fn paint(_snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
-        painter.draw_text(b"Env", block_x(Block::First), overlay_row_top(0));
+    fn view(_snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        chrome::page(ui, |ui| chrome::title(ui, b"Env"));
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint).with_repaints(super::Repaint::Overlay)
+        super::Descriptor::new(Self::view).with_repaints(super::Repaint::Overlay)
     }
 }

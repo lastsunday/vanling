@@ -138,6 +138,7 @@ impl Screen {
         self.pending = Some(Pending {
             camera: true,
             render,
+            fill: Duration::ZERO,
         });
         // Sampled here because the camera page reaches the panel through this path and nowhere
         // else: without it the reading is `0 B` on this page for the whole run, which says

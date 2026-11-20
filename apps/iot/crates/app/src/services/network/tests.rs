@@ -3,7 +3,7 @@
 
 use crate::services::Services;
 use crate::services::network::NetworkPage;
-use crate::services::network::layout;
+use crate::services::network::shape;
 use crate::shared::intent::{BusinessIntent, Confirm, Key, NetworkIntent};
 use crate::shared::model::{DeviceState, Entry, NetworkView};
 use crate::state::test_support::*;
@@ -104,7 +104,7 @@ fn swipe(direction: SwipeDirection) -> InputEvent {
 }
 
 fn key_tap(cell: usize) -> InputEvent {
-    let rect = layout::key_box(cell).expect("a cell of the grid");
+    let rect = shape::key_box(cell).expect("a cell of the grid");
     tap_at((rect.x + rect.w / 2) as u16, (rect.y + rect.h / 2) as u16)
 }
 
@@ -115,7 +115,7 @@ fn a_tap_on_a_band_is_that_band_of_the_list() {
         ap(b"neighbour", -55),
         ap_with(b"cafe", -60, 7),
     ]));
-    let first = layout::LIST_TOP as u16;
+    let first = shape::LIST_TOP as u16;
     assert_eq!(
         fixture.ask(tap_at(30, first)),
         Some(BusinessIntent::Network(NetworkIntent::Choose(ap(
@@ -125,14 +125,14 @@ fn a_tap_on_a_band_is_that_band_of_the_list() {
         "the list's first band is the first network"
     );
     assert_eq!(
-        fixture.ask(tap_at(30, first + layout::LIST_ROW_H as u16)),
+        fixture.ask(tap_at(30, first + shape::LIST_ROW_H as u16)),
         Some(BusinessIntent::Network(NetworkIntent::Choose(ap_with(
             b"cafe", -60, 7
         )))),
         "a band down is the next network"
     );
     assert_eq!(
-        fixture.ask(tap_at(30, first + layout::LIST_ROW_H as u16 - 1)),
+        fixture.ask(tap_at(30, first + shape::LIST_ROW_H as u16 - 1)),
         Some(BusinessIntent::Network(NetworkIntent::Choose(ap(
             b"neighbour",
             -55
@@ -174,12 +174,12 @@ fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
         ap_with(b"cafe", -60, 7),
         ap_with(b"bakery", -65, 8),
     ]));
-    let strip = layout::toolbar_box();
+    let strip = shape::toolbar_box();
     for (x, _cell) in [
-        (0, layout::ToolbarCell::Left),
-        (strip.w / 2 - 1, layout::ToolbarCell::Left),
-        (strip.w / 2, layout::ToolbarCell::Right),
-        (strip.w - 1, layout::ToolbarCell::Right),
+        (0, shape::ToolbarCell::Left),
+        (strip.w / 2 - 1, shape::ToolbarCell::Left),
+        (strip.w / 2, shape::ToolbarCell::Right),
+        (strip.w - 1, shape::ToolbarCell::Right),
     ] {
         for y in [strip.y, strip.y + strip.h / 2, strip.y + strip.h - 1] {
             assert_eq!(
@@ -190,7 +190,7 @@ fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
         }
     }
     assert_eq!(
-        fixture.ask(tap_at(160, (layout::TOOLBAR_TOP - 1) as u16)),
+        fixture.ask(tap_at(160, (shape::TOOLBAR_TOP - 1) as u16)),
         Some(BusinessIntent::Network(NetworkIntent::Choose(ap_with(
             b"bakery", -65, 8
         )))),
@@ -216,8 +216,8 @@ fn the_button_is_the_strip_verb_and_the_setup_box_asks_about_its_passphrase() {
         )),
         ..Default::default()
     };
-    let keep = layout::dialog_answer_box(layout::DialogChoice::Keep);
-    let act = layout::dialog_answer_box(layout::DialogChoice::Act);
+    let keep = shape::dialog_answer_box(shape::DialogChoice::Keep);
+    let act = shape::dialog_answer_box(shape::DialogChoice::Act);
     assert_eq!(
         announcing.ask(tap_at(keep.x as u16 + 1, keep.y as u16 + 1)),
         Some(BusinessIntent::Network(NetworkIntent::SetOpenAccessPoint(
@@ -239,7 +239,7 @@ fn a_hold_on_a_band_is_that_band_asked_about() {
         ap(b"neighbour", -55),
         ap_with(b"cafe", -60, 7),
     ]));
-    let first = layout::LIST_TOP as u16;
+    let first = shape::LIST_TOP as u16;
     assert_eq!(
         fixture.ask(long_press_at(30, first)),
         Some(BusinessIntent::Network(NetworkIntent::AskForget(ap(
@@ -248,7 +248,7 @@ fn a_hold_on_a_band_is_that_band_asked_about() {
         ))))
     );
     assert_eq!(
-        fixture.ask(long_press_at(30, first + layout::LIST_ROW_H as u16)),
+        fixture.ask(long_press_at(30, first + shape::LIST_ROW_H as u16)),
         Some(BusinessIntent::Network(NetworkIntent::AskForget(ap_with(
             b"cafe", -60, 7
         ))))
@@ -259,7 +259,7 @@ fn a_hold_on_a_band_is_that_band_asked_about() {
         "the header is not a row to ask about"
     );
     assert_eq!(
-        fixture.ask(long_press_at(160, layout::TOOLBAR_TOP as u16)),
+        fixture.ask(long_press_at(160, shape::TOOLBAR_TOP as u16)),
         None,
         "and neither is the strip"
     );
@@ -273,8 +273,8 @@ fn a_hold_on_a_band_is_that_band_asked_about() {
 #[test]
 fn a_question_is_answered_by_where_a_finger_lands_and_by_nothing_else() {
     let fixture = asking();
-    let act = layout::dialog_answer_box(layout::DialogChoice::Act);
-    let keep = layout::dialog_answer_box(layout::DialogChoice::Keep);
+    let act = shape::dialog_answer_box(shape::DialogChoice::Act);
+    let keep = shape::dialog_answer_box(shape::DialogChoice::Keep);
     assert_eq!(
         fixture.ask(tap_at(
             (act.x + act.w / 2) as u16,
@@ -295,12 +295,9 @@ fn a_question_is_answered_by_where_a_finger_lands_and_by_nothing_else() {
     );
     for (x, y) in [
         (30, 5),
-        (30, layout::LIST_TOP as u16 + 2),
-        (160, layout::TOOLBAR_TOP as u16 + 2),
-        (
-            (layout::DIALOG_X + 2) as u16,
-            (layout::DIALOG_TOP + 2) as u16,
-        ),
+        (30, shape::LIST_TOP as u16 + 2),
+        (160, shape::TOOLBAR_TOP as u16 + 2),
+        ((shape::DIALOG_X + 2) as u16, (shape::DIALOG_TOP + 2) as u16),
     ] {
         assert_eq!(
             fixture.ask(tap_at(x, y)),
@@ -314,11 +311,11 @@ fn a_question_is_answered_by_where_a_finger_lands_and_by_nothing_else() {
         "a swipe under the box does not slide a list it cannot see"
     );
     assert_eq!(
-        fixture.ask(long_press_at(30, layout::LIST_TOP as u16 + 2)),
+        fixture.ask(long_press_at(30, shape::LIST_TOP as u16 + 2)),
         Some(BusinessIntent::Network(NetworkIntent::Dismiss))
     );
     assert_eq!(
-        fixture.ask(tap_at(160, layout::TOOLBAR_TOP as u16 + 2)),
+        fixture.ask(tap_at(160, shape::TOOLBAR_TOP as u16 + 2)),
         Some(BusinessIntent::Network(NetworkIntent::Dismiss))
     );
 }
@@ -350,7 +347,7 @@ fn a_tap_while_the_keyboard_is_up_types_the_key_under_it() {
     );
     assert_eq!(
         fixture.ask(key_tap(
-            layout::cell_of(Key::Shift).expect("a control's own cell")
+            shape::cell_of(Key::Shift).expect("a control's own cell")
         )),
         Some(BusinessIntent::Network(NetworkIntent::Key {
             key: Key::Shift,
@@ -359,7 +356,7 @@ fn a_tap_while_the_keyboard_is_up_types_the_key_under_it() {
     );
     assert_eq!(
         fixture.ask(key_tap(
-            layout::cell_of(Key::Cancel).expect("a control's own cell")
+            shape::cell_of(Key::Cancel).expect("a control's own cell")
         )),
         Some(BusinessIntent::Network(NetworkIntent::Key {
             key: Key::Cancel,
@@ -368,7 +365,7 @@ fn a_tap_while_the_keyboard_is_up_types_the_key_under_it() {
     );
     assert_eq!(
         fixture.ask(key_tap(
-            layout::cell_of(Key::Reveal).expect("a control's own cell")
+            shape::cell_of(Key::Reveal).expect("a control's own cell")
         )),
         Some(BusinessIntent::Network(NetworkIntent::Key {
             key: Key::Reveal,
@@ -379,7 +376,7 @@ fn a_tap_while_the_keyboard_is_up_types_the_key_under_it() {
     assert_eq!(
         fixture.ask(tap_at(
             30,
-            (layout::KEYBOARD_TOP + layout::ROWS * layout::KEY_H) as u16
+            (shape::KEYBOARD_TOP + shape::ROWS * shape::KEY_H) as u16
         )),
         None
     );
@@ -390,8 +387,8 @@ fn the_clock_at_the_lift_is_what_the_key_carries() {
     assert_eq!(
         typing().ask(InputEvent::Gesture(GestureEvent::Tap {
             id: 0,
-            x: layout::KEY_W as u16 / 2,
-            y: (layout::KEYBOARD_TOP + layout::KEY_H / 2) as u16,
+            x: shape::KEY_W as u16 / 2,
+            y: (shape::KEYBOARD_TOP + shape::KEY_H / 2) as u16,
             held_ms: 40,
             at_ms: 4_321,
         })),

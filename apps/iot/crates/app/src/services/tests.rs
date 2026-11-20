@@ -8,25 +8,43 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::services::{descriptor, paint};
-use crate::shared::kit::painter::Painter;
+use crate::shared::kit::panel::Panel;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
+use iot_core::drivers::motion::MotionSample;
 use iot_core::light::Rgb;
-use iot_core::ui::Canvas;
+use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
+use iot_core::ui::{Canvas, Screen};
 
-const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
-const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;
+const WIDTH: usize = PANEL_COLUMNS;
+const HEIGHT: usize = PANEL_ROWS;
 
 fn render(page: PageId, debug: bool) -> Vec<u8> {
+    render_snapshot(
+        &FrameSnapshot {
+            page,
+            ..FrameSnapshot::default()
+        },
+        debug,
+    )
+}
+
+fn render_snapshot(snapshot: &FrameSnapshot, debug: bool) -> Vec<u8> {
+    let page = snapshot.page;
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
-    let snapshot = FrameSnapshot {
-        page,
-        ..FrameSnapshot::default()
-    };
     {
         let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, descriptor(page).ground());
-        let mut painter = Painter::new(canvas, 0, 60, debug, 100);
-        paint(page, &snapshot, &mut painter);
+        let mut panel = Panel::new(
+            canvas,
+            Screen {
+                instance: 0,
+                fps: 60,
+                debug,
+                spl_offset_db: 100,
+                probe: None,
+            },
+        );
+        paint(page, snapshot, &mut panel);
     }
     frame
 }
@@ -44,21 +62,21 @@ fn fingerprint(frame: &[u8]) -> u32 {
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
 const GOLDEN: [(&str, bool, u32); 16] = [
     ("ambient", false, 0xc18e_7dc5),
-    ("ambient", true, 0xc104_7691),
-    ("attitude", false, 0x3d8d_fc2f),
-    ("attitude", true, 0xc9e3_2c21),
-    ("audio", false, 0xe52b_405d),
-    ("audio", true, 0x5dca_544f),
-    ("speaker", false, 0x9370_7f03),
-    ("speaker", true, 0x0302_faf5),
-    ("camera", false, 0x311b_aeb1),
-    ("camera", true, 0x9903_7aa3),
-    ("network", false, 0x53df_7d41),
-    ("network", true, 0x5c55_fd33),
-    ("splash", false, 0x328a_4c63),
-    ("splash", true, 0xe51b_5e55),
-    ("env", false, 0xc8c9_1e4b),
-    ("env", true, 0x80cd_763d),
+    ("ambient", true, 0xb334_d787),
+    ("attitude", false, 0x8ed2_6849),
+    ("attitude", true, 0x5a48_e7f9),
+    ("audio", false, 0xcb10_0429),
+    ("audio", true, 0xff61_15d9),
+    ("speaker", false, 0x8197_293d),
+    ("speaker", true, 0xe667_80ed),
+    ("camera", false, 0xff33_ada9),
+    ("camera", true, 0x234e_c159),
+    ("network", false, 0x216e_b4b9),
+    ("network", true, 0x2b62_f669),
+    ("splash", false, 0xaa0a_a601),
+    ("splash", true, 0x3f0b_3db1),
+    ("env", false, 0x97fe_6687),
+    ("env", true, 0x936c_5837),
 ];
 
 #[test]
@@ -86,6 +104,93 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
     }
 }
 
+/// Writes every page as a 24-bit BMP under `PAGE_DUMP_DIR`: the golden table proves a picture
+/// is unchanged, not that it is right.
+#[test]
+fn dump_every_page_when_asked() {
+    let Some(dir) = std::env::var_os("PAGE_DUMP_DIR") else {
+        return;
+    };
+    let dir = std::path::PathBuf::from(dir);
+    std::fs::create_dir_all(&dir).unwrap();
+    for page in PageId::ALL {
+        std::fs::write(
+            dir.join(format!("{}.bmp", page.path())),
+            bmp(&render(page, false)),
+        )
+        .unwrap();
+    }
+    std::fs::write(
+        dir.join("attitude-motion.bmp"),
+        bmp(&render_snapshot(&motion(), false)),
+    )
+    .unwrap();
+}
+
+/// A page with numbers in every reading: the state the golden table's empty snapshot cannot
+/// show, and the one the dial is drawn from.
+fn motion() -> FrameSnapshot {
+    FrameSnapshot {
+        page: PageId::Attitude,
+        motion: Some(MotionSample {
+            raw_accel: [-1700, 400, -900],
+            raw_gyro: [150, -80, 40],
+            accel_mg: [-355, 120, -940],
+            gyro_dps_x10: [-1799, 870, 25],
+            tilt_deg_x10: [-1799, 640, 0],
+            status: 3,
+            tap_residual_mg: -32768,
+            gravity_deviation_mg: 12345,
+            shake_residual_mg: -7,
+            valid: true,
+        }),
+        ..FrameSnapshot::default()
+    }
+}
+
+#[test]
+fn the_attitude_page_with_numbers_draws_the_recorded_picture() {
+    let actual = fingerprint(&render_snapshot(&motion(), false));
+    if std::env::var_os("PAGE_GOLDEN_UPDATE").is_some() {
+        std::println!("attitude-motion 0x{actual:08x}");
+        return;
+    }
+    assert_eq!(
+        actual, 0xeb95_14e5,
+        "regenerate only for an intended pixel change"
+    );
+}
+
+fn bmp(frame: &[u8]) -> Vec<u8> {
+    const HEADER: usize = 54;
+    let row = WIDTH * 3;
+    let size = HEADER + row * HEIGHT;
+    let mut out = Vec::with_capacity(size);
+    out.extend_from_slice(b"BM");
+    out.extend_from_slice(&(size as u32).to_le_bytes());
+    out.extend_from_slice(&[0; 4]);
+    out.extend_from_slice(&(HEADER as u32).to_le_bytes());
+    out.extend_from_slice(&40u32.to_le_bytes());
+    out.extend_from_slice(&(WIDTH as i32).to_le_bytes());
+    out.extend_from_slice(&(HEIGHT as i32).to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes());
+    out.extend_from_slice(&24u16.to_le_bytes());
+    out.extend_from_slice(&[0; 24]);
+    for y in (0..HEIGHT).rev() {
+        for x in 0..WIDTH {
+            let offset = (y * WIDTH + x) * 2;
+            let packed = u16::from_be_bytes([frame[offset], frame[offset + 1]]);
+            let (r, g, b) = (
+                u32::from(packed >> 11 & 0x1f) * 255 / 31,
+                u32::from(packed >> 5 & 0x3f) * 255 / 63,
+                u32::from(packed & 0x1f) * 255 / 31,
+            );
+            out.extend_from_slice(&[b as u8, g as u8, r as u8]);
+        }
+    }
+    out
+}
+
 #[test]
 fn every_page_paints_something_and_does_it_the_same_way_twice() {
     for page in PageId::ALL {
@@ -97,17 +202,6 @@ fn every_page_paints_something_and_does_it_the_same_way_twice() {
         );
         assert_eq!(first, second, "{page:?} is not deterministic");
     }
-}
-
-#[test]
-fn the_camera_page_puts_the_fps_badge_where_every_page_does() {
-    let mut expected = render(PageId::Camera, false);
-    {
-        let canvas = Canvas::new(&mut expected, WIDTH, HEIGHT, None);
-        let mut painter = Painter::new(canvas, 0, 60, false, 100);
-        painter.draw_fps();
-    }
-    assert_eq!(render(PageId::Camera, true), expected);
 }
 
 #[test]

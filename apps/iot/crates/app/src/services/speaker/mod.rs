@@ -4,12 +4,12 @@
 mod tests;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
-use crate::shared::kit::painter::Painter;
+use crate::shared::kit::chrome;
 use crate::shared::kit::text::{format_u16, sound_label};
 use crate::shared::model::{Command, DeviceState, Effects, PlaybackPhase};
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
-use iot_core::overlay::{Block, ROW_PITCH, block_x, overlay_row_top};
+use iot_core::ui::{Style, Ui};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SpeakerPage;
@@ -48,52 +48,44 @@ impl super::LocalPage for SpeakerPage {
         }
     }
 
-    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
         let playback = snapshot.playback;
         let fault = playback.health.fault();
-        painter.draw_text(b"SPKR", block_x(Block::First), overlay_row_top(0));
-        painter.draw_left(
-            b"ST",
-            match (fault, playback.phase) {
-                (Some(_), _) => b"NO OUT",
-                (None, PlaybackPhase::Idle) => b"IDLE",
-                (None, PlaybackPhase::Playing) => b"PLAY",
-            },
-            Block::First,
-            1,
-        );
-        painter.draw_left(b"SRC", sound_label(playback.sound), Block::First, 2);
-        if playback.muted {
-            painter.draw_text(b"MUTE", block_x(Block::Second), overlay_row_top(1));
-        }
-        painter.draw_left(
-            b"PLY",
-            format_u16(playback.plays, &mut [0u8; 6]),
-            Block::First,
-            3,
-        );
-        painter.draw_left(
-            b"DRP",
-            format_u16(playback.dropped, &mut [0u8; 6]),
-            Block::First,
-            4,
-        );
-        let hint = overlay_row_top(6);
-        match fault {
-            Some(reason) => {
-                painter.draw_text(b"TAP RETRY", block_x(Block::First), hint);
-                let reason = reason.as_bytes();
-                painter.draw_text(reason, block_x(Block::First), hint + ROW_PITCH);
+        chrome::page(ui, |ui| {
+            ui.row(Style::new().between(), |ui| {
+                chrome::title(ui, b"SPKR");
+                if playback.muted {
+                    ui.text(b"MUTE", Style::new().nowrap());
+                }
+            });
+            chrome::reading(
+                ui,
+                b"ST",
+                match (fault, playback.phase) {
+                    (Some(_), _) => b"NO OUT",
+                    (None, PlaybackPhase::Idle) => b"IDLE",
+                    (None, PlaybackPhase::Playing) => b"PLAY",
+                },
+            );
+            chrome::reading(ui, b"SRC", sound_label(playback.sound));
+            chrome::reading(ui, b"PLY", format_u16(playback.plays, &mut [0u8; 6]));
+            chrome::reading(ui, b"DRP", format_u16(playback.dropped, &mut [0u8; 6]));
+            ui.text(b"", Style::new());
+            match fault {
+                Some(reason) => {
+                    ui.text(b"TAP RETRY", Style::new().nowrap());
+                    ui.text(reason.as_bytes(), Style::new().nowrap());
+                }
+                None => {
+                    ui.text(b"TAP PLAY", Style::new().nowrap());
+                    ui.text(b"HOLD MUTE", Style::new().nowrap());
+                }
             }
-            None => {
-                painter.draw_text(b"TAP PLAY", block_x(Block::First), hint);
-                painter.draw_text(b"HOLD MUTE", block_x(Block::First), hint + ROW_PITCH);
-            }
-        }
+        });
     }
 
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint).with_repaints(super::Repaint::When(playback_moved))
+        super::Descriptor::new(Self::view).with_repaints(super::Repaint::When(playback_moved))
     }
 }
 

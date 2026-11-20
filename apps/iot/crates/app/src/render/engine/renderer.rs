@@ -13,6 +13,17 @@ pub enum Drive {
     TimeDriven,
 }
 
+impl Drive {
+    /// One appearance's answer combined with another's: a renderer that asked for time
+    /// keeps asking even if a later appearance in the same tick had nothing to do.
+    pub(crate) const fn or(self, other: Self) -> Self {
+        match (self, other) {
+            (Self::Idle, Self::Idle) => Self::Idle,
+            _ => Self::TimeDriven,
+        }
+    }
+}
+
 /// Pluggable binding between one device and the render layer: the controller decides *what*
 /// to show (central state diff), the renderer answers *how*, including whether it needs
 /// time-driven frames.

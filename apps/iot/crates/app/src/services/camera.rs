@@ -2,10 +2,10 @@
 
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::light::Rgb;
-use iot_core::overlay::{Block, block_value_x, block_x, overlay_row_top};
+use iot_core::ui::{Style, Ui};
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
-use crate::shared::kit::painter::Painter;
+use crate::shared::kit::chrome;
 use crate::shared::kit::text::{
     format_pair, format_u32, frame_fingerprint, light_mode_word, write_ratio,
 };
@@ -23,15 +23,15 @@ impl super::LocalPage for CameraPage {
         super::lamp(op, state)
     }
 
-    fn paint(snapshot: &FrameSnapshot, painter: &mut Painter<'_>) {
-        Self::paint_frame(snapshot, painter, CameraSnapshot::STARTING);
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        Self::view_frame(snapshot, ui, CameraSnapshot::STARTING);
     }
 
     /// A frame arriving is a data event and not anything a snapshot diff can see. Forcing a
     /// repaint here would ship a full frame that is a copy of the last one — ~15 ms of
     /// blocking SPI.
     fn descriptor() -> super::Descriptor {
-        super::Descriptor::new(Self::paint)
+        super::Descriptor::new(Self::view)
             .with_ground(Some(Rgb(0, 0, 0)))
             .with_camera_frames()
     }
@@ -39,73 +39,69 @@ impl super::LocalPage for CameraPage {
 
 impl CameraPage {
     /// The camera's own frame, after the sensor has filled it.
-    pub(crate) fn paint_frame(
+    pub(crate) fn view_frame(
         snapshot: &FrameSnapshot,
-        painter: &mut Painter<'_>,
+        ui: &mut Ui<'_, '_>,
         readout: CameraSnapshot,
     ) {
         let fault = readout.fault;
-        let fingerprint =
-            (!readout.starting && fault.is_none()).then(|| frame_fingerprint(painter.frame()));
+        let fingerprint = (!readout.starting && fault.is_none())
+            .then(|| ui.canvas().map(|canvas| frame_fingerprint(canvas.frame())))
+            .flatten();
 
-        painter.draw_text(b"CAMERA", block_x(Block::First), overlay_row_top(0));
-        match (fault, readout.starting) {
-            (Some(_), _) => {
-                painter.draw_text(b"NO CAM", block_value_x(Block::First), overlay_row_top(0))
-            }
-            (None, true) => {
-                painter.draw_text(b"WAIT", block_value_x(Block::First), overlay_row_top(0))
-            }
-            (None, false) => {}
-        }
-        if fault.is_none() {
-            if let Some(geometry) = readout.geometry {
-                let ratio = &mut [0u8; 6];
-                let ratio = write_ratio(ratio, geometry.subsample);
-                painter.draw_text(b"WIN", block_x(Block::First), overlay_row_top(1));
-                painter.draw_text(ratio, block_value_x(Block::First), overlay_row_top(1));
-                let out = &mut [0u8; 12];
-                let out = format_pair(Some((geometry.out_width, geometry.out_height)), out);
-                painter.draw_text(b"OUT", block_x(Block::First), overlay_row_top(2));
-                painter.draw_text(out, block_value_x(Block::First), overlay_row_top(2));
-                let read = &mut [0u8; 12];
-                let read = format_pair(Some((geometry.win_width, geometry.win_height)), read);
-                painter.draw_text(b"RD", block_x(Block::First), overlay_row_top(3));
-                painter.draw_text(read, block_value_x(Block::First), overlay_row_top(3));
-            } else {
-                painter.draw_text(
-                    if readout.starting { b"----" } else { b"NOBUS" },
-                    block_value_x(Block::First),
-                    overlay_row_top(1),
+        chrome::page(ui, |ui| {
+            ui.row(Style::new().between(), |ui| {
+                chrome::title(ui, b"CAMERA");
+                match (fault, readout.starting) {
+                    (Some(_), _) => ui.text(b"NO CAM", Style::new().nowrap()),
+                    (None, true) => ui.text(b"WAIT", Style::new().nowrap()),
+                    (None, false) => ui.text(b"", Style::new()),
+                };
+            });
+            if fault.is_none() {
+                if let Some(geometry) = readout.geometry {
+                    chrome::reading(ui, b"WIN", write_ratio(&mut [0u8; 6], geometry.subsample));
+                    chrome::reading(
+                        ui,
+                        b"OUT",
+                        format_pair(
+                            Some((geometry.out_width, geometry.out_height)),
+                            &mut [0u8; 12],
+                        ),
+                    );
+                    chrome::reading(
+                        ui,
+                        b"RD",
+                        format_pair(
+                            Some((geometry.win_width, geometry.win_height)),
+                            &mut [0u8; 12],
+                        ),
+                    );
+                } else if readout.starting {
+                    chrome::reading(ui, b"BUS", b"----");
+                } else {
+                    chrome::reading(ui, b"BUS", b"NOBUS");
+                }
+                ui.text(b"", Style::new());
+                chrome::reading(
+                    ui,
+                    b"FRM",
+                    format_u32(readout.counters.frames, &mut [0u8; 12]),
                 );
+                chrome::reading(
+                    ui,
+                    b"RM",
+                    format_u32(readout.counters.restarts, &mut [0u8; 12]),
+                );
+                chrome::reading(ui, b"MOD", light_mode_word(snapshot.lights[0].mode));
+                if let Some(fingerprint) = fingerprint {
+                    chrome::reading(ui, b"FP", format_u32(fingerprint, &mut [0u8; 12]));
+                }
+            } else if let Some(reason) = fault {
+                ui.text(reason.as_bytes(), Style::new().nowrap());
+                ui.text(b"RETRYING", Style::new().nowrap());
             }
-
-            let frames = &mut [0u8; 12];
-            let frames = format_u32(readout.counters.frames, frames);
-            painter.draw_text(b"FRM", block_x(Block::Second), overlay_row_top(0));
-            painter.draw_text(frames, block_value_x(Block::Second), overlay_row_top(0));
-            let restarts = &mut [0u8; 12];
-            let restarts = format_u32(readout.counters.restarts, restarts);
-            painter.draw_text(b"RM", block_x(Block::Second), overlay_row_top(1));
-            painter.draw_text(restarts, block_value_x(Block::Second), overlay_row_top(1));
-            let live = snapshot.lights[0];
-            let mode = light_mode_word(live.mode);
-            painter.draw_text(b"MOD", block_x(Block::Second), overlay_row_top(2));
-            painter.draw_text(mode, block_value_x(Block::Second), overlay_row_top(2));
-
-            if let Some(fingerprint) = fingerprint {
-                let sampled = &mut [0u8; 12];
-                let sampled = format_u32(fingerprint, sampled);
-                painter.draw_text(b"FP", block_x(Block::Third), overlay_row_top(0));
-                painter.draw_text(sampled, block_value_x(Block::Third), overlay_row_top(0));
-            }
-        } else if let Some(reason) = fault {
-            painter.draw_text(reason.as_bytes(), block_x(Block::First), overlay_row_top(5));
-            painter.draw_text(b"RETRYING", block_x(Block::First), overlay_row_top(6));
-        }
-        if painter.debug {
-            painter.draw_fps();
-        }
+        });
     }
 }
 
@@ -116,11 +112,24 @@ mod tests {
     use crate::state::PageId;
     use alloc::vec;
     use iot_core::drivers::camera::CameraCounters;
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
+    use iot_core::ui::{BoxConstraints, Canvas, Screen, UNIT, Ui};
 
-    use iot_core::ui::Canvas;
+    const WIDTH: usize = PANEL_COLUMNS;
+    const HEIGHT: usize = CONTENT_BOTTOM + iot_core::ui::panel::FOOTER_ROWS;
 
-    const WIDTH: usize = iot_core::overlay::PANEL_COLUMNS;
-    const HEIGHT: usize = iot_core::overlay::PANEL_ROWS;
+    fn render(frame: &mut [u8], snapshot: &FrameSnapshot, readout: CameraSnapshot) -> Vec<u8> {
+        {
+            let mut canvas = Canvas::new(frame, WIDTH, HEIGHT, None);
+            let mut ui = Ui::new_with_height(&mut canvas, Screen::default(), CONTENT_BOTTOM);
+            CameraPage::view_frame(snapshot, &mut ui, readout);
+            ui.finish(
+                BoxConstraints::tight(PANEL_COLUMNS as i32 * UNIT, CONTENT_BOTTOM as i32 * UNIT),
+                &mut |_, _, _| {},
+            );
+        }
+        frame.to_vec()
+    }
 
     #[test]
     fn the_camera_readout_reports_a_fingerprint_only_for_a_real_frame() {
@@ -132,21 +141,16 @@ mod tests {
             page: PageId::Camera,
             ..FrameSnapshot::default()
         };
-        let before = frame.clone();
-        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, None);
-        let mut painter = Painter::new(canvas, 0, 60, false, 100);
-        CameraPage::paint_frame(&snapshot, &mut painter, CameraSnapshot::STARTING);
-        let starting = painter.frame().to_vec();
-        assert!(
-            starting
-                .iter()
-                .zip(&before)
-                .any(|(after, before)| after != before),
+        let mut scratch = frame.clone();
+        let starting = render(&mut scratch, &snapshot, CameraSnapshot::STARTING);
+        assert_ne!(
+            starting, frame,
             "the waiting readout is drawn over the frame"
         );
-        CameraPage::paint_frame(
+        let mut scratch = frame.clone();
+        let real = render(
+            &mut scratch,
             &snapshot,
-            &mut painter,
             CameraSnapshot {
                 counters: CameraCounters::ZERO,
                 geometry: None,
@@ -154,25 +158,20 @@ mod tests {
                 fault: None,
             },
         );
-        assert_ne!(
-            starting,
-            painter.frame(),
-            "a real frame adds its fingerprint"
-        );
+        assert_ne!(starting, real, "a real frame adds its fingerprint");
     }
 
     #[test]
     fn a_camera_that_cannot_start_says_so_and_offers_the_retry() {
-        let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
+        let frame = vec![0u8; WIDTH * HEIGHT * 2];
         let snapshot = FrameSnapshot {
             page: PageId::Camera,
             ..FrameSnapshot::default()
         };
-        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, None);
-        let mut painter = Painter::new(canvas, 0, 60, false, 100);
-        CameraPage::paint_frame(
+        let mut failed_frame = frame.clone();
+        let failed = render(
+            &mut failed_frame,
             &snapshot,
-            &mut painter,
             CameraSnapshot {
                 counters: CameraCounters::ZERO,
                 geometry: None,
@@ -180,14 +179,10 @@ mod tests {
                 fault: Some("the sensor did not answer"),
             },
         );
-        let failed = painter.frame().to_vec();
-
-        let mut healthy = vec![0u8; WIDTH * HEIGHT * 2];
-        let canvas = Canvas::new(&mut healthy, WIDTH, HEIGHT, None);
-        let mut painter = Painter::new(canvas, 0, 60, false, 100);
-        CameraPage::paint_frame(
+        let mut healthy_frame = frame;
+        let healthy = render(
+            &mut healthy_frame,
             &snapshot,
-            &mut painter,
             CameraSnapshot {
                 counters: CameraCounters::ZERO,
                 geometry: None,
@@ -196,8 +191,7 @@ mod tests {
             },
         );
         assert_ne!(
-            failed,
-            painter.frame(),
+            failed, healthy,
             "the fault readout is not the no-sensor readout"
         );
     }
