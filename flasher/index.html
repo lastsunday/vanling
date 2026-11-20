@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Vanling Firmware Installer</title>
+<style>
+  :root{
+    --bg:#0f1115; --panel:#161a20; --panel2:#1c2129; --border:#2a3038;
+    --text:#e8eaed; --muted:#9aa3ad; --accent:#4c8bf5; --ok:#35c46b; --warn:#e5b84c; --err:#e5534d;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);font:15px/1.6 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:20px 28px;border-bottom:1px solid var(--border)}
+  header h1{font-size:18px;margin:0;font-weight:600}
+  header .sub{color:var(--muted);font-size:13px}
+  .lang{margin-left:auto}
+  .lang button{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+  .lang button.active{background:var(--accent);border-color:var(--accent)}
+  main{max-width:760px;margin:0 auto;padding:24px 20px 60px}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;margin-bottom:20px}
+  .panel h2{font-size:15px;margin:0 0 14px;display:flex;align-items:center;gap:8px}
+  .step{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:var(--accent);color:#fff;font-size:12px;font-weight:600;flex:none}
+  #dropzone{border:2px dashed var(--border);border-radius:10px;padding:28px;text-align:center;cursor:pointer;transition:border-color .2s;color:var(--muted)}
+  #dropzone.drag{border-color:var(--accent);color:var(--text)}
+  #dropzone .big{font-size:14px;color:var(--text);display:block;margin-bottom:4px}
+  #dropzone input{display:none}
+  .filemeta{margin-top:12px;font-family:var(--mono);font-size:13px;color:var(--muted)}
+  table{width:100%;border-collapse:collapse;font-size:14px}
+  th,td{text-align:left;padding:8px 10px;border-bottom:1px solid var(--border)}
+  th{color:var(--muted);font-weight:500;width:38%}
+  td{font-family:var(--mono);font-size:13px}
+  tr:last-child th,tr:last-child td{border-bottom:none}
+  .badge{display:inline-block;padding:2px 10px;border-radius:999px;font-size:12px;font-weight:600}
+  .badge.ok{background:rgba(53,196,107,.15);color:var(--ok)}
+  .badge.warn{background:rgba(229,184,76,.15);color:var(--warn)}
+  .badge.err{background:rgba(229,83,77,.15);color:var(--err)}
+  button.primary{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:10px 22px;font-size:14px;font-weight:600;cursor:pointer;width:100%}
+  button.primary:disabled{opacity:.45;cursor:not-allowed}
+  button.secondary{background:var(--panel2);color:var(--text);border:1px solid var(--border);border-radius:8px;padding:8px 16px;font-size:13px;cursor:pointer}
+  button.secondary:disabled{opacity:.45;cursor:not-allowed}
+  .actions{display:flex;gap:10px}
+  .actions button.primary{flex:1}
+  #progresswrap{height:8px;background:var(--panel2);border-radius:4px;overflow:hidden;margin-top:12px}
+  #progressbar{height:100%;width:0;background:var(--ok);transition:width .15s}
+  .progresstext{font-family:var(--mono);font-size:12px;color:var(--muted);margin-top:6px;text-align:right}
+  #log{margin-top:14px;background:#0d0f12;border:1px solid var(--border);border-radius:8px;padding:12px;font-family:var(--mono);font-size:12px;max-height:220px;overflow:auto;white-space:pre-wrap;word-break:break-all;color:#c8d0d8}
+  #log .info{color:var(--muted)} #log .ok{color:var(--ok)} #log .warn{color:var(--warn)} #log .err{color:var(--err)}
+  #hint{color:var(--muted);font-size:13px;margin-top:14px}
+  .browser-note{background:rgba(229,184,76,.08);border:1px solid rgba(229,184,76,.3);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--warn);margin-bottom:16px}
+  #state{display:none;margin-top:14px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Vanling Firmware Installer</h1>
+  <span class="sub" data-i18n="headerSub">通用 ESP 固件 Web 安装器</span>
+  <div class="lang">
+    <button id="lang-zh" class="active">中文</button>
+    <button id="lang-en">EN</button>
+  </div>
+</header>
+<main>
+  <div class="browser-note" id="browserNote" data-i18n="browserNote">要使用浏览器直刷，请使用 Chrome / Edge 桌面版，并通过 USB 连接设备后再发送写入命令。</div>
+
+  <div class="panel">
+    <h2><span class="step">1</span><span data-i18n="titleFile">选择固件镜像</span></h2>
+    <div id="dropzone" role="button" tabindex="0">
+      <span class="big" data-i18n="dropHint">拖入或点击选择固件文件（merged.bin）</span>
+      <span data-i18n="dropSub">支持 espflash 产生的整片镜像（合并 bin）或引导程序 bin</span>
+      <input type="file" id="fileInput" accept=".bin,.elf">
+    </div>
+    <div class="filemeta" id="filemeta" hidden></div>
+  </div>
+
+  <div class="panel" id="parsePanel" hidden>
+    <h2><span class="step">2</span><span data-i18n="titleInfo">固件信息</span> <span id="validity" style="margin-left:auto"></span></h2>
+    <table>
+      <tr><th data-i18n="thChip">目标芯片</th><td id="tChip">-</td></tr>
+      <tr><th data-i18n="thFlashMode">Flash 模式</th><td id="tFlashMode">-</td></tr>
+      <tr><th data-i18n="thFlashSize">Flash 大小</th><td id="tFlashSize">-</td></tr>
+      <tr><th data-i18n="thFlashFreq">Flash 频率</th><td id="tFlashFreq">-</td></tr>
+      <tr><th data-i18n="thRevision">芯片版本</th><td id="tRevision">-</td></tr>
+      <tr><th data-i18n="thEntry">入口地址</th><td id="tEntry">-</td></tr>
+      <tr><th data-i18n="thSegments">镜像段数 / 大小</th><td id="tSegments">-</td></tr>
+      <tr><th data-i18n="thChecksum">交叉校验</th><td id="tChecksum">-</td></tr>
+      <tr><th>SHA-256</th><td id="tSha256">-</td></tr>
+      <tr id="appRow" hidden><th data-i18n="thApp">App</th><td id="tApp">-</td></tr>
+    </table>
+  </div>
+
+  <div class="panel" id="flashPanel" hidden>
+    <h2><span class="step">3</span><span data-i18n="titleFlash">烧写设备</span></h2>
+    <div class="actions">
+      <button class="secondary" id="btnConnect" disabled><span data-i18n="btnConnect">连接设备</span></button>
+      <button class="primary" id="btnFlash" disabled><span data-i18n="btnFlash">写入固件</span></button>
+    </div>
+    <div id="chipCheck"></div>
+    <div id="progresswrap"><div id="progressbar"></div></div>
+    <div class="progresstext" id="progresstext"></div>
+    <div id="log"></div>
+    <div id="hint" data-i18n="flashHint">写入前会先清除整片 Flash；期间不要拔除 USB 线。完成后设备自动重启。</div>
+  </div>
+
+  <div class="browser-note" id="state" data-i18n="connectedState"></div>
+</main>
+<script type="module" src="./main.js"></script>
+</body>
+</html>
