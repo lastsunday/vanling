@@ -102,6 +102,7 @@ pub(super) fn frame_snapshot(
         },
         lights: state.lights.map(light_snapshot),
         page: state.page(),
+        steady: state.page().steady(),
         link: state.network.link,
         mac: state.network.mac,
         aps: state.network.aps,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::ui::font::Metrics;
 use crate::ui::{Screen, Ui};
 
 fn page(width: i16, height: i16) -> Ui<'static, 'static> {
@@ -437,4 +438,62 @@ fn a_wrapping_row_stretches_each_run_to_its_widest_child() {
     finish(&mut ui, 100, 100);
     assert_eq!(ui.rect(ids[0]).h, 24);
     assert_eq!(ui.rect(ids[1]).h, 24);
+}
+
+#[test]
+fn dp_is_five_quarters_of_a_pixel_and_rem_is_the_root_text_size() {
+    let mut ui = page(100, 100);
+    let mut ids = [NodeId::NONE; 2];
+    ui.column(Style::new(), |ui| {
+        let mut dp = Style::new();
+        dp.width = Length::Dp(8);
+        dp.height = Length::Dp(8);
+        ids[0] = ui.node(dp);
+        let mut rem = Style::new();
+        rem.width = Length::Rem(100);
+        rem.height = Length::Rem(100);
+        ids[1] = ui.node(rem);
+    });
+    finish(&mut ui, 100, 100);
+    assert_eq!((ui.rect(ids[0]).w, ui.rect(ids[0]).h), (10, 10));
+    assert_eq!((ui.rect(ids[1]).w, ui.rect(ids[1]).h), (12, 12));
+    assert_eq!(
+        core::mem::size_of::<Length>(),
+        4,
+        "a unit is still one word"
+    );
+}
+
+#[test]
+fn the_three_colour_slots_cost_three_bytes() {
+    let bytes = core::mem::size_of::<Style>();
+    assert!(bytes <= 84, "a style is {bytes} B");
+}
+
+#[test]
+fn a_font_size_sets_the_line_box_and_stretches_each_cell() {
+    let mut ui = page(200, 100);
+    let mut ids = [NodeId::NONE; 3];
+    ui.column(Style::new(), |ui| {
+        ids[0] = ui.text(b"A", Style::new().nowrap().font_size(Length::Px(12)));
+        ids[1] = ui.text(b"A", Style::new().nowrap().font_size(Length::Px(24)));
+        ids[2] = ui.text(b"A", Style::new().nowrap().font_size(Length::Rem(200)));
+    });
+    finish(&mut ui, 200, 100);
+    assert_eq!(ui.rect(ids[0]).h, 12);
+    assert_eq!((ui.rect(ids[1]).w, ui.rect(ids[1]).h), (12, 24));
+    assert_eq!(
+        (ui.rect(ids[2]).w, ui.rect(ids[2]).h),
+        (12, 24),
+        "2 rem is the 24 px a 200 percent root size means"
+    );
+}
+
+#[test]
+fn a_larger_font_size_breaks_a_run_into_more_lines() {
+    let run = "中文中文".as_bytes();
+    let small = typeset::wrap(run, 24, typeset::MAX_LINES, Metrics::default());
+    let large = typeset::wrap(run, 24, typeset::MAX_LINES, Metrics::at(24));
+    assert_eq!(small.count, 2);
+    assert_eq!(large.count, 4, "each cell is twice as wide at 24 px");
 }

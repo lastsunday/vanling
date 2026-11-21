@@ -1,12 +1,12 @@
 //! The arena one declaration lives in: nodes, their identity, and what layout hands back.
 
 use super::constraints::{BoxConstraints, Point, Size, Subpx};
-use super::style::Style;
+use super::style::{RunStyle, Style};
 use crate::ui::Rect;
 
-/// Boxes one declaration may hold. The fullest page (the Attitude debug grid) uses 42, and
-/// every node is a slice of the panel core's stack, so the arena is sized to the page with
-/// room to grow rather than to a round number.
+/// Boxes one declaration may hold. The fullest page is Text at 47 once its badge is painted, and
+/// every node is a slice of the panel core's stack, so the arena is sized to the page with one
+/// box to grow into rather than to a round number.
 pub const MAX_NODES: usize = 48;
 pub const NONE: u16 = u16::MAX;
 
@@ -79,6 +79,15 @@ impl Default for Node {
             clipped: false,
         }
     }
+}
+
+/// A paint override over part of one run, with offsets already made absolute in the
+/// declaration's text buffer.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(crate) struct Span {
+    pub start: u16,
+    pub end: u16,
+    pub style: RunStyle,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

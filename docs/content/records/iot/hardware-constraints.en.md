@@ -404,7 +404,7 @@ The software canary checks the sentinel below the stack floor on every context s
 
 ---
 
-## The panel's glyph table: Fusion Pixel at 12 px, monospaced, GB2312 plus Big5 (`[test]`, 2026-11-20)
+## The panel's faces: a 12 px bitmap and a 24 px vector paragraph (`[test]`, 2026-11-21)
 
 The table lives in `apps/iot/crates/core/src/ui/font.rs` and is `crates/core/assets/font/ui12.bin`
 (486,881 B), cut by `cargo run -p iot-tool -- font` from
@@ -430,35 +430,73 @@ release and draw as `MISSING` □; the other 12,840 do. `SIZE 12 75 75`, `FONT_A
   with 34 cells per row. Network names are cut by pixels (`ui::text::fit`) and their buffers are sized
 in UTF-8 bytes rather than glyphs: `NAME_BYTES = SSID_BYTES + 1` (the cut mark takes a byte), and
 `DIALOG_BYTES` leaves room for a prefix and quotes.
-- **Regression**: `font.rs` holds the header, the ASCII/Han advances (`NETWORK` 7×6, `中文` 24), the
-  fallback mark for a missing code point, invalid UTF-8 not stalling, and `中` keeping its BDF box;
-  `panel.rs` holds the face and the line height together; `typeset.rs` holds the prohibitions and
-  truncation; the 18 golden hashes in `services/tests.rs` hold whole pages pixel for pixel (the two
-  `text` rows are new; the other 16 did not move).
+- **Regression**: `font.rs` holds both tables' headers and metrics (bitmap ASCII/Han advances, the
+  fallback mark, invalid UTF-8 not stalling, `中` keeping its BDF box; the vector face's 中=24 / A=12 px
+  at 24, 21/3 ascent and descent, and `covering`'s whole-run fallback); `panel.rs` holds the face and
+  the line height together; `typeset.rs` holds the prohibitions and truncation; `declare.rs` holds the
+  ground, spans, decorations, sizes and scroll-box clipping; `canvas.rs` holds the vector ink box,
+  antialiased edges, missing-glyph fallback and clipping; `services/text.rs` holds the sample fully
+  covered by the vector face; the 18 golden hashes in `services/tests.rs` hold whole pages pixel for
+  pixel (the `text` rows moved with this page; the other 16 did not).
+- **Vector table `VLV1`**: `crates/core/assets/font/vector.bin` (88,274 B, 181 glyphs over 20,756
+  polyline points), cut by `cargo run -p iot-tool -- outline` with `ttf-parser` from
+  `crates/tool/assets/fonts/NotoSansMonoCJKsc-Regular.otf` (16,393,784 B, OFL-1.1; the licence is
+  `LICENSES/noto/OFL.txt` beside it). Its code points are exactly those of
+  `core/assets/font/vector-sample.txt`, shared by the cutter and the page. Noto Sans Mono CJK covers
+  both CJK and half-width Latin, so Hack is not needed; MiSans and HarmonyOS Sans are excluded because
+  they forbid modified redistribution.
+- **Table contents**: a 32 B header (glyph count, code-point count, em = 64, four section offsets,
+  typographic ascent/descent 56/8), then code-point→glyph pairs, then an 18 B meta per glyph (advance,
+  point range, contour range, bounding box), then `(i16 x, i16 y)` points in 1/64 em with y up, then
+  contour ends as absolute point indices. Coordinates are not stored at 1/4 em: at 24 px that is a
+  6 px grid, and a curve quantises into steps.
+- **Line height comes from OS/2's typographic ascent/descent** (56 + 8 = 1 em), not from hhea, whose
+  CJK ink headroom would make every line a third taller. `Metrics::ascent/descent` are the `Face`
+  value × the whole magnification for bitmap, and `units * size / 64` rounded for vector.
+- **One uncovered code point sends the whole line to the bitmap face** (`Metrics::covering`), so a
+  line is never half vector and half bitmap; `the_wrap_paragraph_is_covered_by_the_vector_face` names
+  the missing character and points at the cutter.
+- **Sizes and units**: `Style::font_size(Length)` lands a `u8` pixel value; `Px` is exact, `Dp` is
+  5/4 px (2.0" 320×240 = 200 dpi against the 160 dpi a logical pixel is defined at), `Rem` is a
+  hundredth of 12 px, and `Percent` is read against the root size; `Auto` and an unresolvable
+  percentage fall back to 12 px.
+- **Colours and spans**: `Color(u32)` is ARGB32; `Style`/`RunStyle` store only a `ColorId` into a
+  16-slot palette interned per declaration (overflow is a debug assertion), and `Canvas` blends ink
+  over RGB565 at coverage, so a translucent run mixes with the pixels below. `Ui::span` allows 8
+  spans that recolour and redecorate a run without moving a line.
+- **Static footprint**: 575,155 B of tables in flash; `Ui` is 9,976 B (48 nodes × 160 B plus 2 KB of
+  text and the span table, under the 10,240 B cap), `Style` is 84 B, `Length` is 4 B.
 
-The table is flash: `ui12.bin` is 486,881 B; the BDF stays on the tool side and never enters the image.
+The tables are flash: `ui12.bin` 486,881 B and `vector.bin` 88,274 B; the BDF and OTF stay on the tool side and never enter the image.
 
-## The Text page: two independent scroll regions (`[test]`, 2026-11-20)
+## The Text page: two independent scroll regions, a 24 px vector paragraph (`[test]`, 2026-11-21)
 
-The Text page splits long content into two named regions: `WRAP` is a mixed Chinese/English paragraph that wraps, and `GLYPHS` is the glyph sample rows. Each is 306×90 px over 132 / 216 px of content, so 42 / 126 px of travel.
+The Text page splits long content into two named regions: `WRAP` is a mixed Chinese/English paragraph that wraps (24 px vector), and `GLYPHS` is the 12 px bitmap sample rows. Each is 306×90 px over 336 / 216 px of content, so 246 / 126 px of travel; at 24 px the sample breaks into 25 lines, and the page declares the first 14 (its node budget) with `…` closing the last.
 
 - **Layout does not clamp**: `Style::scroll_area(id)` only names a box and records its rectangle and travel; `Ui::scroll_info(id)` reads them back. The limit and the bounce stay in the page's `ScrollState`, because only the page knows how far past the edge it may go.
 - **Two measurements at construction**: the panel is a fixed 320×228 and the content is static; an empty pass finds the region width, `typeset::wrap` breaks the run once at that width, and a second pass with the broken lines lays out and `measure`s both rectangles and travels.
-- **Follows the finger**: a press records `(id, area, y, at_ms)`; after a 2 px deadband `GestureEvent::Drag` reports every 2 px of travel, and the page moves the offset directly through `drag(area, delta)`, with half damping past an edge. A held region does not spring in `tick`; a second press releases the first region. The lift hands over to `fling` at the average speed of the recent samples (the first sample is taken as-is), and a release after a drag adds no lines.
+- **Follows the finger**: `drag` is `[Option<Drag>; TEXT_AREAS]`; a press records `(id, area, y, at_ms)` and every drag finds its own slot by id. After a 2 px deadband `GestureEvent::Drag` reports every 2 px of travel, and the page moves the offset directly through `drag(area, delta)`, with half damping past an edge. Two fingers drag two regions without interfering; a third finger finds no slot and is ignored whole, never taking a held region. A held region does not spring in `tick` while the other keeps gliding; `on_hide` clears every slot. The lift hands over to `fling` at the average speed of the recent samples (the first sample is taken as-is), a release after a drag adds no lines, and both regions can glide at once.
 - **Swipe/glide**: a fast up/down swipe that never dragged still steps 3 lines (36 px) and then releases at the gesture's average `distance/held`; ≥250 px/s starts a fling, capped at 1600 px/s, ×0.875 per 20 ms tick, stopping below 150 px/s, gliding about `0.16·v0`. About 100 ms without a new sample zeroes the speed.
 - **Bounce**: the limit is `viewport/4` (0 when the region fits or bounce is off), an overshoot damps by an extra ×0.5, and after release each tick closes half the gap, snapping at ≤1 px. `ScrollConfig { bounce, bar }` is the page's one switch; neither changes layout, so flipping one needs no re-measure.
 - **Scrollbar**: a 2 px gutter is always reserved; the thumb is `max(8, viewport²/(viewport+max))` tall at `(viewport-height)·clamp(offset,0,max)/max`, hidden when `max == 0` or the bar is off. The thumb uses `bordered()`, not `filled()`: the Text page declares no ground, so `fill_rect` has nothing to invert, and a 2 px border reads solid and inverts like a glyph.
 - **Motion**: `PageSystem` calls `LocalPage::tick` every `STEP_MS`, `FrameSnapshot::animating()` keeps the renderer `TimeDriven`, and `Repaint::WhenOrOverlay` draws the closing frame inside the 40 ms repaint floor.
-- **Layout measures once**: flex skips the natural main-axis measurement of a child with an explicit `basis` (the answer is discarded anyway), and a scroll box with no room across lays out no content. The Text page runs `typeset::wrap` once at construction, declares one `nowrap` node with an explicit width per line, and `layout_text` skips `max_content` for those nodes, so a frame no longer walks the face per glyph; the 18 golden rows do not move.
-- **`[measured]` S3** (240 MHz, `IOT_BOOT_PAGE=text`, DEBUG log): the first window reads `11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms`, and the steady state `5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)`; the same page before the fix read `6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms`. Main stack 86,216 B, peak 30,364 B, no panic. A static page barely repaints, so the per-frame cost during a drag still needs a finger.
-- **Regression**: `services::text::tests` holds both regions scrollable and independent, routing only inside a region, the drag following the finger, a release after a drag adding no lines, a fast swipe still stepping 3 lines, a tap after a drag adding nothing, ignoring horizontal/outside swipes, `on_hide` reset, no missing glyphs, the node bound, ASCII cell width and row alignment; `shared::kit::scroll::tests` holds the speed thresholds, glide distance, bounce home, a held region not springing and both switches; `services::tests::a_text_scroll_moves_one_region_and_its_thumb` holds the offset reaching the picture and the thumb following it.
+- **Steady page**: `PageId::steady()` is true for Text alone and the snapshot carries `steady`, so the panel backlight stays at 100 (only an off light drops it to 0) and the lamp holds phase 0 of its declared colour instead of breathing; the page's scrolling still times through `animating()`. `render/screen` and `render/lamp` each pin this, and `only_the_reading_page_holds_the_light_still` in `shared/route` pins the steady set.
+- **Typography sample**: the first line is bold and underlined, and its first 6 bytes carry a red span (`RunStyle::color` plus `decoration_color`); a span changes colour and decorations only, never line metrics, so the breaks match the unstyled run.
+- **Layout measures once**: flex skips the natural main-axis measurement of a child with an explicit `basis` (the answer is discarded anyway), and a scroll box with no room across lays out no content. The Text page runs `typeset::wrap` once at construction, declares one `nowrap` node with an explicit width per line, and `layout_text` skips `max_content` for those nodes, so a frame no longer walks the face per glyph; the 18 golden rows guard the old pixels.
+- **`[measured]` S3, 12 px bitmap version (2026-11-20)** (240 MHz, `IOT_BOOT_PAGE=text`, DEBUG log): the first window reads `11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms`, and the steady state `5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)`; the same page before the fix read `6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms`. Main stack 86,216 B, peak 30,364 B, no panic. A static page barely repaints, so the per-frame cost during a drag still needs a finger.
+- **`[measured]` S3, 24 px vector version (2026-11-21)** (240 MHz, `IOT_BOOT_PAGE=text`, DEBUG log): the first window reads `6 repaints in 2355 ms, held the executor 67 ms (2%), worst render 52 ms (fill 1), worst wait 637 ms, worst write 16 ms`, the next `3 repaints in 15478 ms, held 160 ms (1%), worst render 54 ms`; main stack 86,216 B, peak 30,108 B, no panic, backlight normal. 52–54 ms is close to the 40 ms repaint floor, so that is the per-frame cost while scrolling.
+- **The first rasterizer cost 238 ms; the fix removed repeated work**: the old version rescaled a glyph's whole outline once per sub-scanline (four times) and then re-walked every edge on every pixel row; on the S3 one frame made 212 vector glyph calls and 628k edge visits, and `worst render` read 238 ms. Now a glyph's points are scaled once (`scaled`, 1.5 KB), each edge is filed under the first row whose sampling window can reach it (`heads`/`chain`/`active`), and a row walks only the edges still crossing it, once for all four samples. Per-glyph pixel hashes match the old implementation for all 181 glyphs, the golden table did not move, and the main-stack peak is unchanged (rendering lives on the 86 KB main stack).
+- **Image size** (`moon run iot:image`, 2026-11-21): S3 `1,791,168 / 6,291,456 B (28.47%)`, C6 `1,608,160 / 6,291,456 B (25.56%)`; with both tables in the image, 4.5 MB / 4.7 MB remain.
+- **Regression**: `services::text::tests` holds both regions scrollable and independent, routing only inside a region, the drag following the finger, a release after a drag adding no lines, a fast swipe still stepping 3 lines, a tap after a drag adding nothing, ignoring horizontal/outside swipes, `on_hide` reset, no missing glyphs, the node bound, ASCII cell width and row alignment, two fingers on two regions, one lift leaving the other moving, both flung at once, a third finger ignored, the sample fully covered by the vector face, and the 45-node budget; `shared::kit::scroll::tests` holds the speed thresholds, glide distance, bounce home, a held region not springing and both switches; `services::tests::a_text_scroll_moves_one_region_and_its_thumb` holds the offset reaching the picture and the thumb following it.
 
-## What one frame's declaration costs (`[test]`, 2026-11-20)
+## What one frame's declaration costs (`[test]`, 2026-11-21)
 
 The layout layer keeps no tree: `Ui` collects a declaration while `view` runs, lays it out once and
-inks it once. The node array is `MAX_NODES = 48`, each node 160 B; the fullest page today is the
-Attitude debug grid at 42 nodes. The whole `Ui` is 9,784 B, inside the panel core's 24 KiB stack,
-and `ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` pins it under 10 KiB.
+inks it once. The node array is `MAX_NODES = 48`, each node 160 B; the fullest page of its own is Text
+(14 lines + 18 sample rows + two thumbs + chrome = 45), and painting adds the badge, leaving one box
+spare. The whole `Ui` is 9,976 B, inside the panel core's 24 KiB stack, and
+`ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` pins it under 10 KiB; `Style` at
+84 B and `Length` at 4 B have pinned tests of their own.
 
 ## Numbers must not move the layout (`[test]`, 2026-11-20)
 

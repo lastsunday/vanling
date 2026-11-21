@@ -2,11 +2,11 @@
 
 use std::path::Path;
 
-use iot_tool::{font, midi};
+use iot_tool::{font, midi, outline};
 
 fn usage() -> String {
     format!(
-        "usage: {name} <command>\n\ncommands:\n  font    rebuild the panel's glyph table (--from <bdf> re-cuts; --merge <bdf> --chars <list> adds)\n  midi    rebuild the sound catalogue's .mid files",
+        "usage: {name} <command>\n\ncommands:\n  font    rebuild the panel's glyph table (--from <bdf> re-cuts; --merge <bdf> --chars <list> adds)\n  outline rebuild the panel's vector table from the release OTF\n  midi    rebuild the sound catalogue's .mid files",
         name = env!("CARGO_PKG_NAME"),
     )
 }
@@ -43,6 +43,13 @@ fn main() -> std::process::ExitCode {
                 }
             }
         }
+        "outline" => match outline::write() {
+            Ok(()) => std::process::ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("outline: {e}");
+                std::process::ExitCode::FAILURE
+            }
+        },
         "midi" => match midi::write(&midi::sounds_dir()) {
             Ok(()) => std::process::ExitCode::SUCCESS,
             Err(e) => {

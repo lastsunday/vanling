@@ -5,7 +5,6 @@
 //! snapshot and decides which page declares what.
 
 use crate::shared::snapshot::FrameSnapshot;
-use iot_core::light::{MODE_BREATH, Rgb, brightness_of, rgb_hue};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, RIGHT};
 use iot_core::ui::{BoxConstraints, Canvas, PX, Rect, Screen, Ui};
 
@@ -40,18 +39,6 @@ impl<'a> Panel<'a> {
 
     pub fn into_canvas(self) -> Canvas<'a> {
         self.canvas
-    }
-
-    /// The brightness and hue the surface is showing now, which is the phase's own while the
-    /// lamp breathes and the declared reading otherwise.
-    pub fn live(&self, snapshot: &FrameSnapshot) -> (u8, u8) {
-        let mine = snapshot.lights[usize::from(self.screen.instance)];
-        if mine.mode == MODE_BREATH {
-            let color = self.canvas.ground().unwrap_or(Rgb(0, 0, 0));
-            (brightness_of(color), rgb_hue(color))
-        } else {
-            (mine.brightness, mine.hue)
-        }
     }
 
     /// Lays a page's declaration out in the content rows and draws it, then the footer.

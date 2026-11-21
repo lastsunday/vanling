@@ -8,6 +8,13 @@ use super::style::{Edges, Style};
 /// Subpixels per pixel.
 pub const PX: i32 = 64;
 
+/// Subpixels per device-independent pixel. The product's glass is 2.0" at 320×240, so 200 dpi
+/// against the 160 dpi a logical pixel is defined at: 1 dp = 5/4 px, exactly.
+pub const DP: i32 = PX * 5 / 4;
+
+/// Subpixels in one rem: the root text size, today the bitmap face's line box.
+pub const REM: i32 = PX * crate::ui::panel::LINE as i32;
+
 /// A finite stand-in for "no limit", far enough from overflow for a 320 px panel.
 pub const INFINITY: i32 = 1 << 24;
 

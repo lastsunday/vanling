@@ -398,7 +398,7 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 软件 canary 在每次上下文切换时检查栈底以下的哨兵，并以出错的任务名 panic——比静默破坏内存好。
 ---
 
-## 面板的字模：Fusion Pixel 12 px 等宽，GB2312 + Big5 一套字（`[测试]`，2026-11-20）
+## 面板的字模：12 px 点阵 + 24 px 矢量正文（`[测试]`，2026-11-21）
 
 字模在 `apps/iot/crates/core/src/ui/font.rs`，表是 `crates/core/assets/font/ui12.bin`（486,881 B），由 `cargo run -p iot-tool -- font` 从 `crates/tool/assets/fonts/ui12.bdf`（2.1 MB，随字体附 MIT 与 OFL 两份许可）裁出。BDF 是 TakWolf 的 Fusion Pixel 12px Mono：`zh_Hans` 的 GB2312 7,475 个字形为底，再用 `font --merge` 并入 `zh_hant` 的 Big5 全表（`big5.txt`，13,706 个码点），共 15,466 个字形。Big5 有 866 个码点（805 个次常用汉字 + 61 个符号）上游 `zh_hant` 本身没有字形，按 `MISSING` 画 □；其余 12,840 个都有。`SIZE 12 75 75`、`FONT_ASCENT 10`、`FONT_DESCENT 2`。
 
@@ -406,28 +406,41 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 - **等宽**：ASCII 步进 6 列，汉字 12 列——一个汉字正好两格，网络名、口令与中英混排都落在同一张网格上。行高 12、行距 13（`LINE`/`ROW_PITCH`），升部 10 行、降部 2 行。
 - **面板度量跟着字面走**：页脚 12 行（`FOOTER_ROWS`）、内容底边 228（`CONTENT_BOTTOM`）、左右边距 10（`MARGIN`）、触控最小 44 px（`TOUCH_MIN`）。`panel.rs` 的 `FACE_HEIGHT == LINE` 与 `the_panel_is_measured_in_the_face_it_draws_with` 把「字号改了而版面没改」挡在编译/测试里。
 - **网络页的按压目标因此变高**：列表 3 行 × 45 px（`LIST_ROW_H >= TOUCH_MIN`），动作条顶边 184，键格 45 px，确认框 118 px、每行 34 格。网络名按像素截断（`ui::text::fit`），缓冲区按 UTF-8 字节而不是字形数：`NAME_BYTES = SSID_BYTES + 1`（截断标记占一字节）、`DIALOG_BYTES` 另留前缀与引号。
-- **回归**：`font.rs` 钉住表头、ASCII/汉字步进（`NETWORK` 7×6、`中文` 24）、缺字画 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框，以及简体/繁体/Big5 样张的覆盖；`panel.rs` 钉住负号与字号一致；`typeset.rs` 钉住禁则与截断；`services/tests.rs` 的 18 行黄金哈希钉住整页像素（`text` 页两行是新增的，其余 16 行未变）。
+- **回归**：`font.rs` 钉住两套表的表头与度量（点阵 ASCII/汉字步进、缺字 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框；矢量面 `中`=24 / `A`=12 px @24、升/降 21/3、`covering` 整行回退），`panel.rs` 钉住负号与字号一致，`typeset.rs` 钉住禁则与截断，`declare.rs` 钉住底色/span/装饰线/字号与滚动盒裁剪，`canvas.rs` 钉住矢量落墨的包围盒、AA 边缘、缺字回退与裁剪，`services/text.rs` 钉住样张被矢量面全覆盖，`services/tests.rs` 的 18 行黄金哈希钉住整页像素（`text` 行随本页改动更新，其余 16 行未变）。
 
-字模在 flash：`ui12.bin` 486,881 B；BDF 只在工具侧，不进镜像。
+- **矢量表 `VLV1`**：`crates/core/assets/font/vector.bin`（88,274 B，181 个字形 / 20,756 个折线点），由 `cargo run -p iot-tool -- outline` 用 `ttf-parser` 从 `crates/tool/assets/fonts/NotoSansMonoCJKsc-Regular.otf`（16,393,784 B，OFL-1.1，许可见同目录 `LICENSES/noto/OFL.txt`）裁出；码点集合就是 `core/assets/font/vector-sample.txt`，工具与页面共用这一份。Noto Sans Mono CJK 同时覆盖 CJK 与半角 Latin，因此不再需要 Hack；MiSans、HarmonyOS Sans 因禁止修改再分发而不引入。
+- **表内容**：32 B 头（字形数、码点数、em = 64、四段偏移、typographic 升/降 56/8）+ 码点→字形对 + 每字形 18 B 元（步进、点区间、轮廓区间、包围盒）+ `(i16 x, i16 y)` 点（1/64 em，y 向上）+ 轮廓终点（绝对点号）。坐标不存 1/4 em：24 px 下那是 6 px 的格，圆弧会被量化成台阶。
+- **行高取 OS/2 的 typographic 升/降**（56 + 8 = 1 em），不取 hhea：后者给 CJK 留的墨高会让每行高出三分之一。`Metrics::ascent/descent` 对点阵是 `Face` 值 × 整倍放大，对矢量是 `units * size / 64` 四舍五入。
+- **矢量面缺任一码点就整行退回点阵**（`Metrics::covering`），一行不会半矢量半点阵；正文里出现表外字符时 `the_wrap_paragraph_is_covered_by_the_vector_face` 会报出缺哪个字并提示重跑工具。
+- **字号与单位**：`Style::font_size(Length)` 落成 `u8` 像素值；`Px` 精确，`Dp` = 5/4 px（2.0" 320×240 = 200 dpi，逻辑像素按 160 dpi 定义），`Rem` = 1/100 × 12 px，`Percent` 按根字号解释；`Auto` 与解析不出的百分比退回 12 px。
+- **颜色与 span**：`Color(u32)` 是 ARGB32；`Style`/`RunStyle` 只存 `ColorId`（声明期 16 槽调色板去重，溢出在 debug 断言），`Canvas` 落墨时按覆盖率 src-over 到 RGB565，半透明因此与底下的像素混合。`Ui::span` 最多 8 条，只改颜色/装饰线/底色，不改行度量。
+- **静态占用**：两张表合计 575,155 B 在 flash；`Ui` 9,976 B（48 节点 × 160 B + 文本 2 KB + span 表，上限 10,240 B），`Style` 84 B，`Length` 4 B。
 
-## Text 页：两段独立滚动区（`[测试]`，2026-11-20）
+字模在 flash：`ui12.bin` 486,881 B、`vector.bin` 88,274 B；BDF 与 OTF 只在工具侧，不进镜像。
 
-Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排的换行长文，`GLYPHS` 是逐行字模样张。两块各 306×90 px，内容 132 / 216 px，可滚 42 / 126 px。
+## Text 页：两段独立滚动区，正文 24 px 矢量（`[测试]`，2026-11-21）
+
+Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排的换行长文（矢量面 24 px），`GLYPHS` 是逐行 12 px 字模样张。两块各 306×90 px，内容 336 / 216 px，可滚 246 / 126 px；正文样张在 24 px 下断成 25 行，页面只声明前 14 行（节点预算），末行按 `…` 截断。
 
 - **布局不夹偏移**：`Style::scroll_area(id)` 只命名并记录矩形与可滚距离，`Ui::scroll_info(id)` 读回；限界与回弹留在页面的 `ScrollState`，因为只有它知道越界多远。
 - **构造时量两次**：面板 320×228 与内容都是静态的；第一次空跑拿到区宽，`typeset::wrap` 按该宽度断一次，第二次带着断好的行再布局并 `measure` 两区矩形与行程。
-- **跟手**：按下记 `(id, area, y, at_ms)`；越过 2 px 死区后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag(area, delta)` 直接改偏移，越界半程阻尼。被按住的区 `tick` 不弹回；第二次按下会先释放上一个区。抬手 `fling` 用最近样本的平均速度（第一个样本直接采用），拖动过的抬手不补行。
+- **跟手**：`drag` 是 `[Option<Drag>; TEXT_AREAS]`，按下记 `(id, area, y, at_ms)`，按 id 找回自己那一格；越过 2 px 死区后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag(area, delta)` 直接改偏移，越界半程阻尼。两根手指各拖一区互不影响；第三根手指找不到槽位就整条忽略，不会夺走已按住的区。被按住的区 `tick` 不弹回，另一区照常滑行；`on_hide` 清空全部槽位。抬手 `fling` 用最近样本的平均速度（第一个样本直接采用），拖动过的抬手不补行，两区可同时带速度滑行。
 - **滑动/滑行**：没有拖动过的快速上下滑仍先走 3 行（36 px），再按手势平均 `distance/held` 起滑；≥250 px/s 才滑，封顶 1600 px/s，每 20 ms tick ×0.875，<150 px/s 停，滑行约 `0.16·v0`。停手约 100 ms 没有新样本就把速度清零。
 - **回弹**：越界上限是 `viewport/4`（区装得下或关掉回弹时为 0），越界后额外 ×0.5 阻尼，松手后每 tick 补一半差距，≤1 px 吸附。`ScrollConfig { bounce, bar }` 是页面唯一的开关，两者都不改布局，所以切换无需重测。
 - **滚动条**：右侧 2 px 槽常驻；thumb 高 `max(8, viewport²/(viewport+max))`，位置 `(viewport-height)·clamp(offset,0,max)/max`，`max == 0` 或关掉时隐藏。thumb 用 `bordered()` 而不是 `filled()`——Text 页不声明底色，`fill_rect` 没有 ground 可翻，2 px 边框读起来是实心且与字形一样反色。
 - **动起来**：`PageSystem` 每 `STEP_MS` 调 `LocalPage::tick`，`FrameSnapshot::animating()` 让渲染器保持 `TimeDriven`；`Repaint::WhenOrOverlay` 在 40 ms 重绘地板内补画收尾那一帧。
-- **布局只量一次**：flex 跳过带显式 `basis` 的子节点的自然主轴测量（该值本来就被丢弃），零横向空间的滚动盒不排内容。Text 页的段落只在构造时 `wrap` 一次，声明是一行一个 `nowrap` + 显式宽度的节点，`layout_text` 对它们跳过 `max_content`，一帧不再逐字查字模表；18 行整页黄金哈希不动。
-- **`[实测]` S3**（240 MHz，`IOT_BOOT_PAGE=text`，DEBUG 日志）：首窗 `11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms`，稳态 `5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)`；改前同页是 `6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms`。主栈 86,216 B、峰值 30,364 B，无 panic。静止页不重绘，拖动时的逐帧开销只能靠手指实测。
-- **回归**：`services::text::tests` 钉住两区都可滚且互不影响、滑点在区内才路由、拖动跟手、抬手滑行不补行、快速滑动仍补 3 行、拖动后的点击不补行、横向/区外忽略、`on_hide` 归零、样张无缺字、节点数上限、ASCII 单格与样张对齐；`shared::kit::scroll::tests` 钉住速度阈值、滑行距离、回弹归位、按住不弹与两个开关；`services::tests::a_text_scroll_moves_one_region_and_its_thumb` 钉住偏移进画面且 thumb 跟着走。
+- **稳态页**：`PageId::steady()` 只对 Text 返回真，快照带 `steady`；屏幕背光因此常 100（关灯才降 0），灯带停在声明颜色的相位 0 不再呼吸，页面滚动仍按 `animating()` 计时。`render/screen` 与 `render/lamp` 各有测试钉住这一点，`shared/route` 的 `only_the_reading_page_holds_the_light_still` 钉住稳态集合。
+- **排版样例**：正文首行加粗 + 下划线，前 6 个字节用红色 span（`RunStyle::color` + `decoration_color`）；span 只换颜色/装饰线，不改行度量，断行结果与无 span 时相同。
+- **布局只量一次**：flex 跳过带显式 `basis` 的子节点的自然主轴测量（该值本来就被丢弃），零横向空间的滚动盒不排内容。Text 页的段落只在构造时 `wrap` 一次，声明是一行一个 `nowrap` + 显式宽度的节点，`layout_text` 对它们跳过 `max_content`，一帧不再逐字查字模表；18 行整页黄金哈希守着旧像素。
+- **`[实测]` S3（12 px 点阵版，2026-11-20）**（240 MHz，`IOT_BOOT_PAGE=text`，DEBUG 日志）：首窗 `11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms`，稳态 `5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)`；改前同页是 `6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms`。主栈 86,216 B、峰值 30,364 B，无 panic。静止页不重绘，拖动时的逐帧开销只能靠手指实测。
+- **`[实测]` S3（24 px 矢量版，2026-11-21）**（240 MHz，`IOT_BOOT_PAGE=text`，DEBUG 日志）：首窗 `6 repaints in 2355 ms, held the executor 67 ms (2%), worst render 52 ms (fill 1), worst wait 637 ms, worst write 16 ms`，次窗 `3 repaints in 15478 ms, held 160 ms (1%), worst render 54 ms`；主栈 86,216 B、峰值 30,108 B，无 panic，背光正常。52–54 ms 已靠近 40 ms 重绘地板，滚动时一帧就是这个量级。
+- **第一版光栅器是 238 ms，改法是少做重复工作**：旧实现每画一个字形都把全部轮廓点按字号缩放四遍（四条子扫描线各一遍），每个像素行再扫一遍全部边；S3 上一帧 212 次矢量落墨、628k 次边遍历，`worst render 238 ms`。现在每个字形只缩放一次（`scaled`，1.5 KB），边按“采样窗口第一次够到它”的行分桶，逐行只遍历仍跨行的边（`heads`/`chain`/`active`），四种子扫描线共用一次边遍历。181 个字形逐像素哈希与旧实现完全一致，黄金表未动；主栈峰值不变（渲染在 86 KB 主栈上）。
+- **镜像大小**（`moon run iot:image`，2026-11-21）：S3 `1,791,168 / 6,291,456 B (28.47%)`，C6 `1,608,160 / 6,291,456 B (25.56%)`；两张表进镜像后仍有 4.5 MB / 4.7 MB 余量。
+- **回归**：`services::text::tests` 钉住两区都可滚且互不影响、滑点在区内才路由、拖动跟手、抬手滑行不补行、快速滑动仍补 3 行、拖动后的点击不补行、横向/区外忽略、`on_hide` 归零、样张无缺字、节点数上限、ASCII 单格与样张对齐、双指各拖一区、抬一指另一指继续、两区同甩、第三指忽略、样张被矢量面全覆盖、节点预算 45；`shared::kit::scroll::tests` 钉住速度阈值、滑行距离、回弹归位、按住不弹与两个开关；`services::tests::a_text_scroll_moves_one_region_and_its_thumb` 钉住偏移进画面且 thumb 跟着走。
 
-## 一帧的声明占用（`[测试]`，2026-11-20）
+## 一帧的声明占用（`[测试]`，2026-11-21）
 
-布局层不保留树：`Ui` 在一次 `view` 里攒下声明，布局一次、落墨一次。节点数组 `MAX_NODES = 48`，每个节点 160 B；当前最满的一页是 Attitude 的调试网格，42 个节点。`Ui` 整体 9,784 B，落在面板核 24 KiB 栈的预算内，`ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` 把它钉在 10 KiB 以内。
+布局层不保留树：`Ui` 在一次 `view` 里攒下声明，布局一次、落墨一次。节点数组 `MAX_NODES = 48`，每个节点 160 B；页面自己最满的是 Text（14 行 + 18 行字模 + 两个 thumb + 页壳 = 45），落墨时再加角标，离上限还有一格。`Ui` 整体 9,976 B，落在面板核 24 KiB 栈的预算内，`ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` 把它钉在 10 KiB 以内；`Style` 84 B、`Length` 4 B 也各有钉住的测试。
 
 ## 数字不能带动布局（`[测试]`，2026-11-20）
 

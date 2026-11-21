@@ -1,8 +1,12 @@
 //! A page under construction: the tree, the runs it points into, and the slots it paints.
 
 use super::canvas::Canvas;
+use super::color::{Color, ColorId};
 use super::geometry::Rect;
-use super::layout::{BoxConstraints, NodeId, NodeKind, ScrollId, ScrollInfo, Style, Tree};
+use super::layout::Span;
+use super::layout::{
+    BoxConstraints, NodeId, NodeKind, RunStyle, ScrollId, ScrollInfo, Style, Tree,
+};
 use super::paint;
 use super::screen::Screen;
 
@@ -13,12 +17,17 @@ const TEXT_BYTES: usize = 2048;
 /// Custom leaves a page may declare: one per band or band-sized mark.
 const PAINTS: usize = 8;
 
+/// Spans one declaration may recolour.
+const SPANS: usize = 8;
+
 pub struct Ui<'a, 's> {
     canvas: Option<&'s mut Canvas<'a>>,
     screen: Screen,
     tree: Tree,
     text: [u8; TEXT_BYTES],
     used: usize,
+    spans: [Span; SPANS],
+    span_count: u8,
     current: NodeId,
     width: usize,
     height: usize,
@@ -60,6 +69,8 @@ impl<'a, 's> Ui<'a, 's> {
             tree,
             text: [0; TEXT_BYTES],
             used: 0,
+            spans: [Span::default(); SPANS],
+            span_count: 0,
             current: root,
             width,
             height,
@@ -176,6 +187,30 @@ impl<'a, 's> Ui<'a, 's> {
             .push(style, NodeKind::Paint { slot }, self.current)
     }
 
+    /// The slot `color` is held in for this declaration, so a style can name it in one byte.
+    pub fn color(&mut self, color: Color) -> ColorId {
+        self.tree.intern(color)
+    }
+
+    /// Recolours bytes `start..start + len` of the run `node` was declared with. A span is
+    /// paint only: the line it sits on is still the one the node's own metrics broke.
+    pub fn span(&mut self, node: NodeId, start: usize, len: usize, style: RunStyle) {
+        let Some(base) = self.tree.text_start(node) else {
+            debug_assert!(false, "a span needs a run of text");
+            return;
+        };
+        let Some(slot) = self.spans.get_mut(usize::from(self.span_count)) else {
+            debug_assert!(false, "the declaration ran out of spans");
+            return;
+        };
+        *slot = Span {
+            start: base + start as u16,
+            end: base + (start + len) as u16,
+            style,
+        };
+        self.span_count += 1;
+    }
+
     pub fn rect(&self, id: NodeId) -> Rect {
         self.tree.rect(id)
     }
@@ -243,12 +278,26 @@ impl<'a, 's> Ui<'a, 's> {
         paint: &mut dyn FnMut(u8, &mut Canvas<'_>, Rect),
     ) {
         let Self {
-            canvas, text, used, ..
+            canvas,
+            text,
+            used,
+            tree,
+            spans,
+            span_count,
+            ..
         } = self;
         let Some(canvas) = canvas.as_deref_mut() else {
             return;
         };
-        paint::node(canvas, info, &text[..*used], paint);
+        let palette = tree.palette();
+        paint::node(
+            canvas,
+            info,
+            &text[..*used],
+            &palette,
+            &spans[..usize::from(*span_count)],
+            paint,
+        );
     }
 }
 
@@ -256,10 +305,37 @@ impl<'a, 's> Ui<'a, 's> {
 mod tests {
     use super::*;
     use crate::ui::layout::PX;
+    use crate::ui::{DecorationStyle, FontWeight, Length};
 
     /// The declaration lives on the panel core's stack for the length of one page. This is
     /// the budget the panel's stack was sized against; a page that needs more nodes must fit
     /// them in it, not grow the array quietly.
+    #[test]
+    fn a_scroll_box_clips_the_lines_below_it() {
+        const W: usize = 100;
+        const H: usize = 100;
+        let mut frame = [0u8; W * H * 2];
+        let mut canvas = Canvas::new(&mut frame, W, H, None);
+        let mut ui = Ui::new(&mut canvas, Screen::default());
+        ui.scroll(Style::new().height(40), |ui| {
+            for _ in 0..8 {
+                ui.text(b"WWWWWWWW", Style::new().nowrap());
+            }
+        });
+        ui.paint(BoxConstraints::tight(100 * PX, 100 * PX), &mut |_, _, _| {});
+        let canvas = ui.into_canvas().expect("a canvas was handed in");
+        let frame = canvas.frame();
+        let ink = |x: usize, y: usize| {
+            let at = (y * W + x) * 2;
+            frame[at] != 0 || frame[at + 1] != 0
+        };
+        assert!((0..40).any(|y| (0..W).any(|x| ink(x, y))), "in the box");
+        assert!(
+            !(41..H).any(|y| (0..W).any(|x| ink(x, y))),
+            "below the box is empty"
+        );
+    }
+
     #[test]
     fn nowrap_text_paints_only_inside_its_box() {
         const W: usize = 100;
@@ -283,6 +359,124 @@ mod tests {
             !(30..W).any(|x| (0..12).any(|y| ink(x, y))),
             "nothing leaves the box"
         );
+    }
+
+    #[test]
+    fn a_run_naming_a_colour_is_painted_in_it() {
+        const W: usize = 40;
+        const H: usize = 24;
+        let mut frame = [0u8; W * H * 2];
+        let mut canvas = Canvas::new(&mut frame, W, H, None);
+        let mut ui = Ui::new(&mut canvas, Screen::default());
+        let red = ui.color(Color::rgb(0xFF, 0, 0));
+        ui.text(b"X", Style::new().nowrap().color(red));
+        ui.paint(BoxConstraints::tight(40 * PX, 24 * PX), &mut |_, _, _| {});
+        let canvas = ui.into_canvas().expect("a canvas was handed in");
+        let frame = canvas.frame();
+        let red = crate::light::rgb565(crate::light::Rgb(0xFF, 0, 0)).to_be_bytes();
+        assert!(
+            frame.as_chunks::<2>().0.contains(&red),
+            "the run is in the declared colour"
+        );
+    }
+
+    const W: usize = 48;
+    const H: usize = 24;
+
+    fn ink(run: &[u8], style: Style, spans: &[(usize, usize, RunStyle)]) -> alloc::vec::Vec<u8> {
+        let mut frame = alloc::vec![0u8; W * H * 2];
+        {
+            let mut canvas = Canvas::new(&mut frame, W, H, None);
+            let mut ui = Ui::new(&mut canvas, Screen::default());
+            let red = ui.color(Color::rgb(0xF0, 0x20, 0x20));
+            let id = ui.text(run, style.nowrap());
+            for (start, len, span) in spans {
+                let span = if span.color.0 == 0 {
+                    span.color(red)
+                } else {
+                    *span
+                };
+                ui.span(id, *start, *len, span);
+            }
+            ui.paint(BoxConstraints::tight(48 * PX, 24 * PX), &mut |_, _, _| {});
+        }
+        frame
+    }
+
+    fn count(frame: &[u8]) -> usize {
+        frame
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .filter(|pixel| pixel.iter().any(|byte| *byte != 0))
+            .count()
+    }
+
+    fn row_count(frame: &[u8], row: usize) -> usize {
+        (0..W)
+            .filter(|&x| {
+                let at = (row * W + x) * 2;
+                frame[at] != 0 || frame[at + 1] != 0
+            })
+            .count()
+    }
+
+    #[test]
+    fn a_span_recolours_only_its_own_bytes() {
+        let frame = ink(b"AB", Style::new(), &[(0, 1, RunStyle::default())]);
+        let red = crate::light::rgb565(crate::light::Rgb(0xF0, 0x20, 0x20)).to_be_bytes();
+        let red_in = |from: usize, to: usize| {
+            (from..to).any(|x| {
+                (0..H).any(|y| {
+                    let at = (y * W + x) * 2;
+                    frame[at..at + 2] == red
+                })
+            })
+        };
+        assert!(red_in(0, 6), "the first glyph takes the span's colour");
+        assert!(!red_in(7, 13), "the next keeps the inverted ground");
+    }
+
+    #[test]
+    fn a_heavy_weight_lays_down_more_ink_and_a_taller_size_more_still() {
+        let plain = count(&ink(b"HHHH", Style::new(), &[]));
+        let bold = count(&ink(
+            b"HHHH",
+            Style::new().font_weight(FontWeight::Bold),
+            &[],
+        ));
+        let large = count(&ink(b"HHHH", Style::new().font_size(Length::Px(24)), &[]));
+        assert!(bold > plain, "bold {bold} vs plain {plain}");
+        assert!(large > bold, "24 px {large} vs bold {bold}");
+    }
+
+    #[test]
+    fn an_underline_draws_a_rule_below_the_baseline() {
+        let plain = row_count(&ink(b"HHHH", Style::new(), &[]), 11);
+        let underlined = row_count(&ink(b"HHHH", Style::new().underline(), &[]), 11);
+        assert_eq!(plain, 0);
+        assert!(underlined >= 20, "the rule spans the run: {underlined} px");
+    }
+
+    #[test]
+    fn every_decoration_style_marks_the_line() {
+        for style in [
+            DecorationStyle::Solid,
+            DecorationStyle::Double,
+            DecorationStyle::Dotted,
+            DecorationStyle::Dashed,
+            DecorationStyle::Wavy,
+        ] {
+            let frame = ink(
+                b"HHHH",
+                Style::new().underline().decoration_style(style),
+                &[],
+            );
+            assert!(
+                row_count(&frame, 11) + row_count(&frame, 12) > 0,
+                "{style:?}"
+            );
+        }
     }
 
     #[test]

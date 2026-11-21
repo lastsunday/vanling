@@ -91,7 +91,7 @@ moon run iot:image-s3        # 仅 lckfb-szpi-esp32s3
 
 - Windows：Espressif 官方 [ESP Flash Download Tool](https://www.espressif.com/en/support/download/other-tools)
 - 地址填写与 `save-image --merge` 相同：整片镜像写 `0x0`
-- 选择合适 SPI 参数（4MB / DIO / 40MHz）
+- SPI 参数按板选：C6 8 MB、S3 16 MB，DIO / 40 MHz（与产物头部写的一致）
 
 ### 3. esptool 命令行
 
@@ -186,11 +186,12 @@ IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
 **分区表由本仓库提供**：`apps/iot/partitions/<board>.csv`，`flash-*` 与 `scripts/iot-image.sh`
 都显式传 `--partition-table`。两处必须指向同一张表 —— 镜像任务与烧录任务各写一份时，谁最后跑决定设备上是什么布局，而两边都编译通过。
 
-S3 那张表有两处不是默认值，各有原因（详见该文件内的注释与
+两张表都不是默认布局，各有原因（详见各 CSV 内的注释与
 [Wi-Fi 实现记录](@/records/iot/wifi.md)）：
 
-- **factory 6 MB**（espflash 默认 1 MB）：链接了 Wi-Fi 驱动的预编译 blob，固件放不进 1 MB。S3 是 16 MB。
-- **没有 `phy_init`**：esp-radio 的 Xtensa 构建把驱动的标定恢复钩子实现为 `todo!()`，而驱动会去找标定分区；没有这个分区就不走那条路，代价是每次开机重新标定。
+- **factory 6 MB**（espflash 默认 1 MB）：S3 链接了 Wi-Fi 驱动的预编译 blob，固件放不进 1 MB；C6 取同样的槽位大小，给点阵表、矢量表与后续页面留余量。物理容量 C6 是 8 MB、S3 是 16 MB，所以合并镜像与烧录必须分别带 `--flash-size 8mb` / `16mb` —— espflash 默认按 4 MB 算，装不下 6 MB 分区。
+- **`phy_init` 4 KB**：驱动首次启动把射频标定写在这里，两块板都保留。Xtensa 的恢复钩子实现为 `todo!()`，但实测 `esp_wifi_init` 不 panic、扫描正常，所以没有去掉它。
+- **重刷 C6 会覆盖 `nvs`/`creds`**：整片镜像写 `0x0` 会清掉已保存的网络，刷完要重新配 Wi-Fi。
 
 ## 浏览器安装原理
 

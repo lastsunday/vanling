@@ -16,15 +16,19 @@ mod style;
 
 pub use self::constraints::{BoxConstraints, PX};
 pub use self::node::NodeId;
-pub(crate) use self::node::{NodeInfo, NodeKind};
+pub(crate) use self::node::{NodeInfo, NodeKind, Span};
 pub use self::scroll::{ScrollId, ScrollInfo};
-pub use self::style::{Align, Axis, Flow, Inset, Justify, Length, Style, TextAlign};
+pub use self::style::{
+    Align, Axis, Decoration, DecorationStyle, Flow, FontFamily, FontWeight, Inset, Justify, Length,
+    RunStyle, Style, TextAlign,
+};
 
 use self::constraints::{INFINITY, Point, Size, Subpx, pixels, tight};
 use self::node::{MAX_NODES, Measured, NONE, Node};
 
 use super::typeset;
 use crate::ui::Rect;
+use crate::ui::color::{Color, ColorId, Palette};
 
 /// The nodes of one declaration, linked in the order they were pushed.
 #[derive(Clone, Copy, Debug)]
@@ -33,6 +37,7 @@ pub(crate) struct Tree {
     len: u16,
     root: u16,
     scrolls: [ScrollSlot; MAX_SCROLL_AREAS],
+    palette: Palette,
 }
 
 /// The named scroll boxes one declaration may report. The text page uses two.
@@ -73,7 +78,16 @@ impl Tree {
             len: 0,
             root: NONE,
             scrolls: [ScrollSlot::default(); MAX_SCROLL_AREAS],
+            palette: Palette::default(),
         }
+    }
+
+    pub(crate) fn intern(&mut self, color: Color) -> ColorId {
+        self.palette.intern(color)
+    }
+
+    pub(crate) fn palette(&self) -> Palette {
+        self.palette
     }
 
     pub(crate) fn len(&self) -> usize {
@@ -119,6 +133,14 @@ impl Tree {
         self.nodes
             .get(usize::from(id.0))
             .map_or_else(Rect::default, |node| node.rect)
+    }
+
+    /// Where the run of text node `id` begins in the declaration's buffer.
+    pub(crate) fn text_start(&self, id: NodeId) -> Option<u16> {
+        match self.info(id).kind {
+            NodeKind::Text { start, .. } => Some(start),
+            _ => None,
+        }
     }
 
     pub(crate) fn info(&self, id: NodeId) -> NodeInfo {
@@ -255,21 +277,22 @@ impl Tree {
         text: &[u8],
     ) -> Size {
         let run = &text[usize::from(start)..usize::from(start) + usize::from(len)];
-        let line_height = typeset::line_height();
+        let metrics = node.style.metrics();
+        let line_height = typeset::line_height(metrics);
         if node.style.nowrap {
             // A definite width is the whole answer for a run that cannot wrap; measuring it
             // would walk the face once per glyph for a width the caller already fixed.
             let width = if constraints.min_w == constraints.max_w && constraints.max_w < INFINITY {
                 constraints.max_w
             } else {
-                typeset::max_content(run) as Subpx * PX
+                typeset::max_content(run, metrics) as Subpx * PX
             };
             return Size {
                 w: width,
                 h: line_height as Subpx * PX,
             };
         }
-        let natural = typeset::max_content(run);
+        let natural = typeset::max_content(run, metrics);
         let available = pixels(constraints.max_w).max(1) as usize;
         let width = if constraints.min_w == constraints.max_w {
             available
@@ -280,6 +303,7 @@ impl Tree {
             run,
             width,
             usize::from(node.style.max_lines).min(typeset::MAX_LINES),
+            metrics,
         );
         Size {
             w: width as Subpx * PX,

@@ -17,12 +17,18 @@ use crate::shared::snapshot::{
     TextSnapshot,
 };
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::font::Face;
+use iot_core::ui::font::{Face, FontFamily, Metrics as FontMetrics};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{BoxConstraints, PX, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{
+    BoxConstraints, Color, FontWeight, Length, PX, RunStyle, Screen, ScrollId, Style, Ui,
+};
 
 use super::{Descriptor, Repaint};
+
+/// The wrap region is the vector face's sample: outlines at this size, the standing rows and
+/// the coverage line stay in the 12 px bitmap table.
+const WRAP_PX: u8 = 24;
 
 const WRAP: ScrollId = ScrollId::new(1);
 const GLYPHS: ScrollId = ScrollId::new(2);
@@ -58,7 +64,7 @@ struct Drag {
 pub struct TextPage {
     scroll: ScrollState<TEXT_AREAS>,
     text: TextSnapshot,
-    drag: Option<Drag>,
+    drag: [Option<Drag>; TEXT_AREAS],
 }
 
 impl Default for TextPage {
@@ -82,7 +88,7 @@ impl Default for TextPage {
         Self {
             scroll,
             text,
-            drag: None,
+            drag: [None; TEXT_AREAS],
         }
     }
 }
@@ -98,11 +104,14 @@ impl super::Service for TextPage {
         };
         match *intent {
             TextIntent::Press { id, area, y } => {
-                if let Some(old) = self.drag.take() {
-                    self.scroll.fling(old.area, 0);
+                let slot = usize::from(area).min(TEXT_AREAS - 1);
+                // A region already held keeps the finger it has; a third finger finds no
+                // region to claim and moves nothing.
+                if self.drag[slot].is_some() {
+                    return (None, Effects::default());
                 }
                 self.scroll.drag(area, 0);
-                self.drag = Some(Drag {
+                self.drag[slot] = Some(Drag {
                     id,
                     area,
                     y,
@@ -113,12 +122,10 @@ impl super::Service for TextPage {
                 });
             }
             TextIntent::Drag { id, x: _, y, at_ms } => {
-                let Some(drag) = self.drag.as_mut() else {
+                // A third finger arrives with an id no region claimed, so it moves nothing.
+                let Some(drag) = self.drag.iter_mut().flatten().find(|drag| drag.id == id) else {
                     return (None, Effects::default());
                 };
-                if drag.id != id {
-                    return (None, Effects::default());
-                }
                 let y = i16::try_from(y).unwrap_or(i16::MAX);
                 let delta = i32::from(drag.y) - i32::from(y);
                 if drag.at_ms != 0 {
@@ -147,10 +154,12 @@ impl super::Service for TextPage {
                 lines,
                 speed,
             } => {
-                if let Some(drag) = self.drag
-                    && drag.id == id
-                {
-                    self.drag = None;
+                let slot = self
+                    .drag
+                    .iter()
+                    .position(|drag| drag.as_ref().is_some_and(|drag| drag.id == id));
+                if let Some(slot) = slot {
+                    let drag = self.drag[slot].take().expect("the slot was found");
                     if drag.moved {
                         let speed = if drag.idle <= STILL_STEPS {
                             drag.velocity
@@ -253,7 +262,7 @@ impl super::LocalPage for TextPage {
     }
 
     fn tick(&mut self, step_ms: u16) {
-        if let Some(drag) = self.drag.as_mut() {
+        for drag in self.drag.iter_mut().flatten() {
             drag.idle = drag.idle.saturating_add(1);
         }
         self.scroll.tick(step_ms);
@@ -261,7 +270,7 @@ impl super::LocalPage for TextPage {
 
     fn on_hide(&mut self) {
         self.scroll.reset();
-        self.drag = None;
+        self.drag = [None; TEXT_AREAS];
     }
 }
 
@@ -279,7 +288,12 @@ fn finish(ui: &mut Ui<'_, '_>) {
 fn text_layout(width: i32) -> TextSnapshot {
     let face = Face::new();
     let width = usize::try_from(width.max(1)).unwrap_or(1);
-    let paragraph = iot_core::ui::typeset::wrap(WRAP_RUN, width, TEXT_LINES);
+    let paragraph = iot_core::ui::typeset::wrap(
+        WRAP_RUN,
+        width,
+        TEXT_LINES,
+        FontMetrics::vector(u16::from(WRAP_PX)),
+    );
     let mut text = TextSnapshot::default();
     for (slot, line) in text
         .lines
@@ -310,9 +324,29 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     crate::shared::kit::chrome::page(ui, |ui| {
         coverage(ui, text);
         region(ui, WRAP, b"WRAP", text.areas[0], |ui| {
-            for line in &text.lines[..usize::from(text.line_count)] {
+            let accent = ui.color(Color::rgb(0xE0, 0x40, 0x40));
+            for (index, line) in text.lines[..usize::from(text.line_count)]
+                .iter()
+                .enumerate()
+            {
                 let run = &WRAP_RUN[usize::from(line.start)..usize::from(line.end)];
-                ui.text(run, Style::new().nowrap().width(width_of(line.width)));
+                let mut style = Style::new()
+                    .nowrap()
+                    .width(width_of(line.width))
+                    .font_size(Length::Px(i16::from(WRAP_PX)))
+                    .font_family(FontFamily::Vector);
+                if index == 0 {
+                    style = style.font_weight(FontWeight::Bold).underline();
+                }
+                let id = ui.text(run, style);
+                if index == 0 {
+                    ui.span(
+                        id,
+                        0,
+                        6,
+                        RunStyle::default().color(accent).decoration_color(accent),
+                    );
+                }
             }
         });
         region(ui, GLYPHS, b"GLYPHS", text.areas[1], |ui| {
@@ -330,7 +364,7 @@ fn width_of(width: u16) -> i16 {
 fn coverage(ui: &mut Ui<'_, '_>, text: TextSnapshot) {
     let mut buf = [0u8; 48];
     let mut digits = [0u8; 6];
-    let mut n = append(&mut buf, 0, b"TEXT 12PX 6/12 ASCII ");
+    let mut n = append(&mut buf, 0, b"TEXT 12+24PX 6/12 ASCII ");
     let ascii: &[u8] = if text.ascii { b"95/95" } else { b"---" };
     n = append(&mut buf, n, ascii);
     n = append(&mut buf, n, b" MISS ");
@@ -408,9 +442,9 @@ fn append(buf: &mut [u8], n: usize, part: &[u8]) -> usize {
     n + take
 }
 
-/// A long mixed run for the wrap region: every class the breaker meets, in one paragraph,
-/// including a `\n` and a `\r\n` hard break.
-const WRAP_RUN: &[u8] = "面板文字排版：这一段检验自动换行。The quick brown fox jumps over the lazy dog, 0123456789. 中文与 English 混排时，断点要落在词与词之间，不能把一个汉字或一个单词劈成两半。标点：句号。逗号，问号？叹号！都应避开行首；左引号「和左括号（不能留在行尾。窄屏阅读靠每行对齐到同一列，段落行距保持十二像素。A swipe scrolls this region: the offset moves, the edge gives, and the thumb follows. 繁體：網路設定、無線路由器、中華電信。希腊 αβγδε，西里尔 абвгд，假名 あいうえお。最后一行以完整的句子结束，方便确认换行没有吞字。换行符：第一行\n第二行\r\n第三行。".as_bytes();
+/// The wrap region's paragraph, shared with the vector font's cutter so the two cannot
+/// disagree about which glyphs the page needs.
+const WRAP_RUN: &[u8] = include_bytes!("../../../core/assets/font/vector-sample.txt");
 
 /// The page's standing rows, one per line the panel has room for. Widths are asserted below.
 const ROWS: [&[u8]; TEXT_ROWS] = [
@@ -490,23 +524,60 @@ mod tests {
 
     #[test]
     fn the_sample_text_breaks_at_both_kinds_of_newline() {
+        // The page keeps 14 lines of the paragraph on its node budget; the breaker still has
+        // to see the whole run a paragraph can hold.
         let page = TextPage::default();
-        let lines = &page.text.lines[..usize::from(page.text.line_count)];
-        let rendered: alloc::vec::Vec<&str> = lines
+        let width = usize::try_from(page.scroll.areas()[0].rect.w).expect("a panel width");
+        let paragraph = iot_core::ui::typeset::wrap(
+            WRAP_RUN,
+            width,
+            iot_core::ui::typeset::MAX_LINES,
+            FontMetrics::vector(u16::from(WRAP_PX)),
+        );
+        let rendered: alloc::vec::Vec<&str> = paragraph.lines[..paragraph.count]
             .iter()
             .map(|line| {
-                core::str::from_utf8(&WRAP_RUN[usize::from(line.start)..usize::from(line.end)])
-                    .expect("the run is UTF-8")
+                core::str::from_utf8(&WRAP_RUN[line.start..line.end]).expect("the run is UTF-8")
             })
             .collect();
-        assert!(rendered.iter().any(|line| line.contains("第一行")));
-        assert!(rendered.iter().any(|line| line.contains("第二行")));
-        assert!(rendered.iter().any(|line| line.contains("第三行")));
+        let feed = WRAP_RUN
+            .iter()
+            .position(|byte| *byte == b'\n')
+            .expect("a line feed");
+        let carriage = WRAP_RUN
+            .windows(2)
+            .position(|pair| pair == b"\r\n")
+            .expect("a carriage return pair");
+        let lines = &paragraph.lines[..paragraph.count];
+        assert!(lines.iter().any(|line| line.end == feed), "the feed breaks");
+        assert!(
+            lines.iter().any(|line| line.end == carriage),
+            "the pair breaks at the return"
+        );
+        assert!(
+            lines.iter().any(|line| line.start == feed + 1)
+                && lines.iter().any(|line| line.start == carriage + 2),
+            "and neither break swallows the line after it"
+        );
         assert!(
             !rendered
                 .iter()
                 .any(|line| line.contains('\n') || line.contains('\r')),
             "a control character never reaches a line"
+        );
+    }
+
+    #[test]
+    fn the_wrap_paragraph_is_covered_by_the_vector_face() {
+        let face = iot_core::ui::font::VectorFace::new();
+        let missing: alloc::string::String = core::str::from_utf8(WRAP_RUN)
+            .expect("the sample is UTF-8")
+            .chars()
+            .filter(|ch| !ch.is_control() && !face.has(*ch))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "the vector table lacks {missing}; rerun `cargo run -p iot-tool -- outline`"
         );
     }
 
@@ -708,6 +779,200 @@ mod tests {
             },
         );
         assert_eq!(page.scroll.areas()[1].offset, moved);
+    }
+
+    #[test]
+    fn two_fingers_drag_two_regions_at_once() {
+        let mut page = TextPage::default();
+        let (x0, y0) = center(&page.scroll.areas()[0]);
+        let (x1, y1) = center(&page.scroll.areas()[1]);
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 1,
+                area: 0,
+                y: i16::try_from(y0).unwrap(),
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 2,
+                area: 1,
+                y: i16::try_from(y1).unwrap(),
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 1,
+                x: x0,
+                y: y0 - 20,
+                at_ms: 100,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 2,
+                x: x1,
+                y: y1 - 8,
+                at_ms: 100,
+            },
+        );
+        assert_eq!(page.scroll.areas()[0].offset, 20);
+        assert_eq!(
+            page.scroll.areas()[1].offset,
+            8,
+            "the second finger moved its own region"
+        );
+    }
+
+    #[test]
+    fn lifting_one_finger_leaves_the_other_dragging() {
+        let mut page = TextPage::default();
+        let (x0, y0) = center(&page.scroll.areas()[0]);
+        let (x1, y1) = center(&page.scroll.areas()[1]);
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 1,
+                area: 0,
+                y: i16::try_from(y0).unwrap(),
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 2,
+                area: 1,
+                y: i16::try_from(y1).unwrap(),
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 1,
+                x: x0,
+                y: y0 - 10,
+                at_ms: 100,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Release {
+                id: 1,
+                area: 0,
+                lines: 0,
+                speed: 0,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 2,
+                x: x1,
+                y: y1 - 16,
+                at_ms: 200,
+            },
+        );
+        assert_eq!(page.scroll.areas()[0].offset, 10);
+        assert_eq!(page.scroll.areas()[1].offset, 16);
+    }
+
+    #[test]
+    fn both_regions_fling_when_both_fingers_lift() {
+        let mut page = TextPage::default();
+        for (id, area) in [(1u8, 0u8), (2, 1)] {
+            apply(&mut page, TextIntent::Press { id, area, y: 40 });
+            apply(
+                &mut page,
+                TextIntent::Drag {
+                    id,
+                    x: 0,
+                    y: 20,
+                    at_ms: 100,
+                },
+            );
+            apply(
+                &mut page,
+                TextIntent::Drag {
+                    id,
+                    x: 0,
+                    y: 0,
+                    at_ms: 120,
+                },
+            );
+        }
+        apply(
+            &mut page,
+            TextIntent::Release {
+                id: 1,
+                area: 0,
+                lines: 0,
+                speed: 1_600,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Release {
+                id: 2,
+                area: 1,
+                lines: 0,
+                speed: 1_600,
+            },
+        );
+        assert!(page.scroll.moving(), "both regions kept their speed");
+        let before = (page.scroll.areas()[0].offset, page.scroll.areas()[1].offset);
+        page.tick(16);
+        assert!(page.scroll.areas()[0].offset > before.0);
+        assert!(page.scroll.areas()[1].offset > before.1);
+    }
+
+    #[test]
+    fn a_third_finger_is_ignored() {
+        let mut page = TextPage::default();
+        let (x0, y0) = center(&page.scroll.areas()[0]);
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 1,
+                area: 0,
+                y: i16::try_from(y0).unwrap(),
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 3,
+                area: 0,
+                y: i16::try_from(y0).unwrap(),
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 3,
+                x: x0,
+                y: y0 - 30,
+                at_ms: 100,
+            },
+        );
+        assert_eq!(
+            page.scroll.areas()[0].offset,
+            0,
+            "the held finger still owns the region"
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 1,
+                x: x0,
+                y: y0 - 12,
+                at_ms: 100,
+            },
+        );
+        assert_eq!(page.scroll.areas()[0].offset, 12);
     }
 
     #[test]

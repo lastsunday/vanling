@@ -35,6 +35,14 @@ pub enum PageId {
     Text,
 }
 
+impl PageId {
+    /// Whether the page is a still reading. A steady page holds the light and the backlight
+    /// where it found them: nothing on it breathes, so nothing should pulse under it.
+    pub const fn steady(self) -> bool {
+        matches!(self, Self::Text)
+    }
+}
+
 /// One page's row in the route table: the properties that follow from being that page.
 struct Route {
     /// The name the page answers to, trimmed and case-insensitive through
@@ -464,5 +472,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn only_the_reading_page_holds_the_light_still() {
+        let steady: alloc::vec::Vec<PageId> = PageId::ALL
+            .iter()
+            .copied()
+            .filter(|page| page.steady())
+            .collect();
+        assert_eq!(
+            steady,
+            [PageId::Text],
+            "a page that breathes must not claim stillness"
+        );
     }
 }

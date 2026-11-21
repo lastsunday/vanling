@@ -5,7 +5,7 @@
 //! `「`. Measurement and drawing call the same breaker, so a line that fits when measured is
 //! the line that is drawn.
 
-use super::font::{Face, MISSING};
+use super::font::{MISSING, Metrics};
 
 /// Lines one paragraph may hold; anything longer is cut and ellipsised.
 pub const MAX_LINES: usize = 32;
@@ -41,17 +41,17 @@ impl Default for Paragraph {
     }
 }
 
-/// Rows one line occupies.
-pub const fn line_height() -> usize {
-    Face::new().height()
+/// Rows one line occupies at `metrics`.
+pub fn line_height(metrics: Metrics) -> usize {
+    metrics.height()
 }
 
-/// The width the run takes on one line.
-pub fn max_content(text: &[u8]) -> usize {
+/// The width the run takes on one line at `metrics`.
+pub fn max_content(text: &[u8], metrics: Metrics) -> usize {
     let mut widest = 0;
     let mut run = 0;
     let mut at = 0;
-    while let Some(cluster) = Cluster::next(text, at) {
+    while let Some(cluster) = Cluster::next(text, at, metrics) {
         at = cluster.end;
         if let Some(next) = hard_break(text, cluster) {
             at = next;
@@ -65,10 +65,10 @@ pub fn max_content(text: &[u8]) -> usize {
 }
 
 /// Break `text` into lines no wider than `width`, at most `max_lines` of them.
-pub fn wrap(text: &[u8], width: usize, max_lines: usize) -> Paragraph {
+pub fn wrap(text: &[u8], width: usize, max_lines: usize, metrics: Metrics) -> Paragraph {
     let width = width.max(1);
     let max_lines = max_lines.clamp(1, MAX_LINES);
-    let ellipsis = Face::new().advance('…');
+    let ellipsis = metrics.advance('…');
     let mut paragraph = Paragraph::default();
     let mut at = 0usize;
     while paragraph.count < max_lines {
@@ -81,7 +81,7 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize) -> Paragraph {
         let mut broke = None;
         let mut previous = None;
         let mut first = true;
-        while let Some(cluster) = Cluster::next(text, cursor) {
+        while let Some(cluster) = Cluster::next(text, cursor, metrics) {
             if let Some(next) = hard_break(text, cluster) {
                 broke = Some((next, end, used, gaps, false));
                 break;
@@ -147,7 +147,7 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize) -> Paragraph {
         paragraph.truncated = true;
         let last = &mut paragraph.lines[paragraph.count - 1];
         while last.end > last.start && last.width + ellipsis > width {
-            let previous = previous_cluster(text, last.start, last.end);
+            let previous = previous_cluster(text, last.start, last.end, metrics);
             match previous {
                 Some(cluster) => {
                     last.end = cluster.start;
@@ -177,11 +177,11 @@ fn hard_break(text: &[u8], cluster: Cluster) -> Option<usize> {
     }
 }
 
-fn previous_cluster(text: &[u8], start: usize, end: usize) -> Option<Cluster> {
+fn previous_cluster(text: &[u8], start: usize, end: usize, metrics: Metrics) -> Option<Cluster> {
     let mut previous = None;
     let mut at = start;
     while at < end {
-        let cluster = Cluster::next(text, at)?;
+        let cluster = Cluster::next(text, at, metrics)?;
         if cluster.end >= end {
             break;
         }
@@ -212,12 +212,12 @@ struct Cluster {
 }
 
 impl Cluster {
-    fn next(text: &[u8], at: usize) -> Option<Self> {
+    fn next(text: &[u8], at: usize, metrics: Metrics) -> Option<Self> {
         let (ch, len) = decode(text, at)?;
         Some(Self {
             start: at,
             end: at + len,
-            width: Face::new().advance(ch),
+            width: metrics.advance(ch),
             class: class(ch),
             ch,
         })
@@ -303,7 +303,7 @@ mod tests {
     use super::*;
 
     fn lines(text: &[u8], width: usize) -> Vec<(usize, usize)> {
-        let paragraph = wrap(text, width, MAX_LINES);
+        let paragraph = wrap(text, width, MAX_LINES, Metrics::default());
         paragraph.lines[..paragraph.count]
             .iter()
             .map(|line| (line.start, line.end))
@@ -317,7 +317,7 @@ mod tests {
 
     #[test]
     fn a_word_wider_than_the_line_is_cut_rather_than_run_off() {
-        let paragraph = wrap(b"ABCDEFGH", 3 * 6, MAX_LINES);
+        let paragraph = wrap(b"ABCDEFGH", 3 * 6, MAX_LINES, Metrics::default());
         assert!(paragraph.count >= 2);
         for line in &paragraph.lines[..paragraph.count] {
             assert!(line.width <= 3 * 6);
@@ -326,14 +326,14 @@ mod tests {
 
     #[test]
     fn an_ideograph_breaks_between_any_two() {
-        let paragraph = wrap("中文中文".as_bytes(), 24, MAX_LINES);
+        let paragraph = wrap("中文中文".as_bytes(), 24, MAX_LINES, Metrics::default());
         assert_eq!(paragraph.count, 2);
         assert_eq!(paragraph.lines[0].width, 24);
     }
 
     #[test]
     fn a_line_never_starts_on_a_closing_mark() {
-        let paragraph = wrap("中文。中文".as_bytes(), 24, MAX_LINES);
+        let paragraph = wrap("中文。中文".as_bytes(), 24, MAX_LINES, Metrics::default());
         let text = "中文。中文".as_bytes();
         let second = &text[paragraph.lines[1].start..];
         assert!(
@@ -344,7 +344,7 @@ mod tests {
 
     #[test]
     fn a_line_never_ends_on_an_opening_mark() {
-        let paragraph = wrap("中文「中文".as_bytes(), 24, MAX_LINES);
+        let paragraph = wrap("中文「中文".as_bytes(), 24, MAX_LINES, Metrics::default());
         let text = "中文「中文".as_bytes();
         let first = &text[paragraph.lines[0].start..paragraph.lines[0].end];
         assert!(!first.ends_with("「".as_bytes()));
@@ -352,20 +352,20 @@ mod tests {
 
     #[test]
     fn a_hyphen_is_where_the_break_is_taken() {
-        let paragraph = wrap(b"AB-CD", 3 * 6, MAX_LINES);
+        let paragraph = wrap(b"AB-CD", 3 * 6, MAX_LINES, Metrics::default());
         assert_eq!(paragraph.lines[0].end, 3, "the break follows the hyphen");
     }
 
     #[test]
     fn trailing_spaces_are_not_ink_and_do_not_earn_a_line() {
-        let paragraph = wrap(b"AB   ", 12, MAX_LINES);
+        let paragraph = wrap(b"AB   ", 12, MAX_LINES, Metrics::default());
         assert_eq!(paragraph.count, 1);
         assert_eq!(paragraph.lines[0].width, 12);
     }
 
     #[test]
     fn a_line_that_does_not_fit_is_ellipsised() {
-        let paragraph = wrap(b"ABCDEFGH", 3 * 6, 1);
+        let paragraph = wrap(b"ABCDEFGH", 3 * 6, 1, Metrics::default());
         assert!(paragraph.truncated);
         assert_eq!(paragraph.count, 1);
         assert!(paragraph.lines[0].width < 3 * 6);
@@ -385,21 +385,21 @@ mod tests {
 
     #[test]
     fn max_content_stops_at_every_kind_of_line_break() {
-        assert_eq!(max_content(b"AB\nCDEF"), 4 * 6);
-        assert_eq!(max_content(b"AB\rCDEF"), 4 * 6);
-        assert_eq!(max_content(b"AB\r\nCDEF"), 4 * 6);
+        assert_eq!(max_content(b"AB\nCDEF", Metrics::default()), 4 * 6);
+        assert_eq!(max_content(b"AB\rCDEF", Metrics::default()), 4 * 6);
+        assert_eq!(max_content(b"AB\r\nCDEF", Metrics::default()), 4 * 6);
     }
 
     #[test]
     fn max_content_is_the_whole_run_on_one_line() {
-        assert_eq!(max_content(b"AB CDE F"), 8 * 6);
-        assert_eq!(max_content("中文".as_bytes()), 24);
+        assert_eq!(max_content(b"AB CDE F", Metrics::default()), 8 * 6);
+        assert_eq!(max_content("中文".as_bytes(), Metrics::default()), 24);
     }
 
     #[test]
     fn every_byte_range_is_on_a_character_boundary() {
         let text = "a中b。c".as_bytes();
-        let paragraph = wrap(text, 12, MAX_LINES);
+        let paragraph = wrap(text, 12, MAX_LINES, Metrics::default());
         for line in &paragraph.lines[..paragraph.count] {
             assert!(core::str::from_utf8(&text[line.start..line.end]).is_ok());
         }
@@ -407,7 +407,7 @@ mod tests {
 
     #[test]
     fn invalid_utf8_still_advances() {
-        let paragraph = wrap(b"a\xffb", 6 * 4, MAX_LINES);
+        let paragraph = wrap(b"a\xffb", 6 * 4, MAX_LINES, Metrics::default());
         assert_eq!(paragraph.count, 1);
     }
 }

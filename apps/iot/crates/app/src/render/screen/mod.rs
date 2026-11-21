@@ -32,6 +32,8 @@ pub struct ScreenRenderer {
     painter: Box<dyn ScreenPainter>,
     overlay: bool,
     last_snapshot: Option<FrameSnapshot>,
+    /// The page asked for a still light: no breath is sampled under it.
+    steady: bool,
     last_repaint_ms: u32,
     /// The cadence the last snapshot's camera claim asked for, passed through to the
     /// surface rather than read there.
@@ -55,6 +57,7 @@ impl ScreenRenderer {
             painter,
             overlay,
             last_snapshot: None,
+            steady: false,
             last_repaint_ms: 0,
             camera_period_ms: 0,
         }
@@ -75,9 +78,13 @@ impl ScreenRenderer {
             self.surface.set_backlight(100);
             return;
         }
+        let now_ms = if self.steady { 0 } else { now_ms };
         let shown = self.color.show(&mut *self.surface, step, declared, now_ms);
-        self.surface
-            .set_backlight(duty(shown, LightState::BACKLIGHT_FLOOR_PCT));
+        self.surface.set_backlight(panel_level(
+            shown,
+            LightState::BACKLIGHT_FLOOR_PCT,
+            self.steady,
+        ));
     }
 
     fn paint_last(&mut self) {
@@ -93,6 +100,7 @@ impl ScreenRenderer {
 
     fn on_frame(&mut self, frame: &FrameSnapshot, now_ms: u32) -> Drive {
         let page_changed = self.page != Some(frame.page);
+        self.steady = frame.steady;
         let camera = frame.demand.claim(DemandKey::CAMERA);
         self.camera_period_ms = camera.period_ms;
         // Handing the buffer back belongs to this side of the boundary: a chain left
@@ -135,6 +143,9 @@ impl ScreenRenderer {
         if self.is_camera_page() || frame.animating() {
             return Drive::TimeDriven;
         }
+        if self.steady {
+            return Drive::Idle;
+        }
         self.color.drive()
     }
 
@@ -143,9 +154,18 @@ impl ScreenRenderer {
     }
 }
 
-/// The panel's backlight for what the light is showing: a breath rides the same envelope its
-/// pixels do, remapped onto `floor_pct..=100` so the glass follows the colour instead of
-/// switching binary under it.
+/// The panel's backlight for what the light is showing. A steady page keeps the glass at full
+/// while anything is drawn; otherwise a breath rides the same envelope its pixels do,
+/// remapped onto `floor_pct..=100` so the glass follows the colour instead of switching
+/// binary under it.
+fn panel_level(shown: Shown, floor_pct: u8, steady: bool) -> u8 {
+    match shown {
+        Shown::Off => 0,
+        _ if steady => 100,
+        _ => duty(shown, floor_pct),
+    }
+}
+
 fn duty(shown: Shown, floor_pct: u8) -> u8 {
     let floor = floor_pct.min(100);
     match shown {
@@ -197,11 +217,26 @@ impl Renderer for ScreenRenderer {
             );
             return Drive::TimeDriven;
         }
+        if self.steady {
+            // A still page still advances its own scroll; only the light is held.
+            return if self
+                .last_snapshot
+                .as_ref()
+                .is_some_and(FrameSnapshot::animating)
+            {
+                Drive::TimeDriven
+            } else {
+                Drive::Idle
+            };
+        }
         let step = self.surface.repaint_step();
         let shown = self.color.step(&mut *self.surface, step, now_ms);
         if let Some(shown) = shown {
-            self.surface
-                .set_backlight(duty(shown, LightState::BACKLIGHT_FLOOR_PCT));
+            self.surface.set_backlight(panel_level(
+                shown,
+                LightState::BACKLIGHT_FLOOR_PCT,
+                self.steady,
+            ));
             self.paint_last();
         }
         if self
@@ -594,6 +629,18 @@ mod tests {
             panic!("the boot light breathes");
         };
         assert_eq!(screen.borrow().color, breath.sample(100).color);
+    }
+
+    #[test]
+    fn a_steady_page_keeps_the_glass_at_full_and_only_off_darkens_it() {
+        let trough = Sample {
+            color: Rgb(0, 0, 0),
+            phase: 0,
+        };
+        assert_eq!(panel_level(Shown::Off, 12, true), 0);
+        assert_eq!(panel_level(Shown::Solid, 12, true), 100);
+        assert_eq!(panel_level(Shown::Breathing(trough), 12, true), 100);
+        assert_eq!(panel_level(Shown::Breathing(trough), 12, false), 12);
     }
 
     #[test]

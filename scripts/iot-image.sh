@@ -38,9 +38,10 @@ gen_image() {
 }
 
 # board, chip, target, flash size in MB. The size is named because `espflash` assumes
-# 4 MB and a merged image is the whole flash: the S3's 6 MB factory slot does not fit in
-# 4 MB, so without this the image task fails on the very table it is handed.
-BOARD_ESP32C6="esp32c6-devkitc-1 esp32c6 riscv32imac-unknown-none-elf 4"
+# 4 MB and a merged image is the whole flash: the C6's 6 MB factory slot and the S3's
+# 6 MB one both overflow 4 MB, and the C6 part is 8 MB, so without these the image
+# task fails on the very table it is handed.
+BOARD_ESP32C6="esp32c6-devkitc-1 esp32c6 riscv32imac-unknown-none-elf 8"
 BOARD_ESP32S3="lckfb-szpi-esp32s3 esp32s3 xtensa-esp32s3-none-elf 16"
 
 if [ $# -eq 0 ]; then

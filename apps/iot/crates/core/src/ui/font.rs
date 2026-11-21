@@ -1,15 +1,24 @@
-//! The panel's face: glyphs cut at 12 px, one table in flash.
+//! The panel's faces: glyphs cut at 12 px, and the wrap region's outlines.
 //!
-//! The table is built by `cargo run -p iot-tool -- font` from the subset BDF next to it; that
-//! BDF carries the licences. Coverage is GB2312's 7,475 glyphs plus Big5's 13,706 code points,
-//! 15,466 in all. 866 Big5 code points — 805 rare Level-2 hanzi and 61 symbols — have no glyph
-//! in the upstream `zh_hant` release and draw as [`MISSING`]; the other 12,840 do. Metrics are
-//! the BDF's own: `ascent` rows above the baseline, and a glyph's box is placed against that
-//! baseline, so a line is `height()` rows tall whatever it holds.
+//! The bitmap table is built by `cargo run -p iot-tool -- font` from the subset BDF next to it;
+//! that BDF carries the licences. Coverage is GB2312's 7,475 glyphs plus Big5's 13,706 code
+//! points, 15,466 in all. 866 Big5 code points — 805 rare Level-2 hanzi and 61 symbols — have
+//! no glyph in the upstream `zh_hant` release and draw as [`MISSING`]; the other 12,840 do.
+//! Metrics are the BDF's own: `ascent` rows above the baseline, and a glyph's box is placed
+//! against that baseline, so a line is `height()` rows tall whatever it holds.
+//!
+//! The vector table is cut by `cargo run -p iot-tool -- outline` from the release Noto Sans Mono
+//! CJK SC and covers exactly the code points of `vector-sample.txt`, the paragraph the wrap
+//! region draws. Its coordinates are 1/64 em and y points up from the baseline; a line is its
+//! own typographic ascent plus descent, which is 1 em on this face.
 
-/// Where the table and its source live.
+/// Where the tables and their sources live.
 mod table {
     pub const BYTES: &[u8] = include_bytes!("../../assets/font/ui12.bin");
+}
+
+mod vector {
+    pub const BYTES: &[u8] = include_bytes!("../../assets/font/vector.bin");
 }
 
 const MAGIC: &[u8; 4] = b"VLF1";
@@ -64,8 +73,7 @@ impl Face {
     pub fn glyphs<'a>(&self, text: &'a [u8]) -> Glyphs<'a> {
         Glyphs {
             face: *self,
-            text,
-            at: 0,
+            chars: Chars::new(text),
         }
     }
 
@@ -140,6 +148,121 @@ impl Face {
 /// What a code point the subset does not carry is drawn as.
 pub const MISSING: char = '\u{25A1}';
 
+/// Which face a run is set in.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FontFamily {
+    /// The 12 px table, magnified by whole steps.
+    #[default]
+    Bitmap,
+    /// The outlines, at the exact size asked for.
+    Vector,
+}
+
+/// A face at one size. The bitmap table is cut at 12 px, so a larger size is a whole-number
+/// magnification of it; the vector face takes the exact size.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Metrics {
+    size: u16,
+    family: FontFamily,
+}
+
+impl Default for Metrics {
+    fn default() -> Self {
+        Self::at(Self::ROOT as u16)
+    }
+}
+
+impl Metrics {
+    /// The size the bitmap table is cut at.
+    pub const ROOT: u8 = 12;
+
+    pub const fn at(size: u16) -> Self {
+        Self {
+            size: if size == 0 { Self::ROOT as u16 } else { size },
+            family: FontFamily::Bitmap,
+        }
+    }
+
+    pub const fn vector(size: u16) -> Self {
+        Self::new(size, FontFamily::Vector)
+    }
+
+    pub const fn new(size: u16, family: FontFamily) -> Self {
+        Self {
+            size: if size == 0 { Self::ROOT as u16 } else { size },
+            family,
+        }
+    }
+
+    pub const fn family(&self) -> FontFamily {
+        self.family
+    }
+
+    pub const fn size(&self) -> u16 {
+        self.size
+    }
+
+    /// Whole magnification of the bitmap table.
+    pub const fn scale(&self) -> usize {
+        (self.size as usize).div_ceil(Self::ROOT as usize)
+    }
+
+    /// Rows one line occupies.
+    pub fn height(&self) -> usize {
+        self.ascent() + self.descent()
+    }
+
+    /// Rows above the baseline.
+    pub fn ascent(&self) -> usize {
+        match self.family {
+            FontFamily::Bitmap => Face::new().ascent() * self.scale(),
+            FontFamily::Vector => scaled(VectorFace::new().ascent_units(), self.size),
+        }
+    }
+
+    /// Rows below the baseline.
+    pub fn descent(&self) -> usize {
+        match self.family {
+            FontFamily::Bitmap => Face::new().descent() * self.scale(),
+            FontFamily::Vector => scaled(VectorFace::new().descent_units(), self.size),
+        }
+    }
+
+    /// Columns `ch` occupies.
+    pub fn advance(&self, ch: char) -> usize {
+        match self.family {
+            FontFamily::Bitmap => Face::new().advance(ch) * self.scale(),
+            FontFamily::Vector => VectorFace::new().advance_units(ch).map_or_else(
+                || Face::new().advance(ch) * self.scale(),
+                |units| scaled(units, self.size),
+            ),
+        }
+    }
+
+    /// Columns a run occupies.
+    pub fn measure(&self, text: &[u8]) -> usize {
+        match self.family {
+            FontFamily::Bitmap => Face::new().measure(text) * self.scale(),
+            FontFamily::Vector => Chars::new(text).map(|ch| self.advance(ch)).sum(),
+        }
+    }
+
+    /// This face for `run`, falling back to the bitmap table when the vector one lacks a
+    /// glyph: a line is never half one face and half the other.
+    pub fn covering(self, run: &[u8]) -> Self {
+        if self.family == FontFamily::Vector && !VectorFace::new().covers(run) {
+            Self::at(self.size)
+        } else {
+            self
+        }
+    }
+}
+
+/// One em-denominated metric in pixels, rounded to the nearest.
+fn scaled(units: u16, size: u16) -> usize {
+    ((u32::from(units) * u32::from(size) + 32) / 64) as usize
+}
+
 /// One glyph: an advance, a box placed against the baseline, and rows of bits with the leftmost
 /// pixel in the most significant bit.
 #[derive(Clone, Copy, Debug)]
@@ -174,21 +297,36 @@ impl Glyph<'_> {
 /// The glyphs of a UTF-8 run, with invalid bytes and missing code points drawn as [`MISSING`].
 pub struct Glyphs<'a> {
     face: Face,
-    text: &'a [u8],
-    at: usize,
+    chars: Chars<'a>,
 }
 
 impl Iterator for Glyphs<'_> {
     type Item = Glyph<'static>;
 
     fn next(&mut self) -> Option<Self::Item> {
-        let ch = self.next_char()?;
+        let ch = self.chars.next()?;
         Some(self.face.glyph(ch))
     }
 }
 
-impl Glyphs<'_> {
-    fn next_char(&mut self) -> Option<char> {
+/// The code points of a UTF-8 run, with invalid bytes reported as the replacement character
+/// so a corrupt run still advances.
+#[derive(Clone, Copy, Debug)]
+pub struct Chars<'a> {
+    text: &'a [u8],
+    at: usize,
+}
+
+impl<'a> Chars<'a> {
+    pub const fn new(text: &'a [u8]) -> Self {
+        Self { text, at: 0 }
+    }
+}
+
+impl Iterator for Chars<'_> {
+    type Item = char;
+
+    fn next(&mut self) -> Option<Self::Item> {
         let rest = self.text.get(self.at..)?;
         if rest.is_empty() {
             return None;
@@ -214,6 +352,164 @@ impl Glyphs<'_> {
     }
 }
 
+/// The outline face: a table of flattened contours the canvas fills.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct VectorFace;
+
+const VMAGIC: &[u8; 4] = b"VLV1";
+const VHEADER: usize = 32;
+/// The table's units per em. A unit is 3/8 px at 24 px.
+const EM: u32 = 64;
+/// One glyph's meta: advance, point range, contour range, and the box the ink occupies.
+const VMETA: usize = 18;
+
+impl VectorFace {
+    pub const fn new() -> Self {
+        Self
+    }
+
+    /// Whether the face carries `ch` as a glyph with ink or as a blank cell.
+    pub fn has(&self, ch: char) -> bool {
+        self.find(ch).is_some()
+    }
+
+    /// Whether every drawn code point of `run` is in the table. A line break is not a glyph.
+    pub fn covers(&self, run: &[u8]) -> bool {
+        Chars::new(run).all(|ch| ch.is_control() || self.has(ch))
+    }
+
+    pub fn outline(&self, ch: char) -> Option<Outline<'_>> {
+        let index = self.find(ch)?;
+        let meta = self.section(16) as usize + index * VMETA;
+        let advance = self.u16_at(meta);
+        let first = usize::from(self.u16_at(meta + 2));
+        let last = usize::from(self.u16_at(meta + 4));
+        Some(Outline {
+            table: vector::BYTES,
+            points: self.section(20) as usize,
+            contours: self.section(24) as usize,
+            first,
+            last,
+            contour_first: usize::from(self.u16_at(meta + 6)),
+            contour_last: usize::from(self.u16_at(meta + 8)),
+            advance,
+            xmin: self.i16_at(meta + 10) as isize,
+            ymin: self.i16_at(meta + 12) as isize,
+            xmax: self.i16_at(meta + 14) as isize,
+            ymax: self.i16_at(meta + 16) as isize,
+        })
+    }
+
+    pub fn advance_units(&self, ch: char) -> Option<u16> {
+        let index = self.find(ch)?;
+        Some(self.u16_at(self.section(16) as usize + index * VMETA))
+    }
+
+    pub fn ascent_units(&self) -> u16 {
+        self.u16_at(28)
+    }
+
+    pub fn descent_units(&self) -> u16 {
+        self.u16_at(30)
+    }
+
+    /// Debug check that the table on disk is the one this reader understands.
+    pub fn table_is_readable(&self) -> bool {
+        vector::BYTES.starts_with(VMAGIC)
+            && vector::BYTES.len() >= VHEADER
+            && self.u16_at(8) == EM as u16
+            && self.count() > 0
+    }
+
+    fn count(&self) -> usize {
+        usize::from(self.u16_at(4))
+    }
+
+    fn code_count(&self) -> usize {
+        usize::from(self.u16_at(6))
+    }
+
+    fn find(&self, ch: char) -> Option<usize> {
+        let code = u16::try_from(u32::from(ch)).ok()?;
+        let codes = self.section(12) as usize;
+        let (mut lo, mut hi) = (0usize, self.code_count());
+        while lo < hi {
+            let mid = (lo + hi) / 2;
+            let at = codes + mid * 4;
+            match self.u16_at(at).cmp(&code) {
+                core::cmp::Ordering::Less => lo = mid + 1,
+                core::cmp::Ordering::Greater => hi = mid,
+                core::cmp::Ordering::Equal => return Some(usize::from(self.u16_at(at + 2))),
+            }
+        }
+        None
+    }
+
+    fn section(&self, at: usize) -> u32 {
+        u32::from_le_bytes([
+            vector::BYTES[at],
+            vector::BYTES[at + 1],
+            vector::BYTES[at + 2],
+            vector::BYTES[at + 3],
+        ])
+    }
+
+    fn u16_at(&self, at: usize) -> u16 {
+        u16::from_le_bytes([vector::BYTES[at], vector::BYTES[at + 1]])
+    }
+
+    fn i16_at(&self, at: usize) -> i16 {
+        self.u16_at(at) as i16
+    }
+}
+
+/// One glyph's flattened contours, read from the table without copying them into RAM.
+#[derive(Clone, Copy, Debug)]
+pub struct Outline<'a> {
+    table: &'a [u8],
+    points: usize,
+    contours: usize,
+    first: usize,
+    last: usize,
+    contour_first: usize,
+    contour_last: usize,
+    pub advance: u16,
+    pub xmin: isize,
+    pub ymin: isize,
+    pub xmax: isize,
+    pub ymax: isize,
+}
+
+impl Outline<'_> {
+    /// Whether the glyph has any ink at all; a space has none.
+    pub fn is_blank(&self) -> bool {
+        self.last <= self.first
+    }
+
+    pub fn points(&self) -> core::ops::Range<usize> {
+        self.first..self.last
+    }
+
+    /// One point in 1/64 em, y up from the baseline.
+    pub fn point(&self, index: usize) -> (i32, i32) {
+        let at = self.points + index * 4;
+        (
+            i32::from(u16::from_le_bytes([self.table[at], self.table[at + 1]]) as i16),
+            i32::from(u16::from_le_bytes([self.table[at + 2], self.table[at + 3]]) as i16),
+        )
+    }
+
+    pub fn contours(&self) -> core::ops::Range<usize> {
+        self.contour_first..self.contour_last
+    }
+
+    /// The exclusive end of contour `index` in [`Outline::points`].
+    pub fn contour_end(&self, index: usize) -> usize {
+        let at = self.contours + index * 2;
+        usize::from(u16::from_le_bytes([self.table[at], self.table[at + 1]]))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -223,6 +519,24 @@ mod tests {
         let face = Face::new();
         assert!(face.table_is_readable(), "the table's header is not VLF1");
         assert_eq!((face.height(), face.ascent(), face.descent()), (12, 10, 2));
+    }
+
+    #[test]
+    fn no_outline_is_wider_than_the_canvas_scratch() {
+        let face = VectorFace::new();
+        let codes = face.section(12) as usize;
+        for index in 0..face.code_count() {
+            let code = face.u16_at(codes + index * 4);
+            let ch = char::from_u32(u32::from(code)).expect("a table code point");
+            let outline = face
+                .outline(ch)
+                .expect("a listed code point has an outline");
+            assert!(
+                outline.points().len() <= crate::ui::canvas::OUTLINE_POINTS,
+                "{ch} holds {} points",
+                outline.points().len()
+            );
+        }
     }
 
     #[test]
@@ -274,6 +588,39 @@ mod tests {
             "繁體中文網路設定測試無線路由器臺灣中華電信我的最愛分享熱點訊號強度密碼連線成功失敗";
         let missing: alloc::string::String = sample.chars().filter(|ch| !face.has(*ch)).collect();
         assert!(missing.is_empty(), "missing {missing}");
+    }
+
+    #[test]
+    fn the_vector_table_is_the_one_this_reader_understands() {
+        let face = VectorFace::new();
+        assert!(face.table_is_readable(), "the table's header is not VLV1");
+        assert_eq!((face.ascent_units(), face.descent_units()), (56, 8));
+        for ch in "中A…□".chars() {
+            assert!(face.has(ch), "{ch} is missing");
+        }
+        assert!(!face.has('\u{1F004}'), "outside the table's code space");
+    }
+
+    #[test]
+    fn a_vector_line_is_one_em_and_a_wide_glyph_fills_it() {
+        let metrics = Metrics::vector(24);
+        assert_eq!(
+            (metrics.ascent(), metrics.descent(), metrics.height()),
+            (21, 3, 24)
+        );
+        assert_eq!(metrics.advance('中'), 24);
+        assert_eq!(metrics.advance('A'), 12);
+        assert_eq!(metrics.measure("中A".as_bytes()), 36);
+        assert_eq!(Metrics::vector(48).advance('A'), 24, "exact, not magnified");
+    }
+
+    #[test]
+    fn a_run_the_vector_face_cannot_cover_falls_back_whole() {
+        let metrics = Metrics::vector(24);
+        assert_eq!(metrics.covering("中A".as_bytes()), metrics);
+        let fallen = metrics.covering("\u{1F004}".as_bytes());
+        assert_eq!(fallen.family(), FontFamily::Bitmap);
+        assert_eq!(fallen.size(), 24);
     }
 
     #[test]

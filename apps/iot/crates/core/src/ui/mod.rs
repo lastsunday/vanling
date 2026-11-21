@@ -5,6 +5,7 @@
 //! run without a canvas, which is how a hit test uses the picture's own rectangles.
 
 pub mod canvas;
+pub mod color;
 pub mod font;
 pub mod layout;
 pub mod panel;
@@ -17,10 +18,11 @@ mod paint;
 mod screen;
 
 pub use canvas::Canvas;
+pub use color::{Color, ColorId};
 pub use declare::Ui;
 pub use geometry::Rect;
 pub use layout::{
-    Align, BoxConstraints, Flow, Justify, Length, NodeId, PX, ScrollId, ScrollInfo, Style,
-    TextAlign,
+    Align, BoxConstraints, Decoration, DecorationStyle, Flow, FontFamily, FontWeight, Justify,
+    Length, NodeId, PX, RunStyle, ScrollId, ScrollInfo, Style, TextAlign,
 };
 pub use screen::Screen;

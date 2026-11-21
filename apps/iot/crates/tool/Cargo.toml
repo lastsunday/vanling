@@ -3,6 +3,7 @@ name = "iot-tool"
 version.workspace = true
 edition.workspace = true
 
-# No dependencies, deliberately: a change on the device side could otherwise
-# break the thing that builds the device side's assets. A subcommand that turns
-# out to need one gets it, scoped to its own module.
+[dependencies]
+# The cutter's one dependency, and only for reading an OTF's outlines. It stays out of the
+# device crates: a change on that side cannot break the thing that builds its assets.
+ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }

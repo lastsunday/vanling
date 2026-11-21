@@ -94,7 +94,7 @@ Browser flashing uses WebSerial + esptool-js; no local tools needed.
 
 - Windows: official [ESP Flash Download Tool](https://www.espressif.com/en/support/download/other-tools)
 - Address matches `save-image --merge`: write the whole image at `0x0`
-- Pick matching SPI settings (4MB / DIO / 40MHz)
+- Pick SPI settings per board: 8 MB on the C6, 16 MB on the S3, DIO / 40 MHz (the same values the image header carries)
 
 ### 3. esptool CLI
 
@@ -211,14 +211,19 @@ explicitly as `--partition-table` by both `flash-*` and `scripts/iot-image.sh`. 
 the same file — with a table written down in two places, whichever task ran last decides what
 the device gets, and neither side fails to compile.
 
-The S3 table departs from the default in two places, each for a reason spelled out in the file
-itself and in the [Wi-Fi record](@/records/iot/wifi.en.md):
+Neither table is the default layout; each reason is spelled out in its own CSV and in the
+[Wi-Fi record](@/records/iot/wifi.en.md):
 
-- **factory 6 MB** (`espflash` defaults to 1 MB): the firmware links the Wi-Fi driver's prebuilt
-  blobs and does not fit in 1 MB. The S3 part has 16 MB.
-- **no `phy_init` partition**: esp-radio's Xtensa build implements the driver's calibration
-  restore hook as `todo!()`, and the driver looks for a calibration partition; without one the
-  path is not taken, at the cost of calibrating at every boot.
+- **factory 6 MB** (`espflash` defaults to 1 MB): the S3 links the Wi-Fi driver's prebuilt blobs
+  and does not fit in 1 MB; the C6 takes the same slot size to leave room for the bitmap table,
+  the vector table and later pages. The parts hold 8 MB (C6) and 16 MB (S3), so a merged image
+  and a flash must pass `--flash-size 8mb` / `16mb` respectively — `espflash` assumes 4 MB and
+  cannot hold a 6 MB partition.
+- **`phy_init` 4 KB**: the driver writes its radio calibration there on first boot, and both
+  boards keep it. The Xtensa restore hook is `todo!()`, but measured `esp_wifi_init` does not
+  panic and scans normally, so the partition stays.
+- **Reflashing the C6 overwrites `nvs`/`creds`**: writing the whole image at `0x0` clears the
+  saved networks, so Wi-Fi has to be set up again afterwards.
 
 ## How browser flashing works
 

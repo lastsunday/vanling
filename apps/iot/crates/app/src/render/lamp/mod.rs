@@ -10,9 +10,11 @@ use iot_core::drivers::surface::RgbLight;
 pub struct LampRenderer {
     instance: u8,
     light: Box<dyn RgbLight>,
-    topics: [Topic; 2],
+    topics: [Topic; 3],
     color: ColorOutput,
     declared: Option<LightAppearance>,
+    /// The page wants a still light: the declared colour is held where the page found it.
+    steady: bool,
 }
 
 impl LampRenderer {
@@ -20,9 +22,10 @@ impl LampRenderer {
         Self {
             instance,
             light,
-            topics: [Topic::Surface(instance), Topic::Demand],
+            topics: [Topic::Surface(instance), Topic::Demand, Topic::Frame],
             color: ColorOutput::new(),
             declared: None,
+            steady: false,
         }
     }
 
@@ -31,6 +34,7 @@ impl LampRenderer {
             return;
         };
         // A lamp has no repaint throttle of its own: any colour difference is worth writing.
+        let now_ms = if self.steady { 0 } else { now_ms };
         self.color.show(&mut *self.light, 0, declared, now_ms);
     }
 }
@@ -53,16 +57,28 @@ impl Renderer for LampRenderer {
                 debug_assert_eq!(instance, self.instance);
                 self.declared = Some(light);
                 self.present(now_ms);
-                self.color.drive()
+                if self.steady {
+                    Drive::Idle
+                } else {
+                    self.color.drive()
+                }
             }
-            Appearance::Frame(_) => {
-                debug_assert!(false, "the lamp reads the demand, not the frame");
-                Drive::Idle
+            Appearance::Frame(frame) => {
+                self.steady = frame.steady;
+                self.present(now_ms);
+                if self.steady {
+                    Drive::Idle
+                } else {
+                    self.color.drive()
+                }
             }
         }
     }
 
     fn step(&mut self, now_ms: u32) -> Drive {
+        if self.steady {
+            return Drive::Idle;
+        }
         match self.color.step(&mut *self.light, 0, now_ms) {
             Some(_) => Drive::TimeDriven,
             None => Drive::Idle,
@@ -142,6 +158,25 @@ mod tests {
             lamp.borrow().writes,
             2,
             "each step writes the frame it invented"
+        );
+    }
+
+    #[test]
+    fn a_steady_frame_stops_the_breath() {
+        let (mut r, lamp) = renderer();
+        r.on_appearance(gate(Mode::Continuous), 0);
+        let frame = crate::shared::snapshot::FrameSnapshot {
+            steady: true,
+            ..Default::default()
+        };
+        r.on_appearance(Appearance::Frame(&frame), 0);
+        assert_eq!(r.on_appearance(breathing(), 0), Drive::Idle);
+        let writes = lamp.borrow().writes;
+        assert_eq!(r.step(1_000), Drive::Idle);
+        assert_eq!(
+            lamp.borrow().writes,
+            writes,
+            "a held light is not rewritten"
         );
     }
 

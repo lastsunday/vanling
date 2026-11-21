@@ -1,15 +1,25 @@
 //! The vocabulary a page declares its boxes with: lengths, edges, axes, alignment, and flow.
 
-use super::constraints::{PX, Subpx};
+use super::constraints::{DP, PX, REM, Subpx};
 use super::scroll::ScrollId;
+use crate::ui::color::ColorId;
+use crate::ui::font::Metrics;
 use crate::ui::typeset;
 
+/// A length in the unit the page states it in. Four variants, one word: the discriminant is a
+/// byte and the payload two, so a fifth unit costs nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Length {
     #[default]
     Auto,
+    /// Exact panel pixels.
     Px(i16),
+    /// Hundredths of the container's own extent.
     Percent(i16),
+    /// Device-independent pixels: 5/4 of a panel pixel on this 200 dpi glass.
+    Dp(i16),
+    /// Hundredths of the root text size.
+    Rem(i16),
 }
 
 impl Length {
@@ -21,11 +31,21 @@ impl Length {
         Self::Percent(value)
     }
 
+    pub const fn dp(value: i16) -> Self {
+        Self::Dp(value)
+    }
+
+    pub const fn rem(value: i16) -> Self {
+        Self::Rem(value)
+    }
+
     pub(super) fn resolve(self, base: Subpx) -> Option<Subpx> {
         match self {
             Self::Auto => None,
             Self::Px(value) => Some(Subpx::from(value) * PX),
             Self::Percent(value) => Some(base * Subpx::from(value) / 100),
+            Self::Dp(value) => Some(Subpx::from(value) * DP),
+            Self::Rem(value) => Some(Subpx::from(value) * REM / 100),
         }
     }
 }
@@ -134,6 +154,133 @@ pub enum Flow {
     Scroll,
 }
 
+pub use crate::ui::font::FontFamily;
+
+/// A run's weight, on the scale the platform's fonts use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum FontWeight {
+    Thin,
+    ExtraLight,
+    Light,
+    #[default]
+    Normal,
+    Medium,
+    SemiBold,
+    Bold,
+    ExtraBold,
+    Black,
+}
+
+impl FontWeight {
+    const fn units(self) -> u16 {
+        self as u16 + 1
+    }
+
+    /// Whether the bitmap face has to be struck twice to pass for this weight.
+    pub const fn is_heavy(self) -> bool {
+        matches!(self, Self::Bold | Self::ExtraBold | Self::Black)
+    }
+}
+
+/// A line drawn with the text. The bits union, so a run may carry more than one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct Decoration(pub u8);
+
+impl Decoration {
+    pub const NONE: Self = Self(0);
+    pub const UNDERLINE: Self = Self(1);
+    pub const OVERLINE: Self = Self(2);
+    pub const LINE_THROUGH: Self = Self(4);
+
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    pub const fn has(self, other: Self) -> bool {
+        self.0 & other.0 != 0
+    }
+}
+
+/// How a decoration line is drawn.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum DecorationStyle {
+    #[default]
+    Solid,
+    Double,
+    Dotted,
+    Dashed,
+    Wavy,
+}
+
+/// Bits of [`Style::text_flags`]. Four bits of weight, two of family, three of decoration,
+/// three of decoration style, the italic bit, and three of thickness.
+mod text {
+    pub const WEIGHT: u16 = 0b1111;
+    pub const FAMILY: u16 = 0b11 << 4;
+    pub const DECORATION: u16 = 0b111 << 6;
+    pub const DECORATION_STYLE: u16 = 0b111 << 9;
+    pub const ITALIC: u16 = 1 << 12;
+    pub const THICKNESS: u16 = 0b111 << 13;
+}
+
+/// What a span over a run may change. Metrics stay the node's: a span recolours and
+/// redecorates, it never moves a line.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub struct RunStyle {
+    pub color: ColorId,
+    pub decoration_color: ColorId,
+    pub background_color: ColorId,
+    pub decoration: Decoration,
+    pub decoration_style: DecorationStyle,
+}
+
+impl RunStyle {
+    /// Recolours the span; the other slots keep the node's.
+    pub const fn color(mut self, color: ColorId) -> Self {
+        self.color = color;
+        self
+    }
+
+    pub const fn decoration(mut self, decoration: Decoration) -> Self {
+        self.decoration = decoration;
+        self
+    }
+
+    pub const fn decoration_style(mut self, style: DecorationStyle) -> Self {
+        self.decoration_style = style;
+        self
+    }
+
+    pub const fn decoration_color(mut self, color: ColorId) -> Self {
+        self.decoration_color = color;
+        self
+    }
+
+    pub const fn background(mut self, color: ColorId) -> Self {
+        self.background_color = color;
+        self
+    }
+
+    /// `node` with this span's non-default slots applied.
+    pub const fn over(self, mut node: Style) -> Style {
+        if self.color.0 != 0 {
+            node.color = self.color;
+        }
+        if self.decoration_color.0 != 0 {
+            node.decoration_color = self.decoration_color;
+        }
+        if self.background_color.0 != 0 {
+            node.background_color = self.background_color;
+        }
+        if self.decoration.0 != 0 {
+            node.text_flags = (node.text_flags & !text::DECORATION)
+                | (self.decoration.0 as u16) << 6
+                | (self.decoration_style as u16) << 9;
+        }
+        node
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub struct Style {
     pub width: Length,
@@ -163,6 +310,16 @@ pub struct Style {
     pub tag: u16,
     pub fill: bool,
     pub border: bool,
+    /// The text size in px; 0 is the root size.
+    pub font_size: u8,
+    /// Weight, family, decoration, decoration style, italic and thickness: see the `text` bits.
+    pub text_flags: u16,
+    /// The run's colour; [`ColorId::NONE`] keeps the panel's invert-the-ground default.
+    pub color: ColorId,
+    /// The paper behind the box, drawn before its children.
+    pub background_color: ColorId,
+    /// The colour of the decoration lines, when they differ from the text.
+    pub decoration_color: ColorId,
 }
 
 impl Style {
@@ -195,6 +352,11 @@ impl Style {
             tag: 0,
             fill: false,
             border: false,
+            font_size: 0,
+            text_flags: 0,
+            color: ColorId::NONE,
+            background_color: ColorId::NONE,
+            decoration_color: ColorId::NONE,
         }
     }
 
@@ -382,5 +544,136 @@ impl Style {
     pub const fn bordered(mut self) -> Self {
         self.border = true;
         self
+    }
+
+    /// Paints the run in `color` instead of the ground turned over.
+    pub const fn color(mut self, color: ColorId) -> Self {
+        self.color = color;
+        self
+    }
+
+    /// Lays this colour down behind the box before anything inside it is drawn.
+    pub const fn background(mut self, color: ColorId) -> Self {
+        self.background_color = color;
+        self
+    }
+
+    /// Sets the run's size. A length the panel cannot resolve (`Auto`, a percentage of an
+    /// unknown parent) falls back to the root size.
+    pub const fn font_size(mut self, size: Length) -> Self {
+        self.font_size = size_px(size);
+        self
+    }
+
+    pub const fn font_weight(mut self, weight: FontWeight) -> Self {
+        self.text_flags = (self.text_flags & !text::WEIGHT) | weight.units();
+        self
+    }
+
+    pub const fn font_family(mut self, family: FontFamily) -> Self {
+        self.text_flags = (self.text_flags & !text::FAMILY) | (family as u16) << 4;
+        self
+    }
+
+    pub const fn decoration(mut self, decoration: Decoration) -> Self {
+        self.text_flags = (self.text_flags & !text::DECORATION) | (decoration.0 as u16) << 6;
+        self
+    }
+
+    pub const fn underline(self) -> Self {
+        self.decoration(Decoration::UNDERLINE)
+    }
+
+    pub const fn overline(self) -> Self {
+        self.decoration(Decoration::OVERLINE)
+    }
+
+    pub const fn line_through(self) -> Self {
+        self.decoration(Decoration::LINE_THROUGH)
+    }
+
+    pub const fn decoration_style(mut self, style: DecorationStyle) -> Self {
+        self.text_flags = (self.text_flags & !text::DECORATION_STYLE) | (style as u16) << 9;
+        self
+    }
+
+    pub const fn italic(mut self) -> Self {
+        self.text_flags |= text::ITALIC;
+        self
+    }
+
+    /// The decoration's thickness in px; 0 keeps the 1 px default.
+    pub const fn decoration_thickness(mut self, px: u8) -> Self {
+        let px = if px > 7 { 7 } else { px };
+        self.text_flags = (self.text_flags & !text::THICKNESS) | (px as u16) << 13;
+        self
+    }
+
+    pub const fn metrics(&self) -> Metrics {
+        Metrics::new(self.font_size as u16, self.family())
+    }
+
+    pub const fn family(&self) -> FontFamily {
+        if self.text_flags & text::FAMILY == 0 {
+            FontFamily::Bitmap
+        } else {
+            FontFamily::Vector
+        }
+    }
+
+    pub const fn weight(&self) -> FontWeight {
+        match self.text_flags & text::WEIGHT {
+            1 => FontWeight::Thin,
+            2 => FontWeight::ExtraLight,
+            3 => FontWeight::Light,
+            5 => FontWeight::Medium,
+            6 => FontWeight::SemiBold,
+            7 => FontWeight::Bold,
+            8 => FontWeight::ExtraBold,
+            9 => FontWeight::Black,
+            _ => FontWeight::Normal,
+        }
+    }
+
+    pub const fn decorations(&self) -> Decoration {
+        Decoration(((self.text_flags & text::DECORATION) >> 6) as u8)
+    }
+
+    pub const fn decoration_style_of(&self) -> DecorationStyle {
+        match (self.text_flags & text::DECORATION_STYLE) >> 9 {
+            1 => DecorationStyle::Double,
+            2 => DecorationStyle::Dotted,
+            3 => DecorationStyle::Dashed,
+            4 => DecorationStyle::Wavy,
+            _ => DecorationStyle::Solid,
+        }
+    }
+
+    pub const fn thick(&self) -> u8 {
+        let px = ((self.text_flags & text::THICKNESS) >> 13) as u8;
+        if px == 0 { 1 } else { px }
+    }
+
+    pub const fn is_italic(&self) -> bool {
+        self.text_flags & text::ITALIC != 0
+    }
+}
+
+/// The px a size length resolves to; `Auto` and percentages of an unknown parent fall back to
+/// the root size.
+const fn size_px(size: Length) -> u8 {
+    let px = match size {
+        Length::Auto => 0,
+        Length::Px(px) => px as i32,
+        Length::Dp(dp) => dp as i32 * 5 / 4,
+        Length::Percent(pct) => pct as i32 * Metrics::ROOT as i32 / 100,
+        Length::Rem(rem) => rem as i32 * Metrics::ROOT as i32 / 100,
+    };
+    if px < 1 {
+        Metrics::ROOT
+    } else if px > u8::MAX as i32 {
+        u8::MAX
+    } else {
+        px as u8
     }
 }

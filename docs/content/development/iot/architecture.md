@@ -150,19 +150,23 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 `text` 页在构造时断行一次：`typeset::wrap` 的每行按字节范围与宽度存进快照，声明时各是一个 `nowrap` + 显式宽度的文本节点；`layout_text` 对 nowrap 且宽度已定的节点跳过 `max_content`，一帧不再逐字查字模表。`\n`、`\r`、`\r\n` 都按硬换行处理。
 
+文字有两套面：12 px 点阵（`Face`，只有整倍放大）与矢量轮廓（`VectorFace`，按给定尺寸精确缩放）。`text` 页正文用矢量面 24 px，字模行与覆盖行仍用点阵；矢量表由 `cargo run -p iot-tool -- outline` 从 Noto Sans Mono CJK SC Regular（OFL-1.1）裁出，码点集合就是正文样张 `core/assets/font/vector-sample.txt`，表只存折线与 1/64 em 坐标，行高取 OS/2 的 typographic ascent + descent（本字面正好 1 em）。`Style::font_size(Length)` 定尺寸：`Px` 精确、`Dp` 是 5/4 px（2.0" 320×240 = 200 dpi 的 DPR）、`Rem` 是根字号 12 px 的百分之一；字重、字体族、装饰线与斜体压在 `Style::text_flags` 的一个 `u16` 里。颜色是 ARGB32：`Style`/`RunStyle` 存 16 槽调色板的 `ColorId`（声明期去重），`Canvas` 按覆盖率把字墨 src-over 混合到 RGB565；`Ui::span` 最多 8 条，只改颜色、装饰线与底色，不改行度量。矢量面缺任一字形时整行退回点阵（`Metrics::covering`），一行不会半矢量半点阵。
+
+页面可以用 `PageId::steady()` 声明稳态：`FrameSnapshot::steady` 让屏幕背光常 100（只有关灯才降 0），灯带停在声明颜色的相位 0 不再呼吸；页面自己的滚动仍按 `animating()` 保持 `TimeDriven`。今天的稳态集只有 `text`，`only_the_reading_page_holds_the_light_still` 钉住这一点。
+
 ### 渲染管线：声明一次，布局一次，落墨一次
 
 页面不持有控件树，也不自己算坐标：`view` 跑完就留下一份声明，`Ui` 把它布局成整数矩形，然后画字与盒子。命中测试用同一份声明跑 `Ui::headless`，不建画布。
 
 | 层 | 做什么 | 词汇 |
 | --- | --- | --- |
-| `ui::layout` | 1/64 px 定点布局；测量自上而下，容器把去掉内边距后的约束交给子节点；最终边按像素取整，相邻盒子的共享边落在同一像素 | `BoxConstraints`、`Length`、`Style`、`Flow`、`Flex`（grow/shrink/basis）、`Wrap` 多 run、`Stack` 绝对定位、`Scroll` 裁剪、`Align`/`Justify`/`TextAlign` |
-| `ui::declare` | `Ui` 的声明构建器与落墨驱动：`view` 期间攒树，结束后布局一次、按槽回调，再画字与盒子 | `Ui::{row, column, stack, wrap, scroll, text, custom, paint, headless, rects}` |
-| `ui::paint` | 每个已布局节点的墨：文字 run、自绘槽、底色与裁剪；单行不换行的 run 直接画 | `NodeKind`、`draw_text` |
+| `ui::layout` | 1/64 px 定点布局；测量自上而下，容器把去掉内边距后的约束交给子节点；最终边按像素取整，相邻盒子的共享边落在同一像素 | `BoxConstraints`、`Length`（px / dp / rem / %）、`Style`、`Flow`、`Flex`（grow/shrink/basis）、`Wrap` 多 run、`Stack` 绝对定位、`Scroll` 裁剪、`Align`/`Justify`/`TextAlign` |
+| `ui::declare` | `Ui` 的声明构建器与落墨驱动：`view` 期间攒树，结束后布局一次、按槽回调，再画字与盒子 | `Ui::{row, column, stack, wrap, scroll, text, span, custom, paint, headless, rects}` |
+| `ui::paint` | 每个已布局节点的墨：文字 run（按 span 换色与装饰线）、自绘槽、底色与裁剪；单行不换行的 run 直接画 | `NodeKind`、`RunStyle`、`draw_text` |
 | `ui::typeset` | UAX #14 子集 + CLReq 禁则：行首不落 `。`、行尾不留 `「`；测量与绘制共用同一个断行器，`…` 截断 | `Paragraph { lines, count, truncated }`、`wrap`、`next_char` |
-| `ui::font` | Fusion Pixel 12 px 等宽字模，GB2312 + Big5（15,466 字形）；ASCII 步进 6 px、汉字 12 px，升部 10 行 | `Face::{glyph, advance, measure, has, glyphs}` |
+| `ui::font` | 两套面：12 px 点阵 Fusion Pixel，GB2312 + Big5（15,466 字形）；矢量轮廓按 1/64 em 存折线。`Metrics` 按 `(family, size)` 给行高与步进；ASCII 步进 6 px、汉字 12 px（点阵），升部 10 行 | `Face`、`VectorFace`、`Metrics` |
 | `ui::panel` | 从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距 | `PANEL_COLUMNS`、`CONTENT_BOTTOM`、`LINE`、`ROW_PITCH`、`TOUCH_MIN` |
-| `ui::canvas` | 像素、裁剪与填充/描边；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char, draw_text, push_clip}` |
+| `ui::canvas` | 像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，矢量轮廓按 4 条子扫描线取覆盖；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char_at, draw_text_at, push_clip}` |
 
 页面组合有两条硬规矩：读数行一律走 `chrome::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
 
@@ -203,6 +207,7 @@ WebUI 的传输是适配层：语义 API（资源 + 动作）定一次，传输�
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
 - **渲染层运行时可插拔**：app 里一个零分配的中央 `Differ` 做 diff（闭包回调；先按 topic 选出各自该显示什么，只对选中项变化的 topic 通知，最后一次性写回快照），以及一个堆上的 `RenderSet` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线。每个 renderer 只声明它认领的 `Topic`（`Surface(instance)` / `Frame` / `Demand`），灯带因此从不接触约 2 KB 的帧；`Appearance` 借用帧，只有屏幕留副本
+- **稳态页的光不参与呼吸**：`FrameSnapshot::steady` 来自 `PageId::steady()`，`ScreenRenderer` 因此把背光常置 100（只有关灯降到 0）、`LampRenderer` 让声明颜色停在相位 0 并返回 `Idle`；页面自己的动画仍由 `animating()` 驱动 `TimeDriven`，两者互不牵连
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 

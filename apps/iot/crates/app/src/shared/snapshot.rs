@@ -115,8 +115,11 @@ pub struct TouchSnapshot {
 /// The scroll regions one page may publish. The text page uses two.
 pub const TEXT_AREAS: usize = 2;
 
-/// How many lines the wrapped run may be pre-broken into.
-pub const TEXT_LINES: usize = iot_core::ui::typeset::MAX_LINES;
+/// How many lines the wrapped run may be pre-broken into. The page's own declaration spends 45
+/// of the 48 boxes on the standing rows, the thumbs, the chrome and one node per line; the
+/// painted page adds the badge on top, so 15 lines already fill the arena and a longer
+/// paragraph truncates with `…` instead.
+pub const TEXT_LINES: usize = 14;
 
 /// How many standing glyph rows the page draws.
 pub const TEXT_ROWS: usize = 18;
@@ -169,6 +172,8 @@ pub struct FrameSnapshot {
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: PageId,
+    /// The page wants the light and the backlight held still for as long as it is up.
+    pub steady: bool,
     pub link: LinkStatus,
     pub mac: Option<[u8; 6]>,
     pub aps: Option<ApList>,
