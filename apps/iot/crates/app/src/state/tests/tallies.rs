@@ -127,6 +127,7 @@ fn swipe_tallies_records_travel_and_wraps() {
             direction: SwipeDirection::Up,
             held_ms: 0,
             distance_px: 60,
+            at_ms: 0,
         })));
     }
     assert_eq!(

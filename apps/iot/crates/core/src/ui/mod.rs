@@ -17,12 +17,12 @@ mod geometry;
 mod paint;
 mod screen;
 
-pub use canvas::Canvas;
+pub use canvas::{Canvas, GlyphCache};
 pub use color::{Color, ColorId};
-pub use declare::Ui;
+pub use declare::{TEXT_BYTES, Ui};
 pub use geometry::Rect;
 pub use layout::{
     Align, BoxConstraints, Decoration, DecorationStyle, Flow, FontFamily, FontWeight, Justify,
-    Length, NodeId, PX, RunStyle, ScrollId, ScrollInfo, Style, TextAlign,
+    Length, MAX_NODES, NodeId, PX, RunStyle, ScrollId, ScrollInfo, Style, TextAlign,
 };
 pub use screen::Screen;

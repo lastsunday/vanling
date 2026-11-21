@@ -80,7 +80,7 @@ impl CameraTarget for Screen {
         &mut self,
         now_ms: u64,
         period_ms: u32,
-        painter: &dyn ScreenPainter,
+        painter: &mut dyn ScreenPainter,
         snapshot: &dyn Any,
     ) -> bool {
         Screen::paint_camera(self, now_ms, period_ms, painter, snapshot)
@@ -103,7 +103,7 @@ impl Screen {
         &mut self,
         now_ms: u64,
         period_ms: u32,
-        painter: &dyn ScreenPainter,
+        painter: &mut dyn ScreenPainter,
         snapshot: &dyn Any,
     ) -> bool {
         let bytes = self.panel.frame_bytes();
@@ -137,8 +137,10 @@ impl Screen {
         let render = render_start.elapsed();
         self.pending = Some(Pending {
             camera: true,
+            color: None,
             render,
             fill: Duration::ZERO,
+            damage: iot_core::drivers::surface::FrameDamage::FULL,
         });
         // Sampled here because the camera page reaches the panel through this path and nowhere
         // else: without it the reading is `0 B` on this page for the whole run, which says

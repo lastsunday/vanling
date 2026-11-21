@@ -13,6 +13,8 @@ use mipidsi::models::ST7789;
 use mipidsi::options::ColorInversion;
 use mipidsi::{Builder, InitError};
 
+use iot_core::drivers::surface::{DamageRect, FrameDamage};
+
 pub const SPI_FREQ_HZ: u32 = 80_000_000;
 pub const SPI_MODE: Mode = Mode::_2;
 
@@ -70,6 +72,11 @@ impl Wire {
             self.longest = chunk;
         }
     }
+
+    fn merge(&mut self, other: Self) {
+        self.total += other.total;
+        self.longest = self.longest.max(other.longest);
+    }
 }
 
 struct Spi4 {
@@ -98,6 +105,15 @@ impl Spi4 {
         SpiBus::write(&mut self.spi, data)
     }
 
+    /// Sets the write window and opens the pixel stream.
+    fn window(&mut self, x0: u16, y0: u16, x1: u16, y1: u16) -> Result<(), esp_hal::spi::Error> {
+        self.emit_command(0x2A, &[])?;
+        self.write_data(&[(x0 >> 8) as u8, x0 as u8, (x1 >> 8) as u8, x1 as u8])?;
+        self.emit_command(0x2B, &[])?;
+        self.write_data(&[(y0 >> 8) as u8, y0 as u8, (y1 >> 8) as u8, y1 as u8])?;
+        self.emit_command(0x2C, &[])
+    }
+
     fn emit_command(&mut self, command: u8, args: &[u8]) -> Result<(), esp_hal::spi::Error> {
         self.dc.set_low();
         SpiBus::write(&mut self.spi, &[command])?;
@@ -112,7 +128,6 @@ impl Spi4 {
     /// frame holds the cooperative executor for the ~15 ms the pixels take on the wire; a
     /// chunk is ~1.5 ms, so the feed and the capture poll keep their turns.
     async fn write_pixels(&mut self, data: &[u8]) -> Result<Wire, esp_hal::spi::Error> {
-        self.dc.set_high();
         let mut wire = Wire::ZERO;
         let mut chunks = data.chunks(FRAME_CHUNK_BYTES);
         if let Some(first) = chunks.next() {
@@ -125,7 +140,11 @@ impl Spi4 {
         Ok(wire)
     }
 
+    /// A chunk is always pixel data, so this owns the DC level: leaving it low sends the
+    /// bytes as commands, and a stray `0x01`/`0x28` in the pixels resets the panel or blanks
+    /// it until the next full bring-up.
     fn write_chunk(&mut self, chunk: &[u8]) -> Result<Duration, esp_hal::spi::Error> {
+        self.dc.set_high();
         let started = Instant::now();
         SpiBus::write(&mut self.spi, chunk)?;
         Ok(started.elapsed())
@@ -205,6 +224,10 @@ const FRAME_CHUNK_BYTES: usize = CONTROLLER_WIDTH as usize * 2 * 32;
 // with `MaxDmaTransferSizeExceeded`, which on this path means a frame never reaches the glass.
 const _: () = assert!(FRAME_CHUNK_BYTES <= 32_736);
 
+/// Rows one window sends between yields: a 320 px row is 64 µs on the wire, so sixteen of
+/// them keep the executor's turn about a millisecond long.
+const ROWS_PER_YIELD: usize = 16;
+
 /// ST7789 panel on a 4-wire SPI transport.
 pub struct St7789 {
     spi: Spi4,
@@ -256,18 +279,48 @@ impl St7789 {
         self.height
     }
 
-    /// Push one full frame to panel VRAM, reporting what its pixels cost the bus.
-    pub async fn write_frame(&mut self, frame: &[u8]) -> Result<Wire, esp_hal::spi::Error> {
-        let x_end = self.width - 1;
-        let y_end = self.height - 1;
-        self.spi.emit_command(0x2A, &[])?;
+    /// Push the frame's damaged pixels to panel VRAM, reporting what they cost the bus.
+    pub async fn write_frame(
+        &mut self,
+        frame: &[u8],
+        damage: FrameDamage,
+    ) -> Result<Wire, esp_hal::spi::Error> {
+        if damage.is_full() {
+            self.spi.window(0, 0, self.width - 1, self.height - 1)?;
+            return self.spi.write_pixels(frame).await;
+        }
+        let mut wire = Wire::ZERO;
+        for rect in damage.rects() {
+            wire.merge(self.write_rect(frame, *rect).await?);
+        }
+        Ok(wire)
+    }
+
+    /// One window: the rows of `rect`, each taken from its own place in the frame.
+    async fn write_rect(
+        &mut self,
+        frame: &[u8],
+        rect: DamageRect,
+    ) -> Result<Wire, esp_hal::spi::Error> {
+        let (x0, y0) = (usize::from(rect.x), usize::from(rect.y));
+        let x1 = usize::from(rect.right()).min(usize::from(self.width));
+        let y1 = usize::from(rect.bottom()).min(usize::from(self.height));
+        if x0 >= x1 || y0 >= y1 {
+            return Ok(Wire::ZERO);
+        }
         self.spi
-            .write_data(&[0x00, 0x00, (x_end >> 8) as u8, x_end as u8])?;
-        self.spi.emit_command(0x2B, &[])?;
-        self.spi
-            .write_data(&[0x00, 0x00, (y_end >> 8) as u8, y_end as u8])?;
-        self.spi.emit_command(0x2C, &[])?;
-        self.spi.write_pixels(frame).await
+            .window(x0 as u16, y0 as u16, (x1 - 1) as u16, (y1 - 1) as u16)?;
+        let stride = usize::from(self.width) * 2;
+        let row_bytes = (x1 - x0) * 2;
+        let mut wire = Wire::ZERO;
+        for row in y0..y1 {
+            let start = row * stride + x0 * 2;
+            wire.add(self.spi.write_chunk(&frame[start..start + row_bytes])?);
+            if (row - y0) % ROWS_PER_YIELD == ROWS_PER_YIELD - 1 {
+                embassy_futures::yield_now().await;
+            }
+        }
+        Ok(wire)
     }
 }
 

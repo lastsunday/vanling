@@ -143,6 +143,7 @@ impl TouchState {
                 direction,
                 held_ms,
                 distance_px,
+                at_ms: _,
             } => {
                 self.view.last_swipe = Some((direction, distance_px));
                 self.view.swipe_count = self.tally(

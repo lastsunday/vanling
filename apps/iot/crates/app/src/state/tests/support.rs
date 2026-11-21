@@ -132,6 +132,7 @@ pub(crate) fn swipe() -> InputIntent {
         direction: SwipeDirection::Down,
         held_ms: 42,
         distance_px: 73,
+        at_ms: 0,
     }))
 }
 
@@ -222,6 +223,7 @@ pub(crate) fn swipe_event(direction: SwipeDirection) -> InputEvent {
         end_y: 0,
         held_ms: 0,
         distance_px: 80,
+        at_ms: 0,
     })
 }
 

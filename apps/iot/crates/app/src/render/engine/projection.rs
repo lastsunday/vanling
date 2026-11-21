@@ -290,6 +290,7 @@ mod tests {
                     direction: iot_core::drivers::input::SwipeDirection::Up,
                     held_ms: 80,
                     distance_px: 99,
+                    at_ms: 80,
                 },
             ),
             0,

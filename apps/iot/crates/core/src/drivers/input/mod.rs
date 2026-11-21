@@ -51,6 +51,10 @@ pub enum GestureEvent {
         end_y: u16,
         held_ms: u16,
         distance_px: u16,
+        /// When the lift was seen, on the same clock as a [`Self::Drag`]'s `at_ms`. A consumer
+        /// that tracked the finger live needs it to tell a flick from a drag that stopped
+        /// moving before the lift: the last sample can be arbitrarily old.
+        at_ms: u32,
     },
     LongPress {
         id: u8,
@@ -125,8 +129,9 @@ pub const MOVE_DEADBAND_PX: u16 = 2;
 
 /// Farthest a second contact may land from an already-down finger and still read as a
 /// self-cap phantom instead of a genuine second finger: a duplicate point the controller
-/// echoes next to the real contact on press-in.
-pub const PHANTOM_RADIUS_PX: u16 = 60;
+/// echoes on top of the real contact on press-in. Kept to the width of a fingertip so two
+/// fingers placed side by side still read as two.
+pub const PHANTOM_RADIUS_PX: u16 = 16;
 
 /// How recently a finger's down edge may be for a nearby second contact to count as its
 /// phantom echo — one touch-scan cadence: a genuine second finger lands later or farther, a
@@ -201,6 +206,24 @@ pub struct TouchPoint {
 pub struct TouchEvent {
     pub points: [TouchPoint; MAX_TOUCH_POINTS],
     pub len: u8,
+}
+
+/// One contact as the controller reported it, before [`TouchContinuity`] gives it a tracked
+/// id: its position, and the controller's own slot number when it reports one.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RawPoint {
+    pub x: u16,
+    pub y: u16,
+    /// [`RawPoint::NO_ID`] when the controller does not number its contacts.
+    pub hw_id: u8,
+}
+
+impl RawPoint {
+    pub const NO_ID: u8 = u8::MAX;
+
+    pub const fn new(x: u16, y: u16, hw_id: u8) -> Self {
+        Self { x, y, hw_id }
+    }
 }
 
 /// Maps raw touch-panel coordinates into framebuffer space.
@@ -355,6 +378,11 @@ pub trait EventAggregator {
     fn tick(&mut self, _now_ms: u64) -> Option<InputEvent> {
         None
     }
+
+    /// Hands over every event still queued after the last [`EventAggregator::feed`], oldest
+    /// first: one sample can resolve more than one gesture, and a caller that takes only the
+    /// first leaves the rest a tick behind.
+    fn drain(&mut self, _emit: &mut dyn FnMut(InputEvent)) {}
 }
 
 /// Identity aggregator — passes every event through unchanged.
@@ -366,36 +394,74 @@ impl EventAggregator for PassThrough {
     }
 }
 
-struct EventQueue([Option<InputEvent>; 4]);
+const QUEUED_EVENTS: usize = 4;
+
+struct EventQueue([Option<InputEvent>; QUEUED_EVENTS]);
 
 impl EventQueue {
     const fn new() -> Self {
-        Self([None, None, None, None])
+        Self([None; QUEUED_EVENTS])
     }
 
+    /// Queues one event, keeping at most one pending `Drag` per finger.
+    ///
+    /// A finger that moved twice before the next poll only owes the panel its latest
+    /// position; queueing both is what starved a second finger out of a four-slot queue.
     fn push(&mut self, event: InputEvent) {
-        for slot in self.0.iter_mut() {
-            if slot.is_none() {
-                *slot = Some(event);
-                return;
-            }
+        if let InputEvent::Gesture(GestureEvent::Drag { id, .. }) = event
+            && let Some(slot) = self.0.iter_mut().find(|slot| {
+                matches!(
+                    slot,
+                    Some(InputEvent::Gesture(GestureEvent::Drag { id: held, .. })) if *held == id
+                )
+            })
+        {
+            *slot = Some(event);
+            return;
         }
-        self.0.copy_within(1.., 0);
-        self.0[3] = Some(event);
+        if let Some(slot) = self.0.iter_mut().find(|slot| slot.is_none()) {
+            *slot = Some(event);
+            return;
+        }
+        // A raw sample is the overlay's news, not a gesture: it is the cheapest thing to
+        // lose, and the next poll carries a fresher one.
+        let fallback = self
+            .0
+            .iter()
+            .position(|slot| matches!(slot, Some(InputEvent::Touch(_))))
+            .unwrap_or(0);
+        self.0[fallback] = Some(event);
     }
 
     fn pop(&mut self) -> Option<InputEvent> {
         let first = self.0[0].take();
         self.0.copy_within(1.., 0);
-        self.0[3] = None;
+        self.0[QUEUED_EVENTS - 1] = None;
         first
+    }
+
+    fn drain(&mut self, emit: &mut dyn FnMut(InputEvent)) {
+        while let Some(event) = self.pop() {
+            emit(event);
+        }
     }
 }
 
 pub struct TouchGestures {
     fingers: [FingerState; MAX_TOUCH_POINTS],
+    parked: [Option<Parked>; MAX_TOUCH_POINTS],
     ghosted: bool,
     queued: EventQueue,
+}
+
+/// A contact the phantom rule turned away once, kept at the position it first appeared so
+/// the eventual press still names the region the finger actually landed in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Parked {
+    id: u8,
+    x: u16,
+    y: u16,
+    at_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -429,8 +495,48 @@ impl TouchGestures {
     pub fn new() -> Self {
         Self {
             fingers: [FingerState::free(); MAX_TOUCH_POINTS],
+            parked: [None; MAX_TOUCH_POINTS],
             ghosted: false,
             queued: EventQueue::new(),
+        }
+    }
+
+    fn parked_slot(&self, id: u8) -> Option<usize> {
+        self.parked
+            .iter()
+            .position(|parked| parked.is_some_and(|parked| parked.id == id))
+    }
+
+    fn park(&mut self, id: u8, x: u16, y: u16, now_ms: u64) {
+        if self.parked_slot(id).is_some() {
+            return;
+        }
+        let slot = self.parked.iter().position(Option::is_none).unwrap_or(0);
+        self.parked[slot] = Some(Parked {
+            id,
+            x,
+            y,
+            at_ms: now_ms,
+        });
+    }
+
+    fn take_parked(&mut self, id: u8) -> Option<(u16, u16)> {
+        let slot = self.parked_slot(id)?;
+        self.parked[slot].take().map(|parked| (parked.x, parked.y))
+    }
+
+    fn forget_parked(&mut self, id: u8) {
+        if let Some(slot) = self.parked_slot(id) {
+            self.parked[slot] = None;
+        }
+    }
+
+    fn prune_parked(&mut self, now_ms: u64) {
+        let keep = 4 * PHANTOM_WINDOW_MS;
+        for slot in &mut self.parked {
+            if slot.is_some_and(|parked| now_ms.saturating_sub(parked.at_ms) > keep) {
+                *slot = None;
+            }
         }
     }
 
@@ -490,6 +596,7 @@ impl TouchGestures {
         };
 
         let mut saw_phantom = false;
+        self.prune_parked(now_ms);
         for i in 0..sample.len {
             let point = sample.points[usize::from(i)];
             match point.status {
@@ -498,6 +605,7 @@ impl TouchGestures {
                         Some(slot)
                     } else if self.is_phantom(point.x, point.y, now_ms) {
                         saw_phantom = true;
+                        self.park(point.id, point.x, point.y, now_ms);
                         None
                     } else if let Some(slot) = self.free_slot() {
                         self.fingers[slot].id = Some(point.id);
@@ -506,12 +614,14 @@ impl TouchGestures {
                         None
                     };
                     if let Some(slot) = slot {
+                        let parked = self.take_parked(point.id);
                         let armed = !self.fingers[slot].pressed;
                         if armed {
+                            let (x, y) = parked.unwrap_or((point.x, point.y));
                             self.fingers[slot].pressed = true;
                             self.fingers[slot].down_at_ms = Some(now_ms);
-                            self.fingers[slot].down_x = point.x;
-                            self.fingers[slot].down_y = point.y;
+                            self.fingers[slot].down_x = x;
+                            self.fingers[slot].down_y = y;
                             self.fingers[slot].drag_x = point.x;
                             self.fingers[slot].drag_y = point.y;
                             self.fingers[slot].farthest = Some((0, point.x, point.y));
@@ -529,8 +639,8 @@ impl TouchGestures {
                             push(
                                 InputEvent::Gesture(GestureEvent::Press {
                                     id: point.id,
-                                    x: point.x,
-                                    y: point.y,
+                                    x: self.fingers[slot].down_x,
+                                    y: self.fingers[slot].down_y,
                                 }),
                                 out,
                             );
@@ -556,6 +666,7 @@ impl TouchGestures {
                     }
                 }
                 TouchStatus::Release => {
+                    self.forget_parked(point.id);
                     let Some(slot) = self.slot_of(point.id) else {
                         continue;
                     };
@@ -599,6 +710,7 @@ impl TouchGestures {
             Some((id, f.down_x, f.down_y, held, held_ms, f.farthest))
         }?;
         self.fingers[slot].id = None;
+        let at_ms = u32::try_from(now_ms).unwrap_or(u32::MAX);
 
         if let Some((_, end_x, end_y)) = farthest
             && let Some((direction, distance_px)) = swipe_classify(down_x, down_y, end_x, end_y)
@@ -612,6 +724,7 @@ impl TouchGestures {
                 end_y,
                 held_ms,
                 distance_px,
+                at_ms,
             }));
         }
         if held >= LONG_PRESS_MS && !sibling_lift && !self.fingers.iter().any(|f| f.pressed) {
@@ -628,7 +741,7 @@ impl TouchGestures {
             x: down_x,
             y: down_y,
             held_ms,
-            at_ms: u32::try_from(now_ms).unwrap_or(u32::MAX),
+            at_ms,
         }))
     }
 }
@@ -651,6 +764,10 @@ impl EventAggregator for TouchGestures {
 
     fn tick(&mut self, _now_ms: u64) -> Option<InputEvent> {
         self.queued.pop()
+    }
+
+    fn drain(&mut self, emit: &mut dyn FnMut(InputEvent)) {
+        self.queued.drain(emit);
     }
 }
 
@@ -757,13 +874,17 @@ impl EventAggregator for DoubleClickAggregator {
         self.expire(now_ms);
         self.queued.pop()
     }
+
+    fn drain(&mut self, emit: &mut dyn FnMut(InputEvent)) {
+        self.queued.drain(emit);
+    }
 }
 
 /// Tracks raw per-sample contact lists into id-stable `TouchEvent`s by nearest-neighbor id
 /// matching, so event order can shuffle without breaking identity.
 #[derive(Debug, Clone, Copy)]
 pub struct TouchContinuity {
-    points: [TrackerPoint; MAX_TOUCH_POINTS],
+    points: [TrackerPoint; MAX_TRACKED_POINTS],
     next_id: u8,
     absent: u8,
 }
@@ -771,6 +892,8 @@ pub struct TouchContinuity {
 #[derive(Debug, Clone, Copy)]
 struct TrackerPoint {
     id: u8,
+    /// The controller's slot this contact came from, or [`RawPoint::NO_ID`].
+    hw: u8,
     x: u16,
     y: u16,
     active: bool,
@@ -786,10 +909,11 @@ impl TouchContinuity {
         Self {
             points: [TrackerPoint {
                 id: 0,
+                hw: RawPoint::NO_ID,
                 x: 0,
                 y: 0,
                 active: false,
-            }; MAX_TOUCH_POINTS],
+            }; MAX_TRACKED_POINTS],
             next_id: 0,
             absent: 0,
         }
@@ -797,7 +921,7 @@ impl TouchContinuity {
 
     /// Feed one raw sample (framebuffer space); emits only when the contact set or a
     /// tracked position changed.
-    pub fn update(&mut self, raw: &[(u16, u16)]) -> Option<TouchEvent> {
+    pub fn update(&mut self, raw: &[RawPoint]) -> Option<TouchEvent> {
         let mut event = TouchEvent {
             points: [TouchPoint {
                 id: 0,
@@ -807,17 +931,23 @@ impl TouchContinuity {
             }; MAX_TOUCH_POINTS],
             len: 0,
         };
-        let mut consumed = [false; MAX_TOUCH_POINTS];
+        let mut matched = [None; MAX_TRACKED_POINTS];
+        self.assign(raw, &mut matched);
+        let mut consumed = [false; MAX_TRACKED_POINTS];
+        for slot in matched.iter().flatten() {
+            consumed[*slot] = true;
+        }
         let mut changed = false;
 
-        for &(rx, ry) in raw.iter().take(MAX_TOUCH_POINTS) {
-            let point = match self.nearest_active(rx, ry, &consumed) {
+        for (index, &point) in raw.iter().take(MAX_TRACKED_POINTS).enumerate() {
+            let (rx, ry) = (point.x, point.y);
+            let point = match matched[index] {
                 Some(i) => {
                     let tracker = &mut self.points[i];
                     changed |= tracker.x != rx || tracker.y != ry;
                     tracker.x = rx;
                     tracker.y = ry;
-                    consumed[i] = true;
+                    tracker.hw = point.hw_id;
                     TouchPoint {
                         id: tracker.id,
                         x: rx,
@@ -832,6 +962,7 @@ impl TouchContinuity {
                     };
                     self.points[slot] = TrackerPoint {
                         id,
+                        hw: point.hw_id,
                         x: rx,
                         y: ry,
                         active: true,
@@ -884,21 +1015,53 @@ impl TouchContinuity {
         changed.then_some(event)
     }
 
-    fn nearest_active(&self, x: u16, y: u16, consumed: &[bool; MAX_TOUCH_POINTS]) -> Option<usize> {
-        let reach_sq = (Self::MAX_REACH_PX as u32) * (Self::MAX_REACH_PX as u32);
-        let mut best = None;
-        let mut best_sq = u32::MAX;
-        for (i, tracker) in self.points.iter().enumerate() {
-            if !tracker.active || consumed[i] {
-                continue;
-            }
-            let dist_sq = sq_dist(tracker.x, tracker.y, x, y);
-            if dist_sq <= reach_sq && dist_sq < best_sq {
-                best_sq = dist_sq;
-                best = Some(i);
+    /// Pairs each raw point with at most one live tracker, smallest distance first. A new
+    /// finger landing near a tracked one must not inherit its id just because the panel
+    /// reported the newcomer first: the finger that stayed put is the nearer pair and claims
+    /// its own tracker before the newcomer is considered. The controller's slot only breaks
+    /// an exact-distance tie.
+    fn assign(&self, raw: &[RawPoint], matched: &mut [Option<usize>; MAX_TRACKED_POINTS]) {
+        const PAIRS: usize = MAX_TRACKED_POINTS * MAX_TRACKED_POINTS;
+        let reach_sq = u32::from(Self::MAX_REACH_PX).pow(2);
+        let mut pairs = [(0u32, 0u8, 0u8); PAIRS];
+        let mut len = 0;
+        for (ri, &point) in raw.iter().take(MAX_TRACKED_POINTS).enumerate() {
+            for (ti, tracker) in self.points.iter().enumerate() {
+                if !tracker.active {
+                    continue;
+                }
+                let dist = sq_dist(tracker.x, tracker.y, point.x, point.y);
+                if dist <= reach_sq {
+                    pairs[len] = (dist, ri as u8, ti as u8);
+                    len += 1;
+                }
             }
         }
-        best
+        for i in 1..len {
+            let mut j = i;
+            while j > 0 && self.pair_precedes(pairs[j], pairs[j - 1], raw) {
+                pairs.swap(j, j - 1);
+                j -= 1;
+            }
+        }
+        let mut taken = [false; MAX_TRACKED_POINTS];
+        for &(_, ri, ti) in &pairs[..len] {
+            let (ri, ti) = (usize::from(ri), usize::from(ti));
+            if matched[ri].is_some() || taken[ti] {
+                continue;
+            }
+            matched[ri] = Some(ti);
+            taken[ti] = true;
+        }
+    }
+
+    fn pair_precedes(&self, a: (u32, u8, u8), b: (u32, u8, u8), raw: &[RawPoint]) -> bool {
+        a.0 < b.0 || (a.0 == b.0 && self.slot_agrees(a, raw) && !self.slot_agrees(b, raw))
+    }
+
+    fn slot_agrees(&self, pair: (u32, u8, u8), raw: &[RawPoint]) -> bool {
+        let hw = raw[usize::from(pair.1)].hw_id;
+        hw != RawPoint::NO_ID && self.points[usize::from(pair.2)].hw == hw
     }
 
     fn allocate_id(&mut self) -> u8 {
@@ -1049,6 +1212,17 @@ impl PollEntry {
             Some(event) => self.aggregator.feed(event, now_ms),
             None => self.aggregator.tick(now_ms),
         }
+    }
+
+    /// Poll once and hand over everything the sample resolved, oldest first.
+    ///
+    /// One sample of two moving fingers resolves two drags; a caller that takes only the
+    /// first leaves the second a whole cadence behind.
+    pub fn poll_all(&mut self, now_ms: u64, emit: &mut dyn FnMut(InputEvent)) {
+        if let Some(event) = self.poll(now_ms) {
+            emit(event);
+        }
+        self.aggregator.drain(emit);
     }
 
     pub fn advance_past(&mut self, now_ms: u64) {

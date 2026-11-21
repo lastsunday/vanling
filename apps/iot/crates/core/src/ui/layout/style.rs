@@ -176,7 +176,7 @@ impl FontWeight {
         self as u16 + 1
     }
 
-    /// Whether the bitmap face has to be struck twice to pass for this weight.
+    /// Whether this weight is drawn one column wider than the face's own ink.
     pub const fn is_heavy(self) -> bool {
         matches!(self, Self::Bold | Self::ExtraBold | Self::Black)
     }

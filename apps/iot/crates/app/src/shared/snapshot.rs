@@ -115,11 +115,10 @@ pub struct TouchSnapshot {
 /// The scroll regions one page may publish. The text page uses two.
 pub const TEXT_AREAS: usize = 2;
 
-/// How many lines the wrapped run may be pre-broken into. The page's own declaration spends 45
-/// of the 48 boxes on the standing rows, the thumbs, the chrome and one node per line; the
-/// painted page adds the badge on top, so 15 lines already fill the arena and a longer
-/// paragraph truncates with `…` instead.
-pub const TEXT_LINES: usize = 14;
+/// How many lines the wrapped run may be pre-broken into: the sample paragraph at 24 px.
+/// Every line is one declaration box, so this and [`MAX_NODES`] move together; a longer
+/// paragraph truncates with `…` at this many lines.
+pub const TEXT_LINES: usize = 25;
 
 /// How many standing glyph rows the page draws.
 pub const TEXT_ROWS: usize = 18;
@@ -133,10 +132,15 @@ pub struct TextLine {
 }
 
 /// What one scroll region publishes to the view: where it sits, what it shows, how far it
-/// can go, and whether a thumb belongs beside it.
+/// can go, whether a thumb belongs beside it, and the two pieces that move with the offset
+/// besides the box itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct ScrollAreaView {
     pub rect: Rect,
+    /// The region's header line, whose reading includes the offset.
+    pub header: Rect,
+    /// The thumb's column beside the box.
+    pub gutter: Rect,
     pub offset: i16,
     pub max: i16,
     pub bar: bool,

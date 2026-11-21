@@ -80,8 +80,8 @@ const GOLDEN: [(&str, bool, u32); 18] = [
     ("splash", true, 0x3f0b_3db1),
     ("env", false, 0x97fe_6687),
     ("env", true, 0x936c_5837),
-    ("text", false, 0xe063_66c9),
-    ("text", true, 0x90c3_6479),
+    ("text", false, 0xe59e_db9e),
+    ("text", true, 0x7aae_e74e),
 ];
 
 #[test]

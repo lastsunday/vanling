@@ -1,5 +1,9 @@
 //! The pixels a page is drawn into, and the only marks there are.
 
+use alloc::boxed::Box;
+use alloc::vec;
+
+use crate::drivers::surface::FrameDamage;
 use crate::light::{Rgb, invert_rgb565, rgb565};
 
 use super::color::{Color, blend};
@@ -13,6 +17,109 @@ use super::font::{Chars, Face, FontFamily, Glyph, Metrics, Outline, VectorFace};
 /// `no_outline_is_wider_than_the_canvas_scratch` rather than as a silently thin glyph.
 pub(crate) const OUTLINE_POINTS: usize = 384;
 
+/// The coverage cache's glyph box: the text page's 24 px face. A bigger glyph rasterizes
+/// straight into the frame instead of into a slot.
+pub const GLYPH_BOX: usize = 24;
+
+/// Glyphs one page can keep rasterized. The text sample is 179 distinct glyphs across its 25
+/// lines at 24 px; the rest is headroom for a differently sized run.
+pub const GLYPH_SLOTS: usize = 192;
+
+/// Coverage is counted in sixteenths, so a pixel needs five bits, not four: a fully inked
+/// pixel is 16, which four bits cannot hold without turning its last sixteenth translucent.
+const INK_BITS: usize = 5;
+const GLYPH_STRIDE: usize = (GLYPH_BOX * INK_BITS).div_ceil(8);
+
+/// The widest and tallest ink the uncached path draws; a bigger face would overrun the row
+/// buffer, and shows up as an assertion rather than as a silently missing glyph.
+const MAX_GLYPH_WIDTH: usize = 64;
+const MAX_GLYPH_ROWS: usize = 256;
+
+/// Where a glyph sits and how big its ink box is, in panel pixels.
+#[derive(Clone, Copy)]
+struct Placement {
+    /// The glyph's pen origin and baseline.
+    left: i32,
+    baseline: i32,
+    /// The top-left of its ink box, and the box's size.
+    x: i32,
+    y: i32,
+    width: usize,
+    rows: usize,
+}
+
+#[derive(Clone, Copy)]
+struct GlyphSlot {
+    /// `u64::MAX` when free; otherwise the code point, size and weight.
+    key: u64,
+    ink: [u8; GLYPH_STRIDE * GLYPH_BOX],
+}
+
+impl GlyphSlot {
+    const EMPTY: Self = Self {
+        key: u64::MAX,
+        ink: [0; GLYPH_STRIDE * GLYPH_BOX],
+    };
+}
+
+/// The coverage every (code point, size, weight) has already rasterized to. A page lays a
+/// glyph on whole-pixel coordinates, so its coverage depends on nothing else; a scroll blends
+/// the slot instead of walking the outline again. Heap-only: the main stack has no room
+/// (`@/records/iot/hardware-constraints.md`).
+pub struct GlyphCache {
+    slots: Box<[GlyphSlot]>,
+    next: usize,
+}
+
+impl GlyphCache {
+    pub fn new() -> Self {
+        Self {
+            slots: vec![GlyphSlot::EMPTY; GLYPH_SLOTS].into_boxed_slice(),
+            next: 0,
+        }
+    }
+
+    fn find(&self, key: u64) -> Option<usize> {
+        self.slots.iter().position(|slot| slot.key == key)
+    }
+
+    /// The slot holding this glyph, rasterizing it first the one time it is asked for.
+    fn prepare(
+        &mut self,
+        ch: char,
+        size: u16,
+        heavy: bool,
+        outline: &Outline<'_>,
+        at: Placement,
+    ) -> usize {
+        let key = (u64::from(ch as u32) << 17) | (u64::from(size) << 1) | u64::from(heavy);
+        if let Some(index) = self.find(key) {
+            return index;
+        }
+        if self.next == self.slots.len() {
+            for slot in self.slots.iter_mut() {
+                slot.key = u64::MAX;
+            }
+            self.next = 0;
+        }
+        let index = self.next;
+        self.next += 1;
+        let slot = &mut self.slots[index];
+        slot.key = key;
+        slot.ink.fill(0);
+        rasterize(outline, size, at, heavy, |column, row, coverage| {
+            ink_put(&mut slot.ink, GLYPH_STRIDE, column, row, coverage)
+        });
+        index
+    }
+}
+
+impl Default for GlyphCache {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A frame buffer and the operations every page draws with.
 pub struct Canvas<'a> {
     frame: &'a mut [u8],
@@ -22,6 +129,10 @@ pub struct Canvas<'a> {
     color: Option<Color>,
     clips: [Rect; 4],
     depth: usize,
+    glyphs: Option<&'a mut GlyphCache>,
+    /// The rectangles this frame is allowed to touch; `None` means the whole canvas. A partial
+    /// repaint sets it so a page that declares everything still only inks what changed.
+    damage: Option<FrameDamage>,
 }
 
 impl<'a> Canvas<'a> {
@@ -40,7 +151,27 @@ impl<'a> Canvas<'a> {
             color: None,
             clips: [Rect::default(); 4],
             depth: 0,
+            glyphs: None,
+            damage: None,
         }
+    }
+
+    /// Keeps every vector glyph this canvas draws in `glyphs` for the next frame.
+    #[must_use]
+    pub fn with_glyphs(mut self, glyphs: &'a mut GlyphCache) -> Self {
+        self.glyphs = Some(glyphs);
+        self
+    }
+
+    /// Restricts every mark to `damage`: the frame already holds the rest of the picture.
+    #[must_use]
+    pub fn with_damage(mut self, damage: FrameDamage) -> Self {
+        self.damage = Some(damage);
+        self
+    }
+
+    fn damaged(&self, x: usize, y: usize) -> bool {
+        in_damage(self.damage, x, y)
     }
 
     pub fn width(&self) -> usize {
@@ -76,8 +207,30 @@ impl<'a> Canvas<'a> {
         self.depth = self.depth.saturating_sub(1);
     }
 
+    /// Narrows every following mark to `rect` across the axis only, keeping the vertical clip
+    /// in force until [`Canvas::pop_clip`]: a run that may not overflow sideways is still
+    /// allowed to let its ink out of its own line box, the way a scroll box lets a line's
+    /// descender show.
+    pub fn push_x_clip(&mut self, rect: Rect) {
+        let base = self.clip().unwrap_or(Rect {
+            x: 0,
+            y: 0,
+            w: self.width as i32,
+            h: self.height as i32,
+        });
+        self.push_clip(Rect {
+            x: rect.x,
+            y: base.y,
+            w: rect.w,
+            h: base.h,
+        });
+    }
+
     fn clipped(&self, x: isize, y: isize) -> bool {
         if x < 0 || y < 0 || x as usize >= self.width || y as usize >= self.height {
+            return false;
+        }
+        if !self.damaged(x as usize, y as usize) {
             return false;
         }
         if self.depth == 0 {
@@ -133,32 +286,62 @@ impl<'a> Canvas<'a> {
     }
 
     /// Lays a glyph down a pixel at a time, each set bit becoming a `scale`×`scale` block.
+    /// `heavy` adds one column: a bit is inked when it or its left neighbour is set, which
+    /// is the same widening two strikes give without striking the overlapping pixels twice.
     /// Nothing inside the box is bounds-checked again.
-    fn draw_glyph_at(&mut self, glyph: &Glyph<'_>, left: isize, top: isize, scale: usize) {
+    fn draw_glyph_at(
+        &mut self,
+        glyph: &Glyph<'_>,
+        left: isize,
+        top: isize,
+        scale: usize,
+        heavy: bool,
+    ) {
+        let width = glyph.width + usize::from(heavy);
         let (x0, y0, x1, y1) = self.reach(
             left,
             top,
-            (glyph.width * scale) as isize,
+            (width * scale) as isize,
             (glyph.height * scale) as isize,
         );
-        for y in y0..y1 {
-            let row = (y as isize - top) as usize / scale;
-            for x in x0..x1 {
-                let column = (x as isize - left) as usize / scale;
-                if glyph.ink(row, column) {
-                    self.mark(x, y);
+        let damage = self.damage;
+        for_windows(damage, (x0, y0, x1, y1), |x0, y0, x1, y1| {
+            for y in y0..y1 {
+                let row = (y as isize - top) as usize / scale;
+                for x in x0..x1 {
+                    let column = (x as isize - left) as usize / scale;
+                    let inked = column < glyph.width && glyph.ink(row, column)
+                        || heavy && column > 0 && glyph.ink(row, column - 1);
+                    if inked {
+                        self.mark(x, y);
+                    }
                 }
             }
-        }
+        });
     }
 
     /// Overdraws one character at a panel coordinate, `top` being the top of the line box.
     pub fn draw_char_at(&mut self, ch: char, left: isize, top: usize, metrics: Metrics) {
+        self.draw_char_weighted_at(ch, left, top, metrics, false);
+    }
+
+    pub fn draw_char_heavy_at(&mut self, ch: char, left: isize, top: usize, metrics: Metrics) {
+        self.draw_char_weighted_at(ch, left, top, metrics, true);
+    }
+
+    fn draw_char_weighted_at(
+        &mut self,
+        ch: char,
+        left: isize,
+        top: usize,
+        metrics: Metrics,
+        heavy: bool,
+    ) {
         if metrics.family() == FontFamily::Vector
             && let Some(outline) = VectorFace::new().outline(ch)
         {
             let baseline = top as i32 + metrics.ascent() as i32;
-            self.draw_outline_at(&outline, left as i32, baseline, metrics.size());
+            self.draw_outline_at(ch, &outline, left as i32, baseline, metrics.size(), heavy);
             return;
         }
         let face = Face::new();
@@ -170,6 +353,7 @@ impl<'a> Canvas<'a> {
             left + glyph.left * scale as isize,
             baseline - (glyph.top + glyph.height as isize) * scale as isize,
             scale,
+            heavy,
         );
     }
 
@@ -177,178 +361,119 @@ impl<'a> Canvas<'a> {
     /// the line box's ascent. Coverage is sampled on four sub-scanlines and accumulated per
     /// pixel in quarter-columns, so an edge between pixels becomes a mixed colour.
     ///
-    /// The glyph's points are scaled once into [`OUTLINE_POINTS`], then every edge is filed under
-    /// the first row whose samples can reach it and each row only visits the edges still crossing
-    /// it. Rescaling and re-walking the whole outline on every row cost a 24 px page 238 ms per
-    /// frame on the S3.
-    fn draw_outline_at(&mut self, outline: &Outline<'_>, left: i32, baseline: i32, size: u16) {
-        /// Coverage of a fully inked pixel: four sub-scanlines of four quarter-columns.
-        const FULL: u8 = 16;
-        /// The widest ink this buffer holds; the text page's face is 24 px.
-        const WIDTH: usize = 64;
-        /// Crossings one scanline may hold. The table's widest glyph has 17 contours.
-        const CROSSINGS: usize = 48;
-        /// Rows of ink one glyph may cover; a size this wide would already overrun [`WIDTH`].
-        const ROWS: usize = 256;
+    /// A glyph that fits [`GLYPH_BOX`] is rasterized once into [`GlyphCache`]; a scroll then
+    /// blits the slot instead of walking the outline (about a millisecond a glyph on the S3).
+    /// A heavy glyph adds one column, so it is cached only while it still fits the box.
+    fn draw_outline_at(
+        &mut self,
+        ch: char,
+        outline: &Outline<'_>,
+        left: i32,
+        baseline: i32,
+        size: u16,
+        heavy: bool,
+    ) {
         if size == 0 || outline.is_blank() {
             return;
         }
         let scale = |units: i32| (units * i32::from(size) * 4 + 32) / 64;
-        let (ox, oy) = (left * 4, baseline * 4);
-        let box_left = (ox + scale(outline.xmin as i32)).div_euclid(4);
-        let box_right = (ox + scale(outline.xmax as i32) + 3).div_euclid(4);
-        let box_top = (oy - scale(outline.ymax as i32)).div_euclid(4);
-        let box_bottom = (oy - scale(outline.ymin as i32) + 3).div_euclid(4);
+        let (xmin, xmax) = (scale(outline.xmin as i32), scale(outline.xmax as i32) + 3);
+        let (ymin, ymax) = (-scale(outline.ymin as i32) + 3, -scale(outline.ymax as i32));
+        let box_left = left + xmin.div_euclid(4);
+        let box_top = baseline + ymax.div_euclid(4);
+        let width = (xmax.div_euclid(4) - xmin.div_euclid(4)) as usize;
+        let rows = (ymin.div_euclid(4) - ymax.div_euclid(4)) as usize;
+        if width == 0 || rows == 0 {
+            return;
+        }
+        let out_width = width + usize::from(heavy);
         let (x0, y0, x1, y1) = self.reach(
             box_left as isize,
             box_top as isize,
-            (box_right - box_left) as isize,
-            (box_bottom - box_top) as isize,
+            out_width as isize,
+            rows as isize,
         );
         if x0 >= x1 || y0 >= y1 {
             return;
         }
-        let width = x1 - x0;
-        let rows = y1 - y0;
-        if width > WIDTH || rows > ROWS {
+        let clip = self.clip().unwrap_or(Rect {
+            x: 0,
+            y: 0,
+            w: self.width as i32,
+            h: self.height as i32,
+        });
+        let damage = self.damage;
+        let Self {
+            frame,
+            width: frame_width,
+            color,
+            glyphs,
+            ..
+        } = self;
+        if let Some(cache) = glyphs
+            && out_width <= GLYPH_BOX
+            && rows <= GLYPH_BOX
+        {
+            let index = cache.prepare(
+                ch,
+                size,
+                heavy,
+                outline,
+                Placement {
+                    left,
+                    baseline,
+                    x: box_left,
+                    y: box_top,
+                    width,
+                    rows,
+                },
+            );
+            let ink = &cache.slots[index].ink;
+            for_windows(damage, (x0, y0, x1, y1), |x0, y0, x1, y1| {
+                blit(
+                    frame,
+                    *frame_width,
+                    *color,
+                    (x0, y0, x1, y1),
+                    (box_left, box_top),
+                    GLYPH_STRIDE,
+                    ink,
+                );
+            });
             return;
         }
-        let first = outline.points().start;
-        let count = outline.points().len();
         debug_assert!(
-            count <= OUTLINE_POINTS,
-            "a glyph with {count} points overruns the canvas scratch"
+            out_width <= MAX_GLYPH_WIDTH && rows <= MAX_GLYPH_ROWS,
+            "a {size} px glyph fills {out_width}x{rows} px, past the raster's limits"
         );
-        let count = count.min(OUTLINE_POINTS);
-        let mut scaled = [(0i16, 0i16); OUTLINE_POINTS];
-        for (local, index) in (first..first + count).enumerate() {
-            let (x, y) = outline.point(index);
-            scaled[local] = (scale(x) as i16, -scale(y) as i16);
+        if out_width > MAX_GLYPH_WIDTH || rows > MAX_GLYPH_ROWS {
+            return;
         }
-        // Edge `local` runs to `succ[local]`; a contour closes on its own first point.
-        let mut succ = [0u16; OUTLINE_POINTS];
-        let mut start = first;
-        for contour in outline.contours() {
-            let end = outline.contour_end(contour);
-            if end > start {
-                let (from, to) = (start - first, end - first);
-                for (offset, slot) in succ[from..to].iter_mut().enumerate() {
-                    let local = from + offset;
-                    *slot = if local + 1 == to {
-                        from as u16
-                    } else {
-                        (local + 1) as u16
-                    };
+        rasterize(
+            outline,
+            size,
+            Placement {
+                left,
+                baseline,
+                x: x0 as i32,
+                y: y0 as i32,
+                width: x1 - x0,
+                rows: y1 - y0,
+            },
+            heavy,
+            |column, row, coverage| {
+                let (x, y) = (x0 + column, y0 + row);
+                if !clip.contains(x as i32, y as i32) || !in_damage(damage, x, y) {
+                    return;
                 }
-            }
-            start = end;
-        }
-        // File every edge under the first row whose samples can reach it. A row samples from
-        // +1 to +7 quarter rows, so an edge whose top sits in a later pixel row may still cross
-        // this one; `top - 4` is the row whose window ends at that top. A `u16::MAX` chain entry
-        // ends the bucket.
-        let mut heads = [-1i16; ROWS];
-        let mut chain = [u16::MAX; OUTLINE_POINTS];
-        for (local, next) in succ[..count].iter().enumerate() {
-            let b = usize::from(*next);
-            let top = i32::from(scaled[local].1).min(i32::from(scaled[b].1)) + oy;
-            let row = (top - 4).div_euclid(4) - y0 as i32;
-            if row >= rows as i32 {
-                continue;
-            }
-            let row = row.max(0) as usize;
-            chain[local] = heads[row] as u16;
-            heads[row] = local as i16;
-        }
-        let mut active = [0u16; OUTLINE_POINTS];
-        let mut active_len = 0usize;
-        let mut ink = [0u8; WIDTH];
-        let mut xs = [[0i32; CROSSINGS]; 4];
-        for row in y0..y1 {
-            let row = row as i32;
-            ink[..width].fill(0);
-            let scans = [row * 4 + 1, row * 4 + 3, row * 4 + 5, row * 4 + 7];
-            let mut id = heads[(row as usize) - y0];
-            while id >= 0 {
-                let local = usize::from(id as u16);
-                active[active_len] = id as u16;
-                active_len += 1;
-                let next = chain[local];
-                if next == u16::MAX {
-                    break;
-                }
-                id = next as i16;
-            }
-            let mut counts = [0usize; 4];
-            // The next row's first sample is this row's +5, so an edge reaching past +5 still
-            // crosses there.
-            let last_needed = row * 4 + 5;
-            let mut keep = 0usize;
-            for at in 0..active_len {
-                let local = usize::from(active[at]);
-                let b = usize::from(succ[local]);
-                let (ax, ay) = scaled[local];
-                let (bx, by) = scaled[b];
-                let (ax, ay) = (ox + i32::from(ax), oy + i32::from(ay));
-                let (bx, by) = (ox + i32::from(bx), oy + i32::from(by));
-                let dy = by - ay;
-                for (sub, scan) in scans.iter().enumerate() {
-                    if (ay <= *scan) != (by <= *scan) && counts[sub] < CROSSINGS {
-                        xs[sub][counts[sub]] = ax + (*scan - ay) * (bx - ax) / dy;
-                        counts[sub] += 1;
-                    }
-                }
-                if ay.max(by) > last_needed {
-                    active[keep] = active[at];
-                    keep += 1;
-                }
-            }
-            active_len = keep;
-            for sub in 0..4 {
-                let crossings = &mut xs[sub][..counts[sub]];
-                crossings.sort_unstable();
-                for pair in crossings.as_chunks::<2>().0 {
-                    add_span(&mut ink, pair[0], pair[1], x0 as i32 * 4, width);
-                }
-            }
-            for (column, coverage) in ink[..width].iter().enumerate() {
-                if *coverage > 0 {
-                    debug_assert!(*coverage <= FULL);
-                    self.mark_coverage(x0 + column, row as usize, *coverage);
-                }
-            }
-        }
+                blend_pixel(frame, *frame_width, *color, x, y, coverage)
+            },
+        );
     }
 
-    /// Lays the current colour on one pixel at `coverage` of sixteen, blending with what is
-    /// there. With no colour set the ground turns over by the same fraction.
-    fn mark_coverage(&mut self, x: usize, y: usize, coverage: u8) {
-        let offset = (y * self.width + x) * 2;
-        let packed = u16::from_be_bytes([self.frame[offset], self.frame[offset + 1]]);
-        let alpha = (u16::from(coverage) * 255 / 16) as u8;
-        let next = match self.color {
-            Some(color) => {
-                let rgb = color.rgb888();
-                let alpha = u16::from(color.alpha()) * u16::from(alpha) / 255;
-                blend(packed, Color::rgba(rgb.0, rgb.1, rgb.2, alpha as u8))
-            }
-            None => {
-                let inverted = invert_rgb565(packed);
-                let r = (inverted >> 11) as u8 & 0x1F;
-                let g = (inverted >> 5) as u8 & 0x3F;
-                let b = inverted as u8 & 0x1F;
-                blend(
-                    packed,
-                    Color::rgba(
-                        (r << 3) | (r >> 2),
-                        (g << 2) | (g >> 4),
-                        (b << 3) | (b >> 2),
-                        alpha,
-                    ),
-                )
-            }
-        };
-        self.frame[offset..offset + 2].copy_from_slice(&next.to_be_bytes());
+    /// The clip in force, `None` when the canvas is whole.
+    fn clip(&self) -> Option<Rect> {
+        (self.depth > 0).then(|| self.clips[self.depth - 1])
     }
 
     /// Overdraws one character at the root size.
@@ -372,7 +497,13 @@ impl<'a> Canvas<'a> {
         let mut pen = left as isize;
         for glyph in face.glyphs(text) {
             let glyph_top = baseline - (glyph.top + glyph.height as isize) * scale as isize;
-            self.draw_glyph_at(&glyph, pen + glyph.left * scale as isize, glyph_top, scale);
+            self.draw_glyph_at(
+                &glyph,
+                pen + glyph.left * scale as isize,
+                glyph_top,
+                scale,
+                false,
+            );
             pen += (glyph.advance * scale) as isize;
         }
     }
@@ -465,20 +596,28 @@ impl<'a> Canvas<'a> {
         let bottom = (rect.bottom().max(0) as usize)
             .min(CONTENT_BOTTOM)
             .min(self.height);
+        let width = self.width;
         for y in rect.y.max(0) as usize..bottom {
             let (x0, _, x1, _) = self.reach(rect.x as isize, y as isize, rect.w as isize, 1);
-            let start = (y * self.width + x0) * 2;
-            let row = &mut self.frame[start..start + (x1 - x0) * 2];
-            for pixel in row.as_chunks_mut::<2>().0 {
-                match (solid, tint) {
-                    (Some(bytes), _) => pixel.copy_from_slice(&bytes),
-                    (None, Some(color)) => {
-                        let packed = u16::from_be_bytes([pixel[0], pixel[1]]);
-                        pixel.copy_from_slice(&blend(packed, color).to_be_bytes());
-                    }
-                    (None, None) => {}
-                }
+            if x0 >= x1 {
+                continue;
             }
+            let damage = self.damage;
+            let frame = &mut self.frame;
+            for_windows(damage, (x0, y, x1, y + 1), |x0, _, x1, _| {
+                let start = (y * width + x0) * 2;
+                let row = &mut frame[start..start + (x1 - x0) * 2];
+                for pixel in row.as_chunks_mut::<2>().0 {
+                    match (solid, tint) {
+                        (Some(bytes), _) => pixel.copy_from_slice(&bytes),
+                        (None, Some(color)) => {
+                            let packed = u16::from_be_bytes([pixel[0], pixel[1]]);
+                            pixel.copy_from_slice(&blend(packed, color).to_be_bytes());
+                        }
+                        (None, None) => {}
+                    }
+                }
+            });
         }
     }
 
@@ -498,6 +637,284 @@ impl<'a> Canvas<'a> {
 
 /// Adds the coverage a scanline span from `a` to `b` gives the pixels of `ink`, in quarter
 /// columns relative to `origin`. The last pixel takes only the fraction the span reaches.
+/// Walks `outline`'s contours once, sampling four sub-scanlines per row, and hands every
+/// inked pixel's coverage to `put` relative to the box at `at`. The points are scaled into
+/// [`OUTLINE_POINTS`] once and every edge is filed under the first row that can reach it, so
+/// a row visits only the edges still crossing it; rescaling per row cost 238 ms a frame.
+fn rasterize(
+    outline: &Outline<'_>,
+    size: u16,
+    at: Placement,
+    heavy: bool,
+    mut put: impl FnMut(usize, usize, u8),
+) {
+    let Placement {
+        left,
+        baseline,
+        x: x0,
+        y: y0,
+        width,
+        rows,
+    } = at;
+    /// Coverage of a fully inked pixel: four sub-scanlines of four quarter-columns.
+    const FULL: u8 = 16;
+    /// Crossings one scanline may hold. The table's widest glyph has 17 contours.
+    const CROSSINGS: usize = 48;
+    let scale = |units: i32| (units * i32::from(size) * 4 + 32) / 64;
+    let (ox, oy) = (left * 4, baseline * 4);
+    let first = outline.points().start;
+    let count = outline.points().len();
+    debug_assert!(
+        count <= OUTLINE_POINTS,
+        "a glyph with {count} points overruns the canvas scratch"
+    );
+    let count = count.min(OUTLINE_POINTS);
+    let mut scaled = [(0i16, 0i16); OUTLINE_POINTS];
+    for (local, index) in (first..first + count).enumerate() {
+        let (x, y) = outline.point(index);
+        scaled[local] = (scale(x) as i16, -scale(y) as i16);
+    }
+    // Edge `local` runs to `succ[local]`; a contour closes on its own first point.
+    let mut succ = [0u16; OUTLINE_POINTS];
+    let mut start = first;
+    for contour in outline.contours() {
+        let end = outline.contour_end(contour);
+        if end > start {
+            let (from, to) = (start - first, end - first);
+            for (offset, slot) in succ[from..to].iter_mut().enumerate() {
+                let local = from + offset;
+                *slot = if local + 1 == to {
+                    from as u16
+                } else {
+                    (local + 1) as u16
+                };
+            }
+        }
+        start = end;
+    }
+    // File every edge under the first row whose samples can reach it. A row samples from +1
+    // to +7 quarter rows, so an edge whose top sits in a later pixel row may still cross this
+    // one; `top - 4` is the row whose window ends at that top. A `u16::MAX` chain entry ends
+    // the bucket.
+    let mut heads = [-1i16; MAX_GLYPH_ROWS];
+    let mut chain = [u16::MAX; OUTLINE_POINTS];
+    for (local, next) in succ[..count].iter().enumerate() {
+        let b = usize::from(*next);
+        let top = i32::from(scaled[local].1).min(i32::from(scaled[b].1)) + oy;
+        let file = (top - 4).div_euclid(4) - y0;
+        if file >= rows as i32 {
+            continue;
+        }
+        let file = file.max(0) as usize;
+        chain[local] = heads[file] as u16;
+        heads[file] = local as i16;
+    }
+    let mut active = [0u16; OUTLINE_POINTS];
+    let mut active_len = 0usize;
+    let mut ink = [0u8; MAX_GLYPH_WIDTH];
+    let columns = (width + usize::from(heavy)).min(MAX_GLYPH_WIDTH);
+    let merged = heavy && width < MAX_GLYPH_WIDTH;
+    debug_assert!(
+        !heavy || merged,
+        "a heavy {width} px glyph overruns the row buffer"
+    );
+    let mut xs = [[0i32; CROSSINGS]; 4];
+    for (row, head) in heads.iter().enumerate().take(rows) {
+        let pixel = y0 + row as i32;
+        ink[..width].fill(0);
+        let scans = [pixel * 4 + 1, pixel * 4 + 3, pixel * 4 + 5, pixel * 4 + 7];
+        let mut id = *head;
+        while id >= 0 {
+            let local = usize::from(id as u16);
+            active[active_len] = id as u16;
+            active_len += 1;
+            let next = chain[local];
+            if next == u16::MAX {
+                break;
+            }
+            id = next as i16;
+        }
+        let mut counts = [0usize; 4];
+        // The next row's first sample is this row's +5, so an edge reaching past +5 still
+        // crosses there.
+        let last_needed = pixel * 4 + 5;
+        let mut keep = 0usize;
+        for at in 0..active_len {
+            let local = usize::from(active[at]);
+            let b = usize::from(succ[local]);
+            let (ax, ay) = scaled[local];
+            let (bx, by) = scaled[b];
+            let (ax, ay) = (ox + i32::from(ax), oy + i32::from(ay));
+            let (bx, by) = (ox + i32::from(bx), oy + i32::from(by));
+            let dy = by - ay;
+            for (sub, scan) in scans.iter().enumerate() {
+                if (ay <= *scan) != (by <= *scan) && counts[sub] < CROSSINGS {
+                    xs[sub][counts[sub]] = ax + (*scan - ay) * (bx - ax) / dy;
+                    counts[sub] += 1;
+                }
+            }
+            if ay.max(by) > last_needed {
+                active[keep] = active[at];
+                keep += 1;
+            }
+        }
+        active_len = keep;
+        for sub in 0..4 {
+            let crossings = &mut xs[sub][..counts[sub]];
+            crossings.sort_unstable();
+            for pair in crossings.as_chunks::<2>().0 {
+                add_span(&mut ink, pair[0], pair[1], x0 * 4, width);
+            }
+        }
+        if merged {
+            ink[width] = 0;
+            for column in (0..=width).rev() {
+                let left = if column == 0 { 0 } else { ink[column - 1] };
+                ink[column] = over(ink[column], left);
+            }
+        }
+        for (column, coverage) in ink[..columns].iter().enumerate() {
+            if *coverage > 0 {
+                debug_assert!(*coverage <= FULL);
+                put(column, row, *coverage);
+            }
+        }
+    }
+}
+
+/// Two strikes of the same mark, merged: the coverage of one pass over another, in sixteenths.
+fn over(a: u8, b: u8) -> u8 {
+    let (a, b) = (u16::from(a), u16::from(b));
+    (a + b - a * b / 16) as u8
+}
+
+/// Reads one five-bit sample from a packed row.
+fn ink_get(ink: &[u8], stride: usize, x: usize, y: usize) -> u8 {
+    let bit = x * INK_BITS;
+    let index = y * stride + bit / 8;
+    let shift = bit % 8;
+    let mut word = u16::from(ink[index]) >> shift;
+    if shift + INK_BITS > 8 && index + 1 < ink.len() {
+        word |= u16::from(ink[index + 1]) << (8 - shift);
+    }
+    (word & 0x1F) as u8
+}
+
+/// Writes one five-bit sample into a packed row.
+fn ink_put(ink: &mut [u8], stride: usize, x: usize, y: usize, value: u8) {
+    let bit = x * INK_BITS;
+    let index = y * stride + bit / 8;
+    let shift = bit % 8;
+    let mask = 0x1Fu16 << shift;
+    let mut word = u16::from(ink[index]);
+    if index + 1 < ink.len() {
+        word |= u16::from(ink[index + 1]) << 8;
+    }
+    word = (word & !mask) | (u16::from(value) << shift);
+    ink[index] = word as u8;
+    if shift + INK_BITS > 8 {
+        ink[index + 1] = (word >> 8) as u8;
+    }
+}
+
+/// Lays one cached glyph's coverage onto the frame inside `window`; `origin` is the glyph's
+/// top-left in panel pixels.
+fn blit(
+    frame: &mut [u8],
+    frame_width: usize,
+    color: Option<Color>,
+    window: (usize, usize, usize, usize),
+    origin: (i32, i32),
+    stride: usize,
+    ink: &[u8],
+) {
+    let (x0, y0, x1, y1) = window;
+    for y in y0..y1 {
+        let row = (y as i32 - origin.1) as usize;
+        for x in x0..x1 {
+            let column = (x as i32 - origin.0) as usize;
+            let coverage = ink_get(ink, stride, column, row);
+            if coverage > 0 {
+                blend_pixel(frame, frame_width, color, x, y, coverage);
+            }
+        }
+    }
+}
+
+/// Lays the current colour on one pixel at `coverage` of sixteen, blending with what is
+/// there. With no colour set the ground turns over by the same fraction.
+fn blend_pixel(
+    frame: &mut [u8],
+    frame_width: usize,
+    color: Option<Color>,
+    x: usize,
+    y: usize,
+    coverage: u8,
+) {
+    let offset = (y * frame_width + x) * 2;
+    let packed = u16::from_be_bytes([frame[offset], frame[offset + 1]]);
+    let alpha = (u16::from(coverage) * 255 / 16) as u8;
+    let next = match color {
+        Some(color) => {
+            let rgb = color.rgb888();
+            let alpha = u16::from(color.alpha()) * u16::from(alpha) / 255;
+            blend(packed, Color::rgba(rgb.0, rgb.1, rgb.2, alpha as u8))
+        }
+        None => {
+            let inverted = invert_rgb565(packed);
+            let r = (inverted >> 11) as u8 & 0x1F;
+            let g = (inverted >> 5) as u8 & 0x3F;
+            let b = inverted as u8 & 0x1F;
+            blend(
+                packed,
+                Color::rgba(
+                    (r << 3) | (r >> 2),
+                    (g << 2) | (g >> 4),
+                    (b << 3) | (b >> 2),
+                    alpha,
+                ),
+            )
+        }
+    };
+    frame[offset..offset + 2].copy_from_slice(&next.to_be_bytes());
+}
+
+/// Calls `f` once per rectangle of `damage` that meets the box, or once with the box itself
+/// when nothing restricts it. Each window is what the caller may ink.
+fn for_windows(
+    damage: Option<FrameDamage>,
+    (x0, y0, x1, y1): (usize, usize, usize, usize),
+    mut f: impl FnMut(usize, usize, usize, usize),
+) {
+    match damage {
+        Some(damage) if !damage.is_full() => {
+            for rect in damage.rects() {
+                let ax0 = x0.max(usize::from(rect.x));
+                let ay0 = y0.max(usize::from(rect.y));
+                let ax1 = x1.min(usize::from(rect.right()));
+                let ay1 = y1.min(usize::from(rect.bottom()));
+                if ax0 < ax1 && ay0 < ay1 {
+                    f(ax0, ay0, ax1, ay1);
+                }
+            }
+        }
+        _ => f(x0, y0, x1, y1),
+    }
+}
+
+fn in_damage(damage: Option<FrameDamage>, x: usize, y: usize) -> bool {
+    match damage {
+        None => true,
+        Some(damage) => {
+            damage.is_full()
+                || damage
+                    .rects()
+                    .iter()
+                    .any(|rect| rect.contains(x as u16, y as u16))
+        }
+    }
+}
+
 fn add_span(ink: &mut [u8], a: i32, b: i32, origin: i32, width: usize) {
     let end = width as i32 * 4;
     let a = (a - origin).clamp(0, end) as usize;
@@ -524,7 +941,6 @@ fn add_span(ink: &mut [u8], a: i32, b: i32, origin: i32, width: usize) {
 mod tests {
     use super::*;
     use alloc::vec;
-
     const WIDTH: usize = 32;
     const HEIGHT: usize = 24;
     const GROUND: Rgb = Rgb(0x10, 0x20, 0x30);
@@ -674,6 +1090,60 @@ mod tests {
     }
 
     #[test]
+    fn damage_keeps_every_mark_inside_its_rectangles() {
+        let mut bytes = frame();
+        let mut damage = FrameDamage::NONE;
+        damage.add(crate::drivers::surface::DamageRect::new(8, 8, 8, 8));
+        {
+            let mut canvas =
+                Canvas::new(&mut bytes, WIDTH, HEIGHT, Some(GROUND)).with_damage(damage);
+            canvas.set_color(Some(Color::rgb(0xFF, 0xFF, 0xFF)));
+            canvas.fill_rect(Rect::new(0, 0, WIDTH as i32, HEIGHT as i32));
+            canvas.plot_pixel(20, 20);
+        }
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                let inside = (8..16).contains(&x) && (8..16).contains(&y);
+                assert_eq!(
+                    pixel(&bytes, x, y),
+                    if inside { 0xFFFF } else { 0 },
+                    "({x}, {y})"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn a_glyph_only_inks_the_damaged_rows() {
+        let mut bytes = frame();
+        let mut damage = FrameDamage::NONE;
+        damage.add(crate::drivers::surface::DamageRect::new(
+            0,
+            10,
+            WIDTH as u16,
+            4,
+        ));
+        {
+            let mut canvas =
+                Canvas::new(&mut bytes, WIDTH, HEIGHT, Some(GROUND)).with_damage(damage);
+            canvas.set_color(Some(Color::rgb(0xFF, 0xFF, 0xFF)));
+            canvas.draw_char_at('A', 0, 0, Metrics::vector(24));
+        }
+        assert!(
+            (0..10).all(|y| (0..WIDTH).all(|x| pixel(&bytes, x, y) == 0)),
+            "above the band stays untouched"
+        );
+        assert!(
+            (14..HEIGHT).all(|y| (0..WIDTH).all(|x| pixel(&bytes, x, y) == 0)),
+            "below the band stays untouched"
+        );
+        assert!(
+            (10..14).any(|y| (0..WIDTH).any(|x| pixel(&bytes, x, y) != 0)),
+            "the band carries the glyph's rows"
+        );
+    }
+
+    #[test]
     fn a_translucent_fill_mixes_with_what_is_already_there() {
         let mut bytes = frame();
         {
@@ -722,5 +1192,161 @@ mod tests {
             u16::from_be_bytes(ground),
             "and the footer is never filled"
         );
+    }
+
+    /// The cache may only make drawing faster: every shipped glyph, drawn from a slot, has to
+    /// land on exactly the pixels the outline would. The third pass reuses slots rasterized at
+    /// a different position, which is what proves coverage does not depend on where the glyph
+    /// sits.
+    #[test]
+    fn a_cached_glyph_lands_on_the_outline_s_pixels() {
+        const W: usize = 48;
+        const H: usize = 40;
+        let glyphs: Vec<char> = VectorFace::new().code_points().collect();
+        assert!(glyphs.len() >= 181, "the table shrank: {}", glyphs.len());
+        let mut cache = GlyphCache::new();
+        for (pass, left) in [(0, 4), (1, 4), (2, 5)] {
+            for &ch in &glyphs {
+                let mut plain = vec![0u8; W * H * 2];
+                let mut cached = vec![0u8; W * H * 2];
+                {
+                    let mut canvas = Canvas::new(&mut plain, W, H, Some(GROUND));
+                    canvas.set_color(Some(Color::rgb(0xE0, 0xE0, 0xE0)));
+                    canvas.draw_char_at(ch, left, 4, Metrics::vector(24));
+                }
+                {
+                    let mut canvas =
+                        Canvas::new(&mut cached, W, H, Some(GROUND)).with_glyphs(&mut cache);
+                    canvas.set_color(Some(Color::rgb(0xE0, 0xE0, 0xE0)));
+                    canvas.draw_char_at(ch, left, 4, Metrics::vector(24));
+                }
+                assert_eq!(plain, cached, "{ch:?} differs on pass {pass}");
+            }
+        }
+    }
+
+    /// One strike over another in sixteenths: full over full stays full, and the merge is
+    /// symmetric because two passes commute.
+    #[test]
+    fn a_second_strike_merges_coverage_instead_of_replacing_it() {
+        assert_eq!(over(0, 0), 0);
+        assert_eq!(over(16, 0), 16);
+        assert_eq!(over(16, 16), 16);
+        assert_eq!(over(8, 8), 12);
+        assert_eq!(over(4, 8), over(8, 4));
+    }
+
+    /// A heavy bitmap glyph is its plain mark plus the same mark shifted one column right,
+    /// laid down once: striking twice on the inverted ground would cancel where they overlap.
+    #[test]
+    fn a_heavy_bitmap_glyph_covers_its_plain_mark_once() {
+        let mut grew = false;
+        let mut overlap_total = 0usize;
+        for ch in ['M', 'W', '中', '0'] {
+            let mut plain = frame();
+            let mut heavy = frame();
+            {
+                let mut canvas = Canvas::new(&mut plain, WIDTH, HEIGHT, None);
+                canvas.draw_char_at(ch, 4, 0, Metrics::default());
+            }
+            {
+                let mut canvas = Canvas::new(&mut heavy, WIDTH, HEIGHT, None);
+                canvas.draw_char_heavy_at(ch, 4, 0, Metrics::default());
+            }
+            let mut plain_count = 0usize;
+            let mut overlap = 0usize;
+            for y in 0..HEIGHT {
+                for x in 0..WIDTH {
+                    if pixel(&plain, x, y) == 0 {
+                        continue;
+                    }
+                    plain_count += 1;
+                    let covered =
+                        pixel(&heavy, x, y) != 0 || (x + 1 < WIDTH && pixel(&heavy, x + 1, y) != 0);
+                    assert!(covered, "{ch} lost its pixel at ({x}, {y})");
+                    if x > 0 && pixel(&plain, x - 1, y) != 0 {
+                        overlap += 1;
+                        assert!(
+                            pixel(&heavy, x, y) != 0,
+                            "{ch} reverted the overlap at ({x}, {y})"
+                        );
+                    }
+                }
+            }
+            overlap_total += overlap;
+            let heavy_count = (0..HEIGHT)
+                .flat_map(|y| (0..WIDTH).map(move |x| (x, y)))
+                .filter(|&(x, y)| pixel(&heavy, x, y) != 0)
+                .count();
+            assert!(
+                heavy_count >= plain_count,
+                "{ch} was narrowed by the second strike"
+            );
+            grew |= heavy_count > plain_count;
+        }
+        assert!(grew, "no glyph gained the widened column");
+        assert!(overlap_total > 0, "no glyph has a two-column run");
+    }
+
+    #[test]
+    fn a_heavy_vector_glyph_is_not_erased_where_its_strokes_overlap() {
+        const W: usize = 32;
+        const H: usize = 32;
+        let mut plain = vec![0u8; W * H * 2];
+        let mut heavy = vec![0u8; W * H * 2];
+        {
+            let mut canvas = Canvas::new(&mut plain, W, H, None);
+            canvas.draw_char_at('中', 2, 2, Metrics::vector(24));
+        }
+        {
+            let mut canvas = Canvas::new(&mut heavy, W, H, None);
+            canvas.draw_char_heavy_at('中', 2, 2, Metrics::vector(24));
+        }
+        let pixel = |frame: &[u8], x: usize, y: usize| {
+            let offset = (y * W + x) * 2;
+            u16::from_be_bytes([frame[offset], frame[offset + 1]])
+        };
+        let mut solid = 0usize;
+        for y in 0..H {
+            for x in 1..W {
+                if pixel(&plain, x, y) == 0xFFFF && pixel(&plain, x - 1, y) == 0xFFFF {
+                    solid += 1;
+                    assert_eq!(
+                        pixel(&heavy, x, y),
+                        0xFFFF,
+                        "the second strike reverted the overlap at ({x}, {y})"
+                    );
+                }
+            }
+        }
+        assert!(solid > 0, "the sample has no solid two-column interior");
+    }
+
+    /// A cached heavy glyph has to land exactly where the uncached one does, at every
+    /// position and after the slot was rasterized elsewhere.
+    #[test]
+    fn a_cached_heavy_glyph_lands_on_the_uncached_one() {
+        const W: usize = 48;
+        const H: usize = 40;
+        let glyphs: Vec<char> = VectorFace::new().code_points().collect();
+        let mut cache = GlyphCache::new();
+        for (pass, left) in [(0, 4), (1, 5)] {
+            for &ch in &glyphs {
+                let mut plain = vec![0u8; W * H * 2];
+                let mut cached = vec![0u8; W * H * 2];
+                {
+                    let mut canvas = Canvas::new(&mut plain, W, H, Some(GROUND));
+                    canvas.set_color(Some(Color::rgb(0xE0, 0xE0, 0xE0)));
+                    canvas.draw_char_heavy_at(ch, left, 4, Metrics::vector(24));
+                }
+                {
+                    let mut canvas =
+                        Canvas::new(&mut cached, W, H, Some(GROUND)).with_glyphs(&mut cache);
+                    canvas.set_color(Some(Color::rgb(0xE0, 0xE0, 0xE0)));
+                    canvas.draw_char_heavy_at(ch, left, 4, Metrics::vector(24));
+                }
+                assert_eq!(plain, cached, "{ch:?} differs on pass {pass}");
+            }
+        }
     }
 }

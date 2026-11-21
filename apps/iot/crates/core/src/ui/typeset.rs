@@ -41,9 +41,9 @@ impl Default for Paragraph {
     }
 }
 
-/// Rows one line occupies at `metrics`.
+/// Rows one line occupies at `metrics`: its ink box plus the face's leading.
 pub fn line_height(metrics: Metrics) -> usize {
-    metrics.height()
+    metrics.height() + metrics.leading()
 }
 
 /// The width the run takes on one line at `metrics`.

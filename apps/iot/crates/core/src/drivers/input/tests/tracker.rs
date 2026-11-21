@@ -1,11 +1,20 @@
-//! Touch ids across index shuffles, and a release that has to be confirmed.
+//! Touch ids across index shuffles, a release that has to be confirmed, and the controller's
+//! own slot number when it reports one.
 
 use super::*;
+
+fn p(x: u16, y: u16) -> RawPoint {
+    RawPoint::new(x, y, RawPoint::NO_ID)
+}
+
+fn tagged(x: u16, y: u16, hw_id: u8) -> RawPoint {
+    RawPoint::new(x, y, hw_id)
+}
 
 #[test]
 fn tracked_points_upsert_move_and_stay_quiet() {
     let mut c = TouchContinuity::new();
-    let ev = c.update(&[(100, 200)]).unwrap();
+    let ev = c.update(&[p(100, 200)]).unwrap();
     assert_eq!(ev.len, 1);
     assert_eq!(
         ev.points[0],
@@ -16,7 +25,7 @@ fn tracked_points_upsert_move_and_stay_quiet() {
             status: TouchStatus::Down,
         }
     );
-    let ev = c.update(&[(120, 210)]).unwrap();
+    let ev = c.update(&[p(120, 210)]).unwrap();
     assert_eq!(
         ev.points[0],
         TouchPoint {
@@ -26,20 +35,20 @@ fn tracked_points_upsert_move_and_stay_quiet() {
             status: TouchStatus::Contact,
         }
     );
-    assert!(c.update(&[(120, 210)]).is_none());
+    assert!(c.update(&[p(120, 210)]).is_none());
 }
 
 #[test]
 fn release_confirms_only_after_a_dropout_run_and_recycles_ids() {
     let mut c = TouchContinuity::new();
-    c.update(&[(100, 200)]);
+    c.update(&[p(100, 200)]);
     assert!(c.update(&[]).is_none(), "one dropout is not a lift");
     assert!(c.update(&[]).is_none());
-    let ev = c.update(&[(101, 201)]).unwrap();
+    let ev = c.update(&[p(101, 201)]).unwrap();
     assert_eq!(ev.points[0].status, TouchStatus::Contact);
     assert_eq!(ev.points[0].id, 0);
     let mut c = TouchContinuity::new();
-    c.update(&[(100, 200)]);
+    c.update(&[p(100, 200)]);
     for _ in 0..RELEASE_CONFIRM_SAMPLES - 1 {
         assert!(c.update(&[]).is_none());
     }
@@ -55,31 +64,119 @@ fn release_confirms_only_after_a_dropout_run_and_recycles_ids() {
     );
     assert!(c.update(&[]).is_none());
     let mut c = TouchContinuity::new();
-    c.update(&[(5, 5)]);
+    c.update(&[p(5, 5)]);
     for _ in 0..RELEASE_CONFIRM_SAMPLES {
         c.update(&[]);
     }
-    let ev = c.update(&[(7, 7)]).unwrap();
+    let ev = c.update(&[p(7, 7)]).unwrap();
     assert_eq!(ev.points[0].status, TouchStatus::Down);
 }
 
 #[test]
 fn ids_follow_fingers_across_index_shuffles() {
     let mut c = TouchContinuity::new();
-    let first = c.update(&[(10, 10), (300, 300)]).unwrap();
+    let first = c.update(&[p(10, 10), p(300, 300)]).unwrap();
     assert_eq!(first.points[0].id, 0);
     assert_eq!(first.points[1].id, 1);
-    let ev = c.update(&[(300, 301), (11, 12)]).unwrap();
+    let ev = c.update(&[p(300, 301), p(11, 12)]).unwrap();
     assert_eq!(ev.points[0].id, 1, "far point keeps its id at index 0");
     assert_eq!(ev.points[0].status, TouchStatus::Contact);
     assert_eq!(ev.points[1].id, 0, "near point keeps its id at index 1");
     assert_eq!(ev.points[1].status, TouchStatus::Contact);
 }
 
+/// A second finger landing near a tracked one is reported first by this panel; the finger
+/// that stayed put must keep its id, and the newcomer gets a fresh one.
+#[test]
+fn a_second_finger_reported_first_does_not_steal_the_tracker() {
+    let mut c = TouchContinuity::new();
+    let first = c.update(&[tagged(100, 200, 0)]).unwrap();
+    assert_eq!(first.points[0].id, 0);
+    let ev = c
+        .update(&[tagged(140, 200, 1), tagged(100, 200, 0)])
+        .unwrap();
+    assert_eq!(
+        (ev.points[0].id, ev.points[0].status),
+        (1, TouchStatus::Down),
+        "the newcomer is a new contact at its own position"
+    );
+    assert_eq!(
+        (ev.points[1].id, ev.points[1].x, ev.points[1].status),
+        (0, 100, TouchStatus::Contact),
+        "the tracked finger keeps its id where it stayed"
+    );
+}
+
+/// The panel swaps its two points between samples; nearest matching keeps both ids.
+#[test]
+fn swapped_report_order_keeps_both_fingers() {
+    let mut c = TouchContinuity::new();
+    let first = c
+        .update(&[tagged(40, 100, 0), tagged(280, 100, 1)])
+        .unwrap();
+    assert_eq!((first.points[0].id, first.points[1].id), (0, 1));
+    let ev = c
+        .update(&[tagged(281, 110, 0), tagged(41, 110, 1)])
+        .unwrap();
+    assert_eq!((ev.points[0].id, ev.points[0].x), (1, 281));
+    assert_eq!((ev.points[1].id, ev.points[1].x), (0, 41));
+    assert!(
+        ev.points[..2]
+            .iter()
+            .all(|p| p.status == TouchStatus::Contact)
+    );
+}
+
+#[test]
+fn points_without_a_usable_slot_pair_by_distance() {
+    let mut c = TouchContinuity::new();
+    c.update(&[p(40, 100), p(280, 100)]);
+    let ev = c.update(&[p(281, 110), p(41, 110)]).unwrap();
+    assert_eq!((ev.points[0].id, ev.points[0].x), (1, 281));
+    assert_eq!((ev.points[1].id, ev.points[1].x), (0, 41));
+}
+
+#[test]
+fn both_fingers_slide_ten_samples_without_a_release() {
+    let mut c = TouchContinuity::new();
+    c.update(&[p(40, 100), p(280, 100)]);
+    for step in 1..=10u16 {
+        let ev = c.update(&[p(40, 100 + step), p(280, 100 + step)]).unwrap();
+        assert_eq!(ev.len, 2);
+        assert!(
+            ev.points[..2]
+                .iter()
+                .all(|p| p.status == TouchStatus::Contact)
+        );
+    }
+}
+
+/// Two trackers the same distance away: only then does the controller's slot decide.
+#[test]
+fn an_exact_distance_tie_falls_to_the_controllers_slot() {
+    let mut c = TouchContinuity::new();
+    c.update(&[tagged(100, 100, 0), tagged(200, 100, 1)]);
+    let ev = c.update(&[tagged(150, 100, 1)]).unwrap();
+    assert_eq!((ev.points[0].id, ev.points[0].x), (1, 150));
+}
+
+#[test]
+fn a_slot_past_the_reach_gate_does_not_drag_the_old_contact() {
+    let mut c = TouchContinuity::new();
+    c.update(&[tagged(20, 20, 0)]);
+    let ev = c.update(&[tagged(300, 300, 0)]).unwrap();
+    assert_eq!(
+        (ev.points[0].id, ev.points[0].status),
+        (1, TouchStatus::Down)
+    );
+    let ev = c.update(&[tagged(30, 30, 0)]).unwrap();
+    assert_eq!((ev.points[0].id, ev.points[0].x), (0, 30));
+}
+
 #[test]
 fn multi_contact_samples_keep_releases() {
     let mut c = TouchContinuity::new();
-    c.update(&[(5, 5), (6, 6)]);
+    c.update(&[p(5, 5), p(6, 6)]);
     for _ in 0..RELEASE_CONFIRM_SAMPLES - 1 {
         assert!(c.update(&[]).is_none());
     }
@@ -91,7 +188,7 @@ fn multi_contact_samples_keep_releases() {
             .all(|p| p.status == TouchStatus::Release)
     );
     let mut c = TouchContinuity::new();
-    let ev = c.update(&[(5, 5)]).unwrap();
+    let ev = c.update(&[p(5, 5)]).unwrap();
     assert_eq!(ev.len, 1);
 }
 

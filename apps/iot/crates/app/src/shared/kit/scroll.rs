@@ -20,7 +20,8 @@ pub const STOP_PX_S: i16 = 150;
 /// Lines one swipe steps before the fling takes over.
 pub const STEP_LINES: i8 = 3;
 
-/// Pixels one line of the panel's face occupies.
+/// Pixels one line of the panel's default face occupies; a region whose lines are taller
+/// says so with [`ScrollState::set_line_px`].
 pub const LINE_PX: i16 = 12;
 
 /// The two switches a page sets for all its regions: whether an edge gives, and whether a
@@ -45,6 +46,7 @@ impl Default for ScrollConfig {
 pub struct ScrollState<const N: usize> {
     areas: [ScrollInfo; N],
     velocity: [i16; N],
+    line_px: [i16; N],
     held: [bool; N],
     config: ScrollConfig,
 }
@@ -54,6 +56,7 @@ impl<const N: usize> Default for ScrollState<N> {
         Self {
             areas: [ScrollInfo::default(); N],
             velocity: [0; N],
+            line_px: [LINE_PX; N],
             held: [false; N],
             config: ScrollConfig::default(),
         }
@@ -72,6 +75,14 @@ impl<const N: usize> ScrollState<N> {
 
     pub fn areas(&self) -> &[ScrollInfo; N] {
         &self.areas
+    }
+
+    /// The height of one line in `area`, which a swipe steps by. A region whose content is
+    /// set larger than the default face says so here.
+    pub fn set_line_px(&mut self, area: u8, px: i16) {
+        if let Some(slot) = self.line_px.get_mut(usize::from(area)) {
+            *slot = px.max(1);
+        }
     }
 
     pub fn config(&self) -> ScrollConfig {
@@ -108,7 +119,8 @@ impl<const N: usize> ScrollState<N> {
             return;
         }
         let limit = self.limit(slot);
-        let moved = i32::from(slot.offset) + i32::from(lines) * i32::from(LINE_PX);
+        let line_px = self.line_px[index];
+        let moved = i32::from(slot.offset) + i32::from(lines) * i32::from(line_px);
         self.areas[index].offset = moved.clamp(-limit, max + limit) as i16;
         let speed = i16::try_from(speed.min(FLING_MAX_PX_S)).unwrap_or(i16::MAX);
         self.velocity[index] = if speed >= FLING_MIN_PX_S as i16 {

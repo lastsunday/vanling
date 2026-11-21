@@ -9,8 +9,8 @@
 //!
 //! The vector table is cut by `cargo run -p iot-tool -- outline` from the release Noto Sans Mono
 //! CJK SC and covers exactly the code points of `vector-sample.txt`, the paragraph the wrap
-//! region draws. Its coordinates are 1/64 em and y points up from the baseline; a line is its
-//! own typographic ascent plus descent, which is 1 em on this face.
+//! region draws. Its coordinates are 1/64 em and y points up from the baseline; its header's
+//! ascent/descent enclose every glyph's ink, so a descender stays inside its own line.
 
 /// Where the tables and their sources live.
 mod table {
@@ -207,9 +207,18 @@ impl Metrics {
         (self.size as usize).div_ceil(Self::ROOT as usize)
     }
 
-    /// Rows one line occupies.
+    /// Rows one line's ink occupies.
     pub fn height(&self) -> usize {
         self.ascent() + self.descent()
+    }
+
+    /// Rows of air the face keeps under its ink, so two lines do not touch. The grid face is
+    /// cut to its cell and needs none.
+    pub fn leading(&self) -> usize {
+        match self.family {
+            FontFamily::Bitmap => 0,
+            FontFamily::Vector => usize::from(self.size) / 8,
+        }
     }
 
     /// Rows above the baseline.
@@ -405,6 +414,14 @@ impl VectorFace {
         Some(self.u16_at(self.section(16) as usize + index * VMETA))
     }
 
+    /// Every code point the table carries, in table order.
+    pub fn code_points(&self) -> impl Iterator<Item = char> + '_ {
+        (0..self.code_count()).filter_map(move |index| {
+            let code = self.u16_at(self.section(12) as usize + index * 4);
+            char::from_u32(u32::from(code))
+        })
+    }
+
     pub fn ascent_units(&self) -> u16 {
         self.u16_at(28)
     }
@@ -594,24 +611,58 @@ mod tests {
     fn the_vector_table_is_the_one_this_reader_understands() {
         let face = VectorFace::new();
         assert!(face.table_is_readable(), "the table's header is not VLV1");
-        assert_eq!((face.ascent_units(), face.descent_units()), (56, 8));
+        assert_eq!((face.ascent_units(), face.descent_units()), (56, 15));
         for ch in "中A…□".chars() {
             assert!(face.has(ch), "{ch} is missing");
         }
         assert!(!face.has('\u{1F004}'), "outside the table's code space");
     }
 
+    /// The line box is what every page's rhythm is built on: if one glyph reached past it,
+    /// that glyph's ink would be shaved by whatever box the caller drew it in.
     #[test]
-    fn a_vector_line_is_one_em_and_a_wide_glyph_fills_it() {
+    fn the_tables_line_box_encloses_every_glyph() {
+        let face = VectorFace::new();
+        let (ascent, descent) = (
+            isize::from(face.ascent_units() as i16),
+            isize::from(face.descent_units() as i16),
+        );
+        for ch in face.code_points() {
+            let outline = face
+                .outline(ch)
+                .expect("a listed code point has an outline");
+            assert!(
+                outline.ymax <= ascent,
+                "{ch} reaches {} above",
+                outline.ymax
+            );
+            assert!(
+                -outline.ymin <= descent,
+                "{ch} reaches {} below",
+                -outline.ymin
+            );
+        }
+    }
+
+    #[test]
+    fn a_vector_line_is_the_ink_box_plus_leading() {
         let metrics = Metrics::vector(24);
         assert_eq!(
             (metrics.ascent(), metrics.descent(), metrics.height()),
-            (21, 3, 24)
+            (21, 6, 27)
         );
+        assert_eq!(metrics.leading(), 3);
+        assert_eq!(crate::ui::typeset::line_height(metrics), 30);
         assert_eq!(metrics.advance('中'), 24);
         assert_eq!(metrics.advance('A'), 12);
         assert_eq!(metrics.measure("中A".as_bytes()), 36);
         assert_eq!(Metrics::vector(48).advance('A'), 24, "exact, not magnified");
+    }
+
+    #[test]
+    fn the_grid_face_keeps_its_cell_and_takes_no_leading() {
+        assert_eq!(Metrics::at(12).leading(), 0);
+        assert_eq!(crate::ui::typeset::line_height(Metrics::at(12)), 12);
     }
 
     #[test]

@@ -9,7 +9,6 @@ use core::future::Future;
 use core::pin::Pin;
 
 use esp_hal::time::{Duration, Instant};
-use iot_core::drivers::camera::FrameOwner;
 use iot_core::drivers::surface::{ScreenContext, ScreenPainter, ScreenSurface, ScreenTarget};
 use iot_core::light::rgb565;
 use iot_core::stats::windowed_percent;
@@ -38,16 +37,27 @@ impl ScreenSurface for Screen {
         self.panel.set_ceiling(level_pct);
     }
 
-    fn repaint(&mut self, painter: &dyn ScreenPainter, snapshot: &dyn Any, force: bool) -> bool {
+    fn repaint(
+        &mut self,
+        painter: &mut dyn ScreenPainter,
+        snapshot: &dyn Any,
+        force: bool,
+    ) -> bool {
         let Some(color) = self.owner.painted_color() else {
             return false;
         };
         if !force && !self.page_dirty {
             return false;
         }
+        // A fill is the only thing between the last page and this one: when there was none,
+        // the buffer still holds the picture the painter is about to scroll.
+        let keep = !self.page_dirty && painter.keeps_frame(snapshot);
         self.page_dirty = false;
+        if !keep {
+            painter.reset();
+        }
         note_stack_high_water();
-        self.paint(color, painter, snapshot);
+        self.paint(color, painter, snapshot, keep);
         true
     }
 }
@@ -62,10 +72,22 @@ impl Screen {
         }
     }
 
-    pub(super) fn paint(&mut self, color: Rgb, painter: &dyn ScreenPainter, snapshot: &dyn Any) {
+    pub(super) fn paint(
+        &mut self,
+        color: Rgb,
+        painter: &mut dyn ScreenPainter,
+        snapshot: &dyn Any,
+        keep: bool,
+    ) {
         let render_start = Instant::now();
-        self.fill(color);
-        let fill = render_start.elapsed();
+        self.owner.painted(color);
+        let fill = if keep {
+            Duration::ZERO
+        } else {
+            let started = Instant::now();
+            self.fill_pixels(color);
+            started.elapsed()
+        };
 
         let bytes = self.panel.frame_bytes();
         let context = self.context();
@@ -86,15 +108,20 @@ impl Screen {
         // number the chunking moves; `worst write` stays the whole frame's wire time.
         self.pending = Some(Pending {
             camera: false,
+            color: Some(color),
             render: render_start.elapsed(),
             fill,
+            damage: painter.damage(),
         });
     }
 
     /// Writes one colour into the whole frame and records it as the colour the CPU holds.
     pub(super) fn fill(&mut self, color: Rgb) {
         self.owner.painted(color);
+        self.fill_pixels(color);
+    }
 
+    fn fill_pixels(&mut self, color: Rgb) {
         let rgb565 = rgb565(color);
         let (hi, lo) = ((rgb565 >> 8) as u8, rgb565 as u8);
         // Two pixels a store: a byte at a time is 153 600 iterations of one-byte writes on a
@@ -117,7 +144,7 @@ impl Screen {
             return;
         };
         let started = Instant::now();
-        let wire = match self.panel.write(self.frame).await {
+        let wire = match self.panel.write(self.frame, pending.damage).await {
             Ok(wire) => {
                 self.panel.note_frame_shipped();
                 wire
@@ -127,7 +154,12 @@ impl Screen {
                     log::error!("[DISPLAY] camera frame write failed: {error:?}");
                 } else {
                     log::error!("[DISPLAY] frame write failed: {error:?}");
-                    self.owner = FrameOwner::NeedsPaint;
+                    // The panel holds part of a frame and the buffer no longer matches it:
+                    // refill the ground and let the next repaint draw the page whole.
+                    if let Some(color) = pending.color {
+                        self.fill(color);
+                        self.page_dirty = true;
+                    }
                 }
                 let spent = started.elapsed();
                 Wire {

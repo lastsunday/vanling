@@ -80,10 +80,12 @@ fn draw_text(
     let metrics = style.metrics().covering(run);
     let line_height = typeset::line_height(metrics) as i32;
     if style.nowrap {
-        // One line at its natural width; whatever leaves the box is clipped, not wrapped.
+        // One line at its natural width; whatever leaves the box sideways is clipped, not
+        // wrapped. The box's own height is not a clip: a descender reaches below it, and only
+        // the ancestor (a scroll viewport, or the page) decides where the ink stops.
         let top = rect.y + (rect.h - line_height).max(0) / 2;
         if rect.x >= 0 && top >= 0 {
-            canvas.push_clip(rect);
+            canvas.push_x_clip(rect);
             paint_run(
                 canvas, start, run, rect.x, top, metrics, style, palette, spans, 0,
             );
@@ -272,7 +274,7 @@ fn has_paper(style: Style, spans: &[Span]) -> bool {
             .any(|span| span.style.background_color != super::color::ColorId::NONE)
 }
 
-/// One glyph, plus the second strike a heavy weight asks for.
+/// One glyph, widened once over itself when the weight is heavy.
 fn draw_glyph(
     canvas: &mut Canvas<'_>,
     ch: char,
@@ -283,9 +285,10 @@ fn draw_glyph(
     ink: Option<Color>,
 ) {
     canvas.set_color(ink);
-    canvas.draw_char_at(ch, left as isize, top as usize, metrics);
     if style.weight().is_heavy() {
-        canvas.draw_char_at(ch, left as isize + 1, top as usize, metrics);
+        canvas.draw_char_heavy_at(ch, left as isize, top as usize, metrics);
+    } else {
+        canvas.draw_char_at(ch, left as isize, top as usize, metrics);
     }
 }
 

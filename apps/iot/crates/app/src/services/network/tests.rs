@@ -100,6 +100,7 @@ fn swipe(direction: SwipeDirection) -> InputEvent {
         end_y: 40,
         held_ms: 60,
         distance_px: 60,
+        at_ms: 0,
     })
 }
 

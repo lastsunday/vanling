@@ -99,7 +99,7 @@ pub trait CameraTarget {
         &mut self,
         now_ms: u64,
         period_ms: u32,
-        painter: &dyn crate::drivers::surface::ScreenPainter,
+        painter: &mut dyn crate::drivers::surface::ScreenPainter,
         snapshot: &dyn core::any::Any,
     ) -> bool;
 

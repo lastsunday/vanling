@@ -228,6 +228,7 @@ fn gestures_record_their_own_slot_and_free_the_point() {
         direction: SwipeDirection::Up,
         held_ms: 30,
         distance_px: 77,
+        at_ms: 0,
     })));
     manager.apply_input(op(InputEvent::Gesture(GestureEvent::Tap {
         id: 1,
@@ -277,6 +278,7 @@ fn diagonal_swipe_frees_the_live_slot_and_arrow() {
         direction: SwipeDirection::DownRight,
         held_ms: 40,
         distance_px: 28,
+        at_ms: 0,
     })));
     let state = manager.state();
     assert_eq!(
@@ -357,6 +359,7 @@ fn last_gesture_points_follow_resolved_gestures() {
         direction: SwipeDirection::DownRight,
         held_ms: 0,
         distance_px: 3,
+        at_ms: 0,
     })));
     assert_eq!(
         manager.state().touch.view.last_gesture_origin,

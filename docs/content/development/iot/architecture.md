@@ -146,11 +146,11 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 渲染答案分两层：`LocalPage::view` 用 `Ui` 的 `row`/`column`/`stack`/`wrap`/`scroll`/`text`/`custom` 声明整页，`services::paint` 取 `descriptor(page).view` 交给 `Panel`（布局一次、画字与盒子、再按槽调 `descriptor(page).custom`），最后盖角标；其余四个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`）。
 
-长内容页把滚动留在页面：`Style::scroll_area(id)` 给滚动盒命名，布局沿轴累加子节点（含 `gap`）并把矩形与可滚动距离记进 `Tree`，`Ui::scroll_info(id)` 读回；`shared::kit::scroll::ScrollState<N>` 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。`measure` 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag` 直接改偏移（越界半程阻尼），抬手用 `fling` 接手：速度带符号、阈值以下只回弹。被按住的区 `tick` 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 `Repaint::WhenOrOverlay`，`FrameSnapshot::animating()` 为真时渲染器保持 `TimeDriven`；`PageSystem` 在 `schedule.tick` 里把 `STEP_MS` 交给 `DeviceManager::tick_pages`，偏移因此与快照同帧。
+长内容页把滚动留在页面：`Style::scroll_area(id)` 给滚动盒命名，布局沿轴累加子节点（含 `gap`）并把矩形与可滚动距离记进 `Tree`，`Ui::scroll_info(id)` 读回；`shared::kit::scroll::ScrollState<N>` 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。`measure` 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag` 直接改偏移（越界半程阻尼），抬手用 `fling` 接手：速度带符号、阈值以下只回弹。被按住的区 `tick` 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 `Repaint::WhenOrOverlay`，`FrameSnapshot::animating()` 为真时渲染器保持 `TimeDriven`；`PageSystem` 在 `schedule.tick` 里把墙钟增量（首帧 0，夹到 `MAX_CATCH_UP_MS`）交给 `DeviceManager::tick_pages`，偏移因此与快照同帧，也不会因某帧光栅化慢而按固定步长少走。
 
 `text` 页在构造时断行一次：`typeset::wrap` 的每行按字节范围与宽度存进快照，声明时各是一个 `nowrap` + 显式宽度的文本节点；`layout_text` 对 nowrap 且宽度已定的节点跳过 `max_content`，一帧不再逐字查字模表。`\n`、`\r`、`\r\n` 都按硬换行处理。
 
-文字有两套面：12 px 点阵（`Face`，只有整倍放大）与矢量轮廓（`VectorFace`，按给定尺寸精确缩放）。`text` 页正文用矢量面 24 px，字模行与覆盖行仍用点阵；矢量表由 `cargo run -p iot-tool -- outline` 从 Noto Sans Mono CJK SC Regular（OFL-1.1）裁出，码点集合就是正文样张 `core/assets/font/vector-sample.txt`，表只存折线与 1/64 em 坐标，行高取 OS/2 的 typographic ascent + descent（本字面正好 1 em）。`Style::font_size(Length)` 定尺寸：`Px` 精确、`Dp` 是 5/4 px（2.0" 320×240 = 200 dpi 的 DPR）、`Rem` 是根字号 12 px 的百分之一；字重、字体族、装饰线与斜体压在 `Style::text_flags` 的一个 `u16` 里。颜色是 ARGB32：`Style`/`RunStyle` 存 16 槽调色板的 `ColorId`（声明期去重），`Canvas` 按覆盖率把字墨 src-over 混合到 RGB565；`Ui::span` 最多 8 条，只改颜色、装饰线与底色，不改行度量。矢量面缺任一字形时整行退回点阵（`Metrics::covering`），一行不会半矢量半点阵。
+文字有两套面：12 px 点阵（`Face`，只有整倍放大）与矢量轮廓（`VectorFace`，按给定尺寸精确缩放）。`text` 页正文用矢量面 24 px，字模行与覆盖行仍用点阵；矢量表由 `cargo run -p iot-tool -- outline` 从 Noto Sans Mono CJK SC Regular（OFL-1.1）裁出，码点集合就是正文样张 `core/assets/font/vector-sample.txt`，表只存折线与 1/64 em 坐标；行盒取 typographic 升降与全表墨迹包络的较大者，再加字号 1/8 的 leading（24 px → 30）。`Style::font_size(Length)` 定尺寸：`Px` 精确、`Dp` 是 5/4 px（2.0" 320×240 = 200 dpi 的 DPR）、`Rem` 是根字号 12 px 的百分之一；字重、字体族、装饰线与斜体压在 `Style::text_flags` 的一个 `u16` 里。颜色是 ARGB32：`Style`/`RunStyle` 存 16 槽调色板的 `ColorId`（声明期去重），`Canvas` 按覆盖率把字墨 src-over 混合到 RGB565；`Ui::span` 最多 8 条，只改颜色、装饰线与底色，不改行度量。矢量面缺任一字形时整行退回点阵（`Metrics::covering`），一行不会半矢量半点阵。矢量字形落在整像素上，因此覆盖率只取决于码点、字号与字重：`Canvas` 把 ≤24 px 的字形按 `(char, size, weight)` 收进 `GlyphCache`（堆上，约 69 KiB），首次栅格化后每帧只 `blit`；重墨先按 `over(a,b)=a+b-ab/16` 与左移一列合并成一张掩码再落一次，所以反色地面上不会互相抵消。更大的字号与未挂缓存的画布直接栅格化，超过 64×256 px 会触发断言而不是静默不画。
 
 页面可以用 `PageId::steady()` 声明稳态：`FrameSnapshot::steady` 让屏幕背光常 100（只有关灯才降 0），灯带停在声明颜色的相位 0 不再呼吸；页面自己的滚动仍按 `animating()` 保持 `TimeDriven`。今天的稳态集只有 `text`，`only_the_reading_page_holds_the_light_still` 钉住这一点。
 
@@ -166,13 +166,15 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 | `ui::typeset` | UAX #14 子集 + CLReq 禁则：行首不落 `。`、行尾不留 `「`；测量与绘制共用同一个断行器，`…` 截断 | `Paragraph { lines, count, truncated }`、`wrap`、`next_char` |
 | `ui::font` | 两套面：12 px 点阵 Fusion Pixel，GB2312 + Big5（15,466 字形）；矢量轮廓按 1/64 em 存折线。`Metrics` 按 `(family, size)` 给行高与步进；ASCII 步进 6 px、汉字 12 px（点阵），升部 10 行 | `Face`、`VectorFace`、`Metrics` |
 | `ui::panel` | 从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距 | `PANEL_COLUMNS`、`CONTENT_BOTTOM`、`LINE`、`ROW_PITCH`、`TOUCH_MIN` |
-| `ui::canvas` | 像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，矢量轮廓按 4 条子扫描线取覆盖；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char_at, draw_text_at, push_clip}` |
+| `ui::canvas` | 像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，矢量轮廓按 4 条子扫描线取覆盖，不超过 24 px 的字形按 `(char, size, weight)` 缓存进 `GlyphCache`；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char_at, draw_char_heavy_at, draw_text_at, push_clip, with_glyphs}`、`GlyphCache` |
 
 页面组合有两条硬规矩：读数行一律走 `chrome::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
 
 自绘叶子（波形、刻度盘、网络带）走槽派发：`Ui::custom(style, slot)` 只记槽号，`Ui::paint` 布局后按槽回调页面的 `Custom`。页面的 `view` 与自绘函数都不认识帧缓冲以外的世界，`Panel` 只认识一块 `Canvas` 与它属于哪块屏幕。
 
 布局是纯函数，但一帧里同一节点会被问很多次：flex 先测量再摆放，`grow` 级联还会换一组约束再问。`Tree` 因此在每个节点上记 `measured_at`（`enforce` 之后的四条约束压进一个 `u64`）与对应的 `measured`，同约束第二次问直接返回，约束变了才重测（高度单独变化也算）；新声明拿 `Node::default()` 的哨兵键，上一帧的尺寸不会冒充这一帧。像素层按「一次求边界、整段写」组织：glyph 按行取位图、空字节跳过八个像素，`fill_rect` 每行只求一次裁剪交集，`Start` 且单行的 `draw_text` 不跑断行器，`Screen::fill` 一次写两个像素。这些只改路径不改画面，整页黄金哈希守着。
+
+滚动帧不重画整页：`AppPainter` 留上一帧快照，只比较两个滚动区的偏移（其余字段必须相同），把已有像素原地 `memmove` 上移或下移，然后给出两份 `FrameDamage`（各最多 7 块，含底部徽标带）。**落墨集**只含进入视口的窄条、头部读数与 thumb，`Canvas` 按它裁剪落墨；**上屏集**含整个滚动框与 header、thumb，`St7789` 用 `CASET`/`RASET` 把这些交给面板——GRAM 不会自己搬像素，只写窄条会让框里其余行停在拖动开始时的内容上。底色改变、换页与相机帧退回整帧；overlay 只把底部 320×12 徽标带加进两份集合，不再让整页重绘。`ScreenPainter::reset` 负责让画布忘掉上一帧。
 
 `Services` 持有九个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
@@ -324,6 +326,8 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 - **命令**走 `Inbox`（`Network.commands`）：每个工作者一条入场队列。不等的发布者用 `publish`，满时让最旧的一条让位——协调者每帧只能走这条；不能丢的发布者用 `send().await`，等到有空位才入队（手机侧那条 `Join` 就是这样，它发完就停在自己的页面上）。队列深度取一帧最大的命令数（8 条意图），所以正常路径一条不丢，丢只发生在工作者落后一整帧以上。
 - **保留值**走 `PageWatch`/`Retained`（`Network.page`、`Scan` 的列表）：写入替换旧值，读走之后仍然在，所以面板与手机页面读的是同一份。启动页的结论不是保留值而是**一次性命令**：它走 `NetworkCommand::SplashOver { setup }`，与面板的其余请求同一条队列，工作者不必再看页面演进到哪一步。
 - **最新窗口**走 `Input.from`：1.7 KB 的采集样本只留最新一份，覆盖而不是排队。
+
+输入侧每个 tick 把该源本轮产生的事件全部取走（`PollEntry::poll_all` → `EventAggregator::drain`），每拍最多投递 `EVENT_BATCH = 5` 条：一次采样里两根手指同时移动会产出两个 `Drag`，只放行一个会让另一根手指永远落后一帧。`Press`/`Tap`/`Swipe`/`LongPress` 这类离散意图仍走 `send().await` 等空位，`Drag`/`Touch` 可被拒、下一次采样补上。
 
 `NetworkCommand` 的词汇表留在 `app/src/shared/model/network.rs`，句柄只负责搬运。命令由 `DeviceManager::apply_intent()`（定义在 `state/manager/write.rs`）作为 `Command` 返回，`Schedule::process_intents` 按 `Command::type_id()` 查注册表，交给声明了 `System::takes` 的那个系统，`NetworkSystem` 取走 `Command::Network` 那一支后 `publish`，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 `SetupHost`，工作者据此丢弃上一轮留下的请求。
 

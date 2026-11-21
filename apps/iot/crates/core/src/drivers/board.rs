@@ -140,7 +140,7 @@ mod tests {
             &mut self,
             _now_ms: u64,
             _period_ms: u32,
-            _painter: &dyn crate::drivers::surface::ScreenPainter,
+            _painter: &mut dyn crate::drivers::surface::ScreenPainter,
             _snapshot: &dyn core::any::Any,
         ) -> bool {
             false
@@ -152,7 +152,7 @@ mod tests {
     impl ScreenSurface for FakePage {
         fn repaint(
             &mut self,
-            _painter: &dyn crate::drivers::surface::ScreenPainter,
+            _painter: &mut dyn crate::drivers::surface::ScreenPainter,
             _snapshot: &dyn core::any::Any,
             _force: bool,
         ) -> bool {

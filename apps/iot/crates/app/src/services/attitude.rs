@@ -293,7 +293,10 @@ mod tests {
     fn the_numbers_do_not_move_the_layout() {
         let quiet = page(sample(0));
         let busy = page(sample(-1799));
-        assert!(quiet.node_count() <= 48, "the page outgrew one declaration");
+        assert!(
+            quiet.node_count() <= iot_core::ui::MAX_NODES,
+            "the page outgrew one declaration"
+        );
         assert_eq!(
             rects(&quiet),
             rects(&busy),

@@ -133,12 +133,14 @@ pub enum TextIntent {
         at_ms: u32,
     },
     /// The finger lifted. `lines` and `speed` are the swipe's fallback when no drag sample
-    /// arrived; a gesture that was dragged keeps its own velocity instead.
+    /// arrived; a gesture that was dragged keeps its own velocity instead. `at_ms` is when the
+    /// lift was seen, on the input clock: `None` for a hold, which is never a flick.
     Release {
         id: u8,
         area: u8,
         lines: i8,
         speed: u16,
+        at_ms: Option<u32>,
     },
     Scroll {
         area: u8,
@@ -231,6 +233,7 @@ mod tests {
             end_y: 5,
             held_ms: 75,
             distance_px: 99,
+            at_ms: 75,
         });
         let intent = recognize(event, 0);
         assert_eq!(intent.source, 0);

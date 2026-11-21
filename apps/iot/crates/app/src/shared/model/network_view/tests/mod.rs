@@ -147,6 +147,7 @@ fn slide_list(manager: &mut DeviceManager) -> Option<Command> {
         end_y: shape::LIST_TOP as u16,
         held_ms: 40,
         distance_px: (shape::LIST_ROW_H * 2) as u16,
+        at_ms: 0,
     }));
     manager.apply_input(operation);
     let business = translate(&operation, &manager.state(), manager.services());

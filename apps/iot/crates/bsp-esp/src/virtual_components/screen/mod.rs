@@ -5,7 +5,7 @@ use alloc::boxed::Box;
 
 use esp_hal::time::Duration;
 use iot_core::drivers::camera::FrameOwner;
-use iot_core::drivers::surface::RgbLight;
+use iot_core::drivers::surface::{FrameDamage, RgbLight};
 use iot_core::light::Rgb;
 
 use crate::components::backlight::Backlight;
@@ -29,10 +29,15 @@ const REPAINT_STEP: u8 = 12;
 pub(super) struct Pending {
     /// Whether the camera drew it: its failures are logged apart and do not force a repaint.
     pub(super) camera: bool,
+    /// The ground this frame was painted over, kept so a failed write can refill. `None`
+    /// for a camera frame, which has no ground.
+    pub(super) color: Option<Rgb>,
     pub(super) render: Duration,
     /// The ground write inside `render`: one pass over every pixel, so it is reported apart
     /// from the page's own ink.
     pub(super) fill: Duration,
+    /// The pixels this frame changed, which is what the bus ships.
+    pub(super) damage: FrameDamage,
 }
 
 /// ST7789 panel carrying the pages, the backlight and the camera's frame buffer.

@@ -163,6 +163,7 @@ fn any_press_that_ever_traveled_the_slide_threshold_is_a_swipe() {
             end_y: 125,
             held_ms: 90,
             distance_px: 120,
+            at_ms: 90,
         }))
     );
     assert!(agg.tick(400).is_none(), "no tap is buffered after a swipe");
@@ -179,6 +180,7 @@ fn any_press_that_ever_traveled_the_slide_threshold_is_a_swipe() {
             end_y: 10,
             held_ms: LONG_PRESS_MS as u16 + 1,
             distance_px: 100,
+            at_ms: LONG_PRESS_MS as u32 + 1,
         }))
     );
     let mut agg = TouchGestures::new();
@@ -205,6 +207,7 @@ fn any_press_that_ever_traveled_the_slide_threshold_is_a_swipe() {
             end_y: 125,
             held_ms: LONG_PRESS_MS as u16 + 100,
             distance_px: 120,
+            at_ms: LONG_PRESS_MS as u32 + 100,
         }))
     );
 }
@@ -479,6 +482,7 @@ fn an_end_gesture_after_a_tap_is_reported_behind_it() {
             end_y: 100,
             held_ms: 80,
             distance_px: 100,
+            at_ms: 480,
         })),
         "the slide's own sample reports the slide"
     );
@@ -600,6 +604,31 @@ fn phantom_echoes_pulse_once_and_leave_the_finger_armed() {
 }
 
 #[test]
+fn two_fingers_a_fingertip_apart_both_press() {
+    let mut agg = TouchGestures::new();
+    let first = agg.feed(
+        sample(&[
+            (TouchStatus::Down, 0, 100, 100),
+            (TouchStatus::Down, 1, 140, 100),
+        ]),
+        0,
+    );
+    assert!(matches!(
+        first,
+        Some(InputEvent::Gesture(GestureEvent::Press { id: 0, .. }))
+    ));
+    let mut second = None;
+    agg.drain(&mut |event| second = Some(event));
+    assert!(
+        matches!(
+            second,
+            Some(InputEvent::Gesture(GestureEvent::Press { id: 1, .. }))
+        ),
+        "a second finger 40 px away is a second finger, not a press-in echo"
+    );
+}
+
+#[test]
 fn concurrent_fingers_never_pair_into_one_gesture() {
     let mut agg = TouchGestures::new();
     assert_eq!(
@@ -630,6 +659,7 @@ fn concurrent_fingers_never_pair_into_one_gesture() {
             end_y: 125,
             held_ms: 90,
             distance_px: 120,
+            at_ms: 90,
         }))
     );
     assert_eq!(
@@ -709,6 +739,7 @@ fn same_sample_lifts_buffer_the_second_in_fifo() {
             end_y: 125,
             held_ms: 90,
             distance_px: 120,
+            at_ms: 90,
         }))
     );
     assert_eq!(
@@ -722,6 +753,7 @@ fn same_sample_lifts_buffer_the_second_in_fifo() {
             end_y: 170,
             held_ms: 90,
             distance_px: 76,
+            at_ms: 90,
         })),
         "the second event waited in FIFO, not dropped"
     );
@@ -729,6 +761,50 @@ fn same_sample_lifts_buffer_the_second_in_fifo() {
         agg.tick(110).is_none(),
         "and nothing else was reported for that frame"
     );
+}
+
+#[test]
+fn two_dragging_fingers_both_reach_the_page() {
+    let mut agg = TouchGestures::new();
+    let mut seen = alloc::vec::Vec::new();
+    let collect = |event: Option<InputEvent>, seen: &mut alloc::vec::Vec<(u8, u16)>| {
+        if let Some(InputEvent::Gesture(GestureEvent::Drag { id, x, .. })) = event {
+            seen.push((id, x));
+        }
+    };
+    collect(
+        agg.feed(
+            sample(&[
+                (TouchStatus::Down, 0, 20, 120),
+                (TouchStatus::Down, 1, 150, 200),
+            ]),
+            0,
+        ),
+        &mut seen,
+    );
+    for step in 1..=12u16 {
+        let moved = sample(&[
+            (TouchStatus::Contact, 0, 20 + step * 4, 120),
+            (TouchStatus::Contact, 1, 150 + step * 4, 200),
+        ]);
+        collect(agg.feed(moved, u64::from(step) * TOUCH_SCAN_MS), &mut seen);
+    }
+    while let Some(event) = agg.tick(200) {
+        collect(Some(event), &mut seen);
+    }
+
+    let last = |id: u8| {
+        seen.iter()
+            .filter(|(who, _)| *who == id)
+            .map(|(_, x)| *x)
+            .next_back()
+    };
+    assert_eq!(last(0), Some(68), "finger 0's latest position was dropped");
+    assert_eq!(last(1), Some(198), "finger 1's latest position was dropped");
+    for id in [0, 1] {
+        let count = seen.iter().filter(|(who, _)| *who == id).count();
+        assert!(count >= 6, "finger {id} only reported {count} drags");
+    }
 }
 
 #[test]
@@ -764,6 +840,94 @@ fn companion_lift_never_cycles_a_clean_hold_still_does() {
 }
 
 #[test]
+fn a_rejected_nearby_second_finger_presses_where_it_first_landed() {
+    let mut agg = TouchGestures::new();
+    assert_eq!(
+        agg.feed(sample(&[(TouchStatus::Down, 0, 100, 100)]), 0),
+        Some(InputEvent::Gesture(GestureEvent::Press {
+            id: 0,
+            x: 100,
+            y: 100
+        }))
+    );
+    assert_eq!(
+        agg.feed(
+            sample(&[
+                (TouchStatus::Contact, 0, 100, 100),
+                (TouchStatus::Down, 1, 110, 105),
+            ]),
+            PHANTOM_WINDOW_MS,
+        ),
+        Some(InputEvent::Gesture(GestureEvent::Ghost)),
+        "a close second contact inside the window is still read as an echo"
+    );
+    assert_eq!(
+        agg.feed(
+            sample(&[
+                (TouchStatus::Contact, 0, 100, 100),
+                (TouchStatus::Contact, 1, 118, 112),
+            ]),
+            2 * PHANTOM_WINDOW_MS,
+        ),
+        Some(InputEvent::Gesture(GestureEvent::Press {
+            id: 1,
+            x: 110,
+            y: 105
+        })),
+        "the delayed press names the point the finger landed in, not where it has moved"
+    );
+    assert!(
+        agg.tick(2 * PHANTOM_WINDOW_MS).is_none(),
+        "the leap from the parked point to the first sample is not a drag"
+    );
+    assert_eq!(
+        agg.feed(
+            sample(&[
+                (TouchStatus::Contact, 0, 100, 100),
+                (TouchStatus::Contact, 1, 125, 116),
+            ]),
+            3 * PHANTOM_WINDOW_MS,
+        ),
+        Some(InputEvent::Gesture(GestureEvent::Drag {
+            id: 1,
+            x: 125,
+            y: 116,
+            at_ms: (3 * PHANTOM_WINDOW_MS) as u32,
+        })),
+        "the drag baseline starts at the accepted position"
+    );
+    assert_eq!(
+        agg.feed(
+            sample(&[
+                (TouchStatus::Release, 0, 100, 100),
+                (TouchStatus::Release, 1, 125, 116),
+            ]),
+            4 * PHANTOM_WINDOW_MS,
+        ),
+        Some(InputEvent::Gesture(GestureEvent::Tap {
+            id: 0,
+            x: 100,
+            y: 100,
+            held_ms: (4 * PHANTOM_WINDOW_MS) as u16,
+            at_ms: (4 * PHANTOM_WINDOW_MS) as u32,
+        })),
+        "the first finger still taps at its own down point"
+    );
+    let second = agg.tick(4 * PHANTOM_WINDOW_MS).expect("the queued tap");
+    assert_eq!(
+        second,
+        InputEvent::Gesture(GestureEvent::Tap {
+            id: 1,
+            x: 110,
+            y: 105,
+            held_ms: (2 * PHANTOM_WINDOW_MS) as u16,
+            at_ms: (4 * PHANTOM_WINDOW_MS) as u32,
+        }),
+        "the delayed finger taps where it landed too"
+    );
+}
+
+#[test]
 fn isqrt_u32_floors_perfect_and_imperfect_squares() {
     assert_eq!(isqrt_u32(0), 0);
     assert_eq!(isqrt_u32(1), 1);
@@ -780,4 +944,54 @@ fn chip_gestures_pass_through_unmodified() {
         agg.feed(InputEvent::ChipGesture(0x10), 0),
         Some(InputEvent::ChipGesture(0x10))
     );
+}
+
+/// Two fingers moving in the same sample: the second drag is queued behind the first, and a
+/// caller that only takes one event per poll makes that finger lag a whole cadence.
+#[test]
+fn both_fingers_drags_come_out_of_one_sample() {
+    let mut agg = TouchGestures::new();
+    agg.feed(
+        sample(&[
+            (TouchStatus::Down, 0, 40, 100),
+            (TouchStatus::Down, 1, 200, 100),
+        ]),
+        0,
+    );
+    let mut held = [None; 2];
+    let mut n = 0;
+    agg.drain(&mut |event| {
+        held[n] = Some(event);
+        n += 1;
+    });
+    assert_eq!(n, 1, "the second press waited behind the first");
+    assert!(matches!(
+        held[0],
+        Some(InputEvent::Gesture(GestureEvent::Press { id: 1, .. }))
+    ));
+
+    let first = agg
+        .feed(
+            sample(&[
+                (TouchStatus::Contact, 0, 40, 96),
+                (TouchStatus::Contact, 1, 200, 104),
+            ]),
+            10,
+        )
+        .expect("a sample that moved both fingers is news");
+    let mut second = None;
+    agg.drain(&mut |event| second = Some(event));
+
+    assert!(matches!(
+        first,
+        InputEvent::Gesture(GestureEvent::Drag { id: 0, y: 96, .. })
+    ));
+    assert!(matches!(
+        second,
+        Some(InputEvent::Gesture(GestureEvent::Drag {
+            id: 1,
+            y: 104,
+            ..
+        }))
+    ));
 }

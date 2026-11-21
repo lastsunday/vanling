@@ -89,7 +89,7 @@ impl ScreenRenderer {
 
     fn paint_last(&mut self) {
         if let Some(snapshot) = self.last_snapshot.as_ref() {
-            self.surface.repaint(&*self.painter, snapshot, false);
+            self.surface.repaint(&mut *self.painter, snapshot, false);
         }
     }
 
@@ -150,7 +150,7 @@ impl ScreenRenderer {
     }
 
     fn repaint(&mut self, snapshot: &dyn Any, force: bool) -> bool {
-        self.surface.repaint(&*self.painter, snapshot, force)
+        self.surface.repaint(&mut *self.painter, snapshot, force)
     }
 }
 
@@ -212,7 +212,7 @@ impl Renderer for ScreenRenderer {
             self.surface.paint_camera(
                 u64::from(now_ms),
                 self.camera_period_ms,
-                &*self.painter,
+                &mut *self.painter,
                 snapshot,
             );
             return Drive::TimeDriven;
@@ -272,10 +272,16 @@ mod tests {
     struct NullPainter;
 
     impl ScreenPainter for NullPainter {
-        fn paint(&self, _target: ScreenTarget<'_>, _context: ScreenContext, _snapshot: &dyn Any) {}
+        fn paint(
+            &mut self,
+            _target: ScreenTarget<'_>,
+            _context: ScreenContext,
+            _snapshot: &dyn Any,
+        ) {
+        }
 
         fn paint_camera(
-            &self,
+            &mut self,
             _target: ScreenTarget<'_>,
             _readout: CameraSnapshot,
             _context: ScreenContext,
@@ -342,7 +348,7 @@ mod tests {
 
         fn repaint(
             &mut self,
-            _painter: &dyn ScreenPainter,
+            _painter: &mut dyn ScreenPainter,
             _snapshot: &dyn Any,
             _force: bool,
         ) -> bool {
@@ -355,7 +361,7 @@ mod tests {
             &mut self,
             _now_ms: u64,
             period_ms: u32,
-            _painter: &dyn ScreenPainter,
+            _painter: &mut dyn ScreenPainter,
             _snapshot: &dyn Any,
         ) -> bool {
             let mut screen = self.0.borrow_mut();

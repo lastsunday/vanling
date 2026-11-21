@@ -547,6 +547,7 @@ impl PanelBench {
                 end_y: 0,
                 held_ms: 40,
                 distance_px: band_center(LIST_ROWS - 1),
+                at_ms: 0,
             }),
         };
         let _ = bus.try_send(Intent::Input(recognize(event, 0)));

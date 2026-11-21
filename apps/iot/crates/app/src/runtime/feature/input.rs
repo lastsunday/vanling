@@ -9,11 +9,15 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::{Channel, ReceiveReadyFuture, TryReceiveError, TrySendError};
 use embassy_time::{Duration, Instant, Ticker};
 use iot_core::demand::{EffectiveDemand, MAX_SINGLE_HOLD_MS, PollPlan, plan_poll};
-use iot_core::drivers::input::{INPUT_BASE_MS, PollEntry};
+use iot_core::drivers::input::{GestureEvent, INPUT_BASE_MS, InputEvent, PollEntry};
 
 use iot_core::config::{Configuration, Configurator, Unreachable};
 
 pub const INTENT_SLOTS: usize = 8;
+
+/// Most events one source can resolve from one sample: the event the poll returns plus the
+/// four the aggregator may still hold.
+const EVENT_BATCH: usize = 5;
 
 /// The ring between the workers and the coordinator, and the count of what it refused.
 ///
@@ -171,6 +175,21 @@ fn apply(
     apply_decision(sources, decision, &plans, now_ms)
 }
 
+/// Whether this event is a transition rather than a position: a page that misses it either
+/// never starts a gesture or never ends one.
+fn must_arrive(event: &InputEvent) -> bool {
+    matches!(
+        event,
+        InputEvent::Button(_)
+            | InputEvent::Gesture(
+                GestureEvent::Press { .. }
+                    | GestureEvent::Swipe { .. }
+                    | GestureEvent::Tap { .. }
+                    | GestureEvent::LongPress { .. }
+            )
+    )
+}
+
 /// Drains every input source at the shared base tick and forwards recognized operations.
 pub async fn input_task(
     intent_bus: &'static IntentBus,
@@ -204,9 +223,26 @@ pub async fn input_task(
                 continue;
             }
             let poll_start = Instant::now();
-            if let Some(event) = entry.poll(now_ms) {
+            // One sample can resolve more than one gesture: two fingers move together, so
+            // both drags belong to this tick rather than to the next one.
+            let mut batch = [None; EVENT_BATCH];
+            let mut len = 0;
+            entry.poll_all(now_ms, &mut |event| {
+                if let Some(slot) = batch.get_mut(len) {
+                    *slot = Some(event);
+                    len += 1;
+                }
+            });
+            for event in batch.into_iter().flatten() {
                 let intent = Intent::Input(recognize(event, entry.source_id()));
-                let _ = intent_bus.try_send(intent);
+                // A press or a lift is a transition the page cannot reconstruct from a later
+                // sample, so it waits for room; a drag or a raw sample is superseded by the
+                // next poll and may be refused.
+                if must_arrive(&event) {
+                    intent_bus.send(intent).await;
+                } else {
+                    let _ = intent_bus.try_send(intent);
+                }
             }
             entry.advance_past(now_ms);
             let took_us = poll_start.elapsed().as_micros();
@@ -593,6 +629,70 @@ mod tests {
             u32::MAX,
             "a count that reached the ceiling stays there instead of wrapping to zero"
         );
+    }
+
+    #[test]
+    fn a_transition_waits_for_room_while_a_position_may_be_refused() {
+        use iot_core::drivers::input::{
+            ButtonEvent, SwipeDirection, TouchEvent, TouchPoint, TouchStatus,
+        };
+
+        for event in [
+            InputEvent::Button(ButtonEvent::Click),
+            InputEvent::Gesture(GestureEvent::Press { id: 0, x: 1, y: 2 }),
+            InputEvent::Gesture(GestureEvent::Swipe {
+                id: 0,
+                direction: SwipeDirection::Up,
+                x: 0,
+                y: 0,
+                end_x: 0,
+                end_y: 60,
+                held_ms: 100,
+                distance_px: 60,
+                at_ms: 100,
+            }),
+            InputEvent::Gesture(GestureEvent::Tap {
+                id: 0,
+                x: 0,
+                y: 0,
+                held_ms: 10,
+                at_ms: 10,
+            }),
+            InputEvent::Gesture(GestureEvent::LongPress {
+                id: 0,
+                x: 0,
+                y: 0,
+                held_ms: 600,
+            }),
+        ] {
+            assert!(must_arrive(&event), "{event:?} may not be dropped");
+        }
+
+        let touch = TouchEvent {
+            points: [TouchPoint {
+                id: 0,
+                x: 0,
+                y: 0,
+                status: TouchStatus::Contact,
+            }; iot_core::drivers::input::MAX_TOUCH_POINTS],
+            len: 1,
+        };
+        for event in [
+            InputEvent::Touch(touch),
+            InputEvent::Gesture(GestureEvent::Drag {
+                id: 0,
+                x: 0,
+                y: 0,
+                at_ms: 10,
+            }),
+            InputEvent::Gesture(GestureEvent::Ghost),
+            InputEvent::ChipGesture(0x10),
+        ] {
+            assert!(
+                !must_arrive(&event),
+                "{event:?} is superseded by the next poll"
+            );
+        }
     }
 
     const MOTION_CADENCE_MS: u64 = iot_core::drivers::motion::MOTION_SCAN_MS;

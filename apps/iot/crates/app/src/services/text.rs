@@ -21,7 +21,7 @@ use iot_core::ui::font::{Face, FontFamily, Metrics as FontMetrics};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
 use iot_core::ui::{
-    BoxConstraints, Color, FontWeight, Length, PX, RunStyle, Screen, ScrollId, Style, Ui,
+    BoxConstraints, Color, FontWeight, Length, PX, Rect, RunStyle, Screen, ScrollId, Style, Ui,
 };
 
 use super::{Descriptor, Repaint};
@@ -43,10 +43,21 @@ const SCROLL: ScrollConfig = ScrollConfig {
 
 /// The thumb's width, and the air between it and the scroll box.
 const BAR: i16 = 2;
+/// The region header above a box: one 12 px line and the row gap under it.
+const HEADER_PX: i32 = 13;
+/// The gutter beside a box: the air and the thumb.
+const GUTTER_PX: i32 = 2 * BAR as i32;
 const MIN_THUMB: i32 = 8;
 
-/// Frames without a drag sample after which a held finger counts as stopped, not flung.
-const STILL_STEPS: u8 = 5;
+/// How long after the last drag sample a lift may still read as a flick. Three touch scans:
+/// past that the finger stopped moving without a new sample, so the tail velocity is stale.
+/// The loop parks while a finger rests, so counting frames cannot answer this.
+const STILL_GAP_MS: u32 = 30;
+
+/// This page's repaint step. A scroll frame blits the pixels already in the buffer and ships
+/// only the exposed strips, so it fits the frame loop's 20 ms cadence; the shared 40 ms floor
+/// made a drag update once every two frames, which read as a stutter.
+const REPAINT_MS: u64 = 20;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Drag {
@@ -56,7 +67,6 @@ struct Drag {
     at_ms: u32,
     /// Offset pixels per second, positive when the content moves up.
     velocity: i16,
-    idle: u8,
     moved: bool,
 }
 
@@ -85,11 +95,33 @@ impl Default for TextPage {
         finish(&mut ui);
         let mut scroll = ScrollState::default();
         scroll.measure(&ui, AREAS, SCROLL);
+        scroll.set_line_px(0, wrap_line_px());
         Self {
             scroll,
             text,
             drag: [None; TEXT_AREAS],
         }
+    }
+}
+
+impl TextPage {
+    /// Binds `id` to `area` at `y`. A drag whose press was lost claims at the current point,
+    /// so the region starts under the finger instead of jumping by the missing samples.
+    fn claim(&mut self, id: u8, area: u8, y: i16, at_ms: u32) -> bool {
+        let slot = usize::from(area).min(TEXT_AREAS - 1);
+        if self.drag[slot].is_some() {
+            return false;
+        }
+        self.scroll.drag(area, 0);
+        self.drag[slot] = Some(Drag {
+            id,
+            area,
+            y,
+            at_ms,
+            velocity: 0,
+            moved: false,
+        });
+        true
     }
 }
 
@@ -104,29 +136,18 @@ impl super::Service for TextPage {
         };
         match *intent {
             TextIntent::Press { id, area, y } => {
-                let slot = usize::from(area).min(TEXT_AREAS - 1);
                 // A region already held keeps the finger it has; a third finger finds no
                 // region to claim and moves nothing.
-                if self.drag[slot].is_some() {
-                    return (None, Effects::default());
-                }
-                self.scroll.drag(area, 0);
-                self.drag[slot] = Some(Drag {
-                    id,
-                    area,
-                    y,
-                    at_ms: 0,
-                    velocity: 0,
-                    idle: 0,
-                    moved: false,
-                });
+                self.claim(id, area, y, 0);
             }
-            TextIntent::Drag { id, x: _, y, at_ms } => {
-                // A third finger arrives with an id no region claimed, so it moves nothing.
+            TextIntent::Drag { id, x, y, at_ms } => {
+                let y = i16::try_from(y).unwrap_or(i16::MAX);
                 let Some(drag) = self.drag.iter_mut().flatten().find(|drag| drag.id == id) else {
+                    if let Some(area) = self.scroll.area_at(i32::from(x), i32::from(y)) {
+                        self.claim(id, area, y, at_ms);
+                    }
                     return (None, Effects::default());
                 };
-                let y = i16::try_from(y).unwrap_or(i16::MAX);
                 let delta = i32::from(drag.y) - i32::from(y);
                 if drag.at_ms != 0 {
                     let dt = at_ms.saturating_sub(drag.at_ms).max(1);
@@ -145,7 +166,6 @@ impl super::Service for TextPage {
                 );
                 drag.y = y;
                 drag.at_ms = at_ms;
-                drag.idle = 0;
                 drag.moved = true;
             }
             TextIntent::Release {
@@ -153,6 +173,7 @@ impl super::Service for TextPage {
                 area,
                 lines,
                 speed,
+                at_ms,
             } => {
                 let slot = self
                     .drag
@@ -160,16 +181,15 @@ impl super::Service for TextPage {
                     .position(|drag| drag.as_ref().is_some_and(|drag| drag.id == id));
                 if let Some(slot) = slot {
                     let drag = self.drag[slot].take().expect("the slot was found");
-                    if drag.moved {
-                        let speed = if drag.idle <= STILL_STEPS {
+                    let speed = match at_ms {
+                        Some(at_ms)
+                            if drag.moved && at_ms.saturating_sub(drag.at_ms) <= STILL_GAP_MS =>
+                        {
                             drag.velocity
-                        } else {
-                            0
-                        };
-                        self.scroll.fling(drag.area, speed);
-                    } else {
-                        self.scroll.fling(drag.area, 0);
-                    }
+                        }
+                        _ => 0,
+                    };
+                    self.scroll.fling(drag.area, speed);
                     return (None, Effects::default());
                 }
                 self.scroll
@@ -205,6 +225,7 @@ impl super::LocalPage for TextPage {
                 y,
                 held_ms,
                 distance_px,
+                at_ms,
                 ..
             }) => {
                 let (lines, speed) = match direction {
@@ -218,16 +239,31 @@ impl super::LocalPage for TextPage {
                     area,
                     lines,
                     speed,
+                    at_ms: Some(at_ms),
                 }))
             }
-            InputEvent::Gesture(GestureEvent::Tap { id, x, y, .. })
-            | InputEvent::Gesture(GestureEvent::LongPress { id, x, y, .. }) => {
+            InputEvent::Gesture(GestureEvent::Tap {
+                id, x, y, at_ms, ..
+            }) => {
                 let area = area(x, y)?;
                 Some(BusinessIntent::Text(TextIntent::Release {
                     id,
                     area,
                     lines: 0,
                     speed: 0,
+                    at_ms: Some(at_ms),
+                }))
+            }
+            InputEvent::Gesture(GestureEvent::LongPress { id, x, y, .. }) => {
+                let area = area(x, y)?;
+                Some(BusinessIntent::Text(TextIntent::Release {
+                    id,
+                    area,
+                    lines: 0,
+                    speed: 0,
+                    // A hold is not a flick: whatever the drag tail last measured is older
+                    // than the long-press threshold by definition.
+                    at_ms: None,
                 }))
             }
             _ => None,
@@ -243,8 +279,16 @@ impl super::LocalPage for TextPage {
         out.text.ascii = self.text.ascii;
         for (view, area) in out.text.areas.iter_mut().zip(self.scroll.areas().iter()) {
             let max = area.max();
+            let rect = area.rect;
             *view = ScrollAreaView {
-                rect: area.rect,
+                rect,
+                header: Rect::new(rect.x, rect.y - HEADER_PX, rect.w + GUTTER_PX, HEADER_PX),
+                gutter: Rect::new(
+                    rect.right() + i32::from(BAR),
+                    rect.y,
+                    i32::from(BAR),
+                    rect.h,
+                ),
                 offset: area.offset,
                 max,
                 bar: config.bar && max > 0,
@@ -258,13 +302,12 @@ impl super::LocalPage for TextPage {
     }
 
     fn descriptor() -> Descriptor {
-        Descriptor::new(Self::view).with_repaints(Repaint::WhenOrOverlay(text_moved))
+        Descriptor::new(Self::view)
+            .with_repaint_ms(REPAINT_MS)
+            .with_repaints(Repaint::WhenOrOverlay(text_moved))
     }
 
     fn tick(&mut self, step_ms: u16) {
-        for drag in self.drag.iter_mut().flatten() {
-            drag.idle = drag.idle.saturating_add(1);
-        }
         self.scroll.tick(step_ms);
     }
 
@@ -276,6 +319,13 @@ impl super::LocalPage for TextPage {
 
 fn headless() -> Ui<'static, 'static> {
     Ui::headless(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default())
+}
+
+/// Rows one wrapped line takes: the face's ink box plus its leading, the same rhythm layout
+/// and paint use.
+fn wrap_line_px() -> i16 {
+    let height = iot_core::ui::typeset::line_height(FontMetrics::vector(u16::from(WRAP_PX)));
+    i16::try_from(height).unwrap_or(i16::MAX)
 }
 
 fn finish(ui: &mut Ui<'_, '_>) {
@@ -489,6 +539,76 @@ mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use crate::shared::kit::scroll::LINE_PX;
+    use iot_core::ui::{MAX_NODES, TEXT_BYTES};
+
+    fn sample(points: &[(iot_core::drivers::input::TouchStatus, u8, u16, u16)]) -> InputEvent {
+        use iot_core::drivers::input::{MAX_TOUCH_POINTS, TouchEvent, TouchPoint, TouchStatus};
+        let mut event = TouchEvent {
+            points: [TouchPoint {
+                status: TouchStatus::Release,
+                id: 0,
+                x: 0,
+                y: 0,
+            }; MAX_TOUCH_POINTS],
+            len: points.len() as u8,
+        };
+        for (slot, &(status, id, x, y)) in points.iter().enumerate() {
+            event.points[slot] = TouchPoint { status, id, x, y };
+        }
+        InputEvent::Touch(event)
+    }
+
+    /// Feeds one raw sample and routes every folded gesture, including the ones the
+    /// aggregator buffered behind the first.
+    fn drive(
+        agg: &mut iot_core::drivers::input::TouchGestures,
+        page: &mut TextPage,
+        event: InputEvent,
+        now_ms: u64,
+    ) {
+        use iot_core::drivers::input::EventAggregator;
+        let mut next = agg.feed(event, now_ms);
+        while let Some(event) = next {
+            if let Some(intent) =
+                page.bind(&InputIntent { source: 0, event }, &DeviceState::default())
+            {
+                apply(page, expect_text(intent));
+            }
+            next = agg.tick(now_ms);
+        }
+    }
+
+    #[test]
+    fn two_fingers_land_and_scroll_both_regions_end_to_end() {
+        use iot_core::drivers::input::{TouchGestures, TouchStatus};
+
+        let mut page = TextPage::default();
+        let (x0, y0) = center(&page.scroll.areas()[0]);
+        let (x1, y1) = center(&page.scroll.areas()[1]);
+        let mut agg = TouchGestures::new();
+        drive(
+            &mut agg,
+            &mut page,
+            sample(&[
+                (TouchStatus::Down, 0, x0, y0),
+                (TouchStatus::Down, 1, x1, y1),
+            ]),
+            0,
+        );
+        for step in 1..=4u16 {
+            drive(
+                &mut agg,
+                &mut page,
+                sample(&[
+                    (TouchStatus::Contact, 0, x0, y0 - step * 4),
+                    (TouchStatus::Contact, 1, x1, y1 - step * 2),
+                ]),
+                u64::from(step) * 10,
+            );
+        }
+        assert_eq!(page.scroll.areas()[0].offset, 16);
+        assert_eq!(page.scroll.areas()[1].offset, 8);
+    }
 
     fn gesture(event: GestureEvent) -> InputIntent {
         InputIntent {
@@ -507,6 +627,7 @@ mod tests {
             end_y: y,
             held_ms: 100,
             distance_px: 120,
+            at_ms: 500,
         })
     }
 
@@ -524,8 +645,6 @@ mod tests {
 
     #[test]
     fn the_sample_text_breaks_at_both_kinds_of_newline() {
-        // The page keeps 14 lines of the paragraph on its node budget; the breaker still has
-        // to see the whole run a paragraph can hold.
         let page = TextPage::default();
         let width = usize::try_from(page.scroll.areas()[0].rect.w).expect("a panel width");
         let paragraph = iot_core::ui::typeset::wrap(
@@ -615,7 +734,11 @@ mod tests {
         let mut page = TextPage::default();
         page.scroll.scroll(0, STEP_LINES, 0);
         let wrap = page.scroll.areas()[0].offset;
-        assert_eq!(wrap, i16::from(STEP_LINES) * LINE_PX);
+        assert_eq!(
+            wrap,
+            i16::from(STEP_LINES) * wrap_line_px(),
+            "the Wrap region steps by its own line, not the table's 12 px one"
+        );
         assert_eq!(page.scroll.areas()[1].offset, 0);
         page.scroll.scroll(1, STEP_LINES, 0);
         assert_eq!(
@@ -636,6 +759,7 @@ mod tests {
                 area: 1,
                 lines: STEP_LINES,
                 speed: 1_200,
+                at_ms: Some(500),
             }))
         );
     }
@@ -651,6 +775,7 @@ mod tests {
                 area: 0,
                 lines: 0,
                 speed: 0,
+                at_ms: Some(500),
             }))
         );
         assert_eq!(
@@ -723,10 +848,89 @@ mod tests {
                 area: 1,
                 lines: STEP_LINES,
                 speed: 1_600,
+                at_ms: Some(130),
             },
         );
         assert!(page.scroll.areas()[1].offset >= moved, "no step was added");
         assert!(page.scroll.moving(), "the release flings");
+    }
+
+    #[test]
+    fn a_release_long_after_the_last_sample_does_not_fling() {
+        let mut page = TextPage::default();
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 0,
+                area: 1,
+                y: 40,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 0,
+                x: 0,
+                y: 20,
+                at_ms: 100,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 0,
+                x: 0,
+                y: 0,
+                at_ms: 120,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Release {
+                id: 0,
+                area: 1,
+                lines: 0,
+                speed: 0,
+                at_ms: Some(900),
+            },
+        );
+        assert!(
+            !page.scroll.moving(),
+            "a finger that stopped moving before the lift must not fling"
+        );
+    }
+
+    #[test]
+    fn a_hold_never_flings_whatever_the_drag_tail_measured() {
+        let mut page = TextPage::default();
+        apply(
+            &mut page,
+            TextIntent::Press {
+                id: 0,
+                area: 1,
+                y: 40,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 0,
+                x: 0,
+                y: 20,
+                at_ms: 100,
+            },
+        );
+        apply(
+            &mut page,
+            TextIntent::Release {
+                id: 0,
+                area: 1,
+                lines: 0,
+                speed: 0,
+                at_ms: None,
+            },
+        );
+        assert!(!page.scroll.moving(), "a long press is not a flick");
     }
 
     #[test]
@@ -739,6 +943,7 @@ mod tests {
                 area: 1,
                 lines: STEP_LINES,
                 speed: 0,
+                at_ms: Some(0),
             },
         );
         assert_eq!(
@@ -776,6 +981,7 @@ mod tests {
                 area: 1,
                 lines: 0,
                 speed: 0,
+                at_ms: Some(110),
             },
         );
         assert_eq!(page.scroll.areas()[1].offset, moved);
@@ -865,6 +1071,7 @@ mod tests {
                 area: 0,
                 lines: 0,
                 speed: 0,
+                at_ms: Some(110),
             },
         );
         apply(
@@ -911,6 +1118,7 @@ mod tests {
                 area: 0,
                 lines: 0,
                 speed: 1_600,
+                at_ms: Some(130),
             },
         );
         apply(
@@ -920,6 +1128,7 @@ mod tests {
                 area: 1,
                 lines: 0,
                 speed: 1_600,
+                at_ms: Some(130),
             },
         );
         assert!(page.scroll.moving(), "both regions kept their speed");
@@ -927,6 +1136,69 @@ mod tests {
         page.tick(16);
         assert!(page.scroll.areas()[0].offset > before.0);
         assert!(page.scroll.areas()[1].offset > before.1);
+    }
+
+    #[test]
+    fn a_drag_without_a_press_claims_its_region_where_it_lands() {
+        let mut page = TextPage::default();
+        let (x, y) = center(&page.scroll.areas()[1]);
+        let first = page
+            .bind(
+                &gesture(GestureEvent::Drag {
+                    id: 7,
+                    x,
+                    y,
+                    at_ms: 100,
+                }),
+                &DeviceState::default(),
+            )
+            .expect("a drag inside the region");
+        let intent = expect_text(first);
+        assert!(
+            matches!(intent, TextIntent::Drag { id: 7, .. }),
+            "the drag reaches the page unclaimed"
+        );
+        apply(&mut page, intent);
+        assert_eq!(
+            page.scroll.areas()[1].offset,
+            0,
+            "claiming sets the baseline at the current point, not the lost press"
+        );
+        let second = page
+            .bind(
+                &gesture(GestureEvent::Drag {
+                    id: 7,
+                    x,
+                    y: y - 18,
+                    at_ms: 120,
+                }),
+                &DeviceState::default(),
+            )
+            .expect("a second drag");
+        apply(&mut page, expect_text(second));
+        assert_eq!(
+            page.scroll.areas()[1].offset,
+            18,
+            "the region follows the finger that never pressed"
+        );
+        assert_eq!(page.scroll.areas()[0].offset, 0);
+    }
+
+    #[test]
+    fn a_drag_outside_both_regions_claims_nothing() {
+        let mut page = TextPage::default();
+        apply(
+            &mut page,
+            TextIntent::Drag {
+                id: 9,
+                x: 0,
+                y: 0,
+                at_ms: 100,
+            },
+        );
+        assert!(page.drag.iter().all(Option::is_none));
+        assert_eq!(page.scroll.areas()[0].offset, 0);
+        assert_eq!(page.scroll.areas()[1].offset, 0);
     }
 
     #[test]
@@ -992,16 +1264,26 @@ mod tests {
     }
 
     #[test]
-    fn the_declaration_fits_the_node_arena() {
+    fn the_declaration_fits_its_arena() {
         let page = TextPage::default();
         let mut snapshot = FrameSnapshot::default();
         snapshot.pages.text = page.text;
         let mut ui = headless();
         declare(&snapshot, &mut ui);
+        assert_eq!(
+            usize::from(page.text.line_count),
+            TEXT_LINES,
+            "the sample must fill the window, or the truncation test proves nothing"
+        );
         assert!(
-            ui.node_count() <= 48,
+            ui.node_count() <= MAX_NODES,
             "the text page declared {} nodes",
             ui.node_count()
+        );
+        assert!(
+            ui.text_bytes() <= TEXT_BYTES,
+            "the text page copied {} B of run",
+            ui.text_bytes()
         );
     }
 

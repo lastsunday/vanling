@@ -293,7 +293,7 @@ where
     schedule.register(NetworkSystem::new(state, network));
     schedule.register(PlaybackSystem::new(state.playback, playback));
     schedule.register(NoticeSystem);
-    schedule.register(PageSystem);
+    schedule.register(PageSystem::new());
     schedule.register(DemandSystem::new(Input::new(demand, capture)));
     schedule.register(GovernorSystem::new(&mut clock));
     if let Some(system) = extra {

@@ -215,6 +215,7 @@ fn swipe(manager: &mut DeviceManager, direction: SwipeDirection, end_y: u16) -> 
             end_y,
             held_ms: 40,
             distance_px: 60,
+            at_ms: 0,
         }),
     )
 }

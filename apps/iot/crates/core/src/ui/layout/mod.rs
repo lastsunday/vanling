@@ -15,6 +15,7 @@ mod scroll;
 mod style;
 
 pub use self::constraints::{BoxConstraints, PX};
+pub use self::node::MAX_NODES;
 pub use self::node::NodeId;
 pub(crate) use self::node::{NodeInfo, NodeKind, Span};
 pub use self::scroll::{ScrollId, ScrollInfo};
@@ -24,7 +25,7 @@ pub use self::style::{
 };
 
 use self::constraints::{INFINITY, Point, Size, Subpx, pixels, tight};
-use self::node::{MAX_NODES, Measured, NONE, Node};
+use self::node::{Measured, NONE, Node};
 
 use super::typeset;
 use crate::ui::Rect;

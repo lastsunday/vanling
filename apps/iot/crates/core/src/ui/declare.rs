@@ -12,7 +12,7 @@ use super::screen::Screen;
 
 /// Bytes of run a single declaration may hold. Enough for a full debug page and two screens of
 /// keys.
-const TEXT_BYTES: usize = 2048;
+pub const TEXT_BYTES: usize = 2048;
 
 /// Custom leaves a page may declare: one per band or band-sized mark.
 const PAINTS: usize = 8;
@@ -154,6 +154,11 @@ impl<'a, 's> Ui<'a, 's> {
     /// Declares a run of text; the bytes are copied so a formatted buffer can be reused at once.
     pub fn text(&mut self, run: &[u8], style: Style) -> NodeId {
         let room = TEXT_BYTES - self.used;
+        debug_assert!(
+            run.len() <= room,
+            "the declaration ran out of text: {} B for {room} B of room",
+            run.len()
+        );
         let mut len = run.len().min(room);
         if len < run.len() {
             len = core::str::from_utf8(&run[..len])
@@ -218,6 +223,11 @@ impl<'a, 's> Ui<'a, 's> {
     /// How many nodes the declaration holds.
     pub fn node_count(&self) -> usize {
         self.tree.len()
+    }
+
+    /// How many bytes of text the declaration copied, against [`TEXT_BYTES`].
+    pub fn text_bytes(&self) -> usize {
+        self.used
     }
 
     /// Every node's rectangle, in declaration order.
@@ -305,11 +315,18 @@ impl<'a, 's> Ui<'a, 's> {
 mod tests {
     use super::*;
     use crate::ui::layout::PX;
-    use crate::ui::{DecorationStyle, FontWeight, Length};
+    use crate::ui::{DecorationStyle, FontFamily, FontWeight, Length};
 
-    /// The declaration lives on the panel core's stack for the length of one page. This is
-    /// the budget the panel's stack was sized against; a page that needs more nodes must fit
-    /// them in it, not grow the array quietly.
+    /// The declaration lives on the panel core's stack (24 KiB on the S3) for the length of
+    /// one page, so it is budgeted separately from that stack's other work. Every page's
+    /// boxes are part of it: the 25-line Wrap window and its one box per line are why the
+    /// ceiling is 12 KiB rather than the 10 KiB the 14-line page needed.
+    #[test]
+    fn a_declaration_fits_the_stack_the_panel_core_was_given() {
+        let bytes = core::mem::size_of::<Ui<'static, 'static>>();
+        assert!(bytes <= 12 * 1024, "a declaration is {bytes} B");
+    }
+
     #[test]
     fn a_scroll_box_clips_the_lines_below_it() {
         const W: usize = 100;
@@ -358,6 +375,36 @@ mod tests {
         assert!(
             !(30..W).any(|x| (0..12).any(|y| ink(x, y))),
             "nothing leaves the box"
+        );
+    }
+
+    #[test]
+    fn a_descender_is_not_cut_by_its_own_line_box() {
+        const W: usize = 64;
+        const H: usize = 60;
+        let mut frame = [0u8; W * H * 2];
+        let mut canvas = Canvas::new(&mut frame, W, H, None);
+        let mut ui = Ui::new(&mut canvas, Screen::default());
+        // A box one line tall. `g` reaches below the baseline, past a 24 px box: only an
+        // ancestor clip may stop it, never the box that placed it.
+        ui.text(
+            b"g",
+            Style::new()
+                .nowrap()
+                .height(24)
+                .font_size(Length::Px(24))
+                .font_family(FontFamily::Vector),
+        );
+        ui.paint(BoxConstraints::tight(64 * PX, 60 * PX), &mut |_, _, _| {});
+        let canvas = ui.into_canvas().expect("a canvas was handed in");
+        let frame = canvas.frame();
+        let ink = |x: usize, y: usize| {
+            let at = (y * W + x) * 2;
+            frame[at] != 0 || frame[at + 1] != 0
+        };
+        assert!(
+            (24..30).any(|y| (0..W).any(|x| ink(x, y))),
+            "the descender shows below the line box"
         );
     }
 
@@ -477,11 +524,5 @@ mod tests {
                 "{style:?}"
             );
         }
-    }
-
-    #[test]
-    fn a_declaration_fits_the_stack_the_panel_core_was_given() {
-        let bytes = core::mem::size_of::<Ui<'static, 'static>>();
-        assert!(bytes <= 10 * 1024, "a declaration is {bytes} B");
     }
 }

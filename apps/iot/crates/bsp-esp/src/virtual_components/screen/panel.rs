@@ -11,11 +11,14 @@ use esp_hal::spi::Error;
 
 use crate::components::backlight::Backlight;
 use crate::components::st7789::{St7789, Wire};
+use iot_core::drivers::surface::FrameDamage;
 
 /// The frame the coordinator has just finished painting, handed over without a borrow.
 struct Ticket {
     ptr: *const u8,
     len: usize,
+    /// Which pixels changed; the bus ships only these.
+    damage: FrameDamage,
 }
 
 // SAFETY: the bytes are the `'static` frame arena the screen draws into, and the handshake
@@ -41,7 +44,7 @@ impl PanelBus {
             // SAFETY: `Ticket`'s own — the bytes outlive the transfer, and the coordinator
             // does not write them until this answers.
             let frame = unsafe { core::slice::from_raw_parts(ticket.ptr, ticket.len) };
-            SHIPPED.signal(self.driver.write_frame(frame).await);
+            SHIPPED.signal(self.driver.write_frame(frame, ticket.damage).await);
         }
     }
 }
@@ -83,11 +86,12 @@ impl Panel {
         usize::from(self.width) * usize::from(self.height) * 2
     }
 
-    pub(super) async fn write(&mut self, frame: &[u8]) -> Result<Wire, Error> {
+    pub(super) async fn write(&mut self, frame: &[u8], damage: FrameDamage) -> Result<Wire, Error> {
         REQUESTS
             .send(Ticket {
                 ptr: frame.as_ptr(),
                 len: frame.len(),
+                damage,
             })
             .await;
         SHIPPED.wait().await

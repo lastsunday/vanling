@@ -284,17 +284,17 @@ mod tests {
     }
 
     #[test]
-    fn only_the_audio_page_raises_the_step() {
+    fn only_audio_raises_the_step_and_only_text_lowers_it() {
         for page in PageId::ALL {
-            assert!(
-                descriptor(page).repaint_step_ms() >= REPAINT_FLOOR_MS,
-                "{page:?} cannot repaint faster than the floor"
-            );
-            assert_eq!(
-                descriptor(page).repaint_step_ms() > REPAINT_FLOOR_MS,
-                page == PageId::Audio,
-                "{page:?} step"
-            );
+            let step = descriptor(page).repaint_step_ms();
+            match page {
+                PageId::Audio => assert!(step > REPAINT_FLOOR_MS, "{page:?} step"),
+                PageId::Text => assert!(
+                    step < REPAINT_FLOOR_MS,
+                    "{page:?} must keep up with a drag, not the idle floor"
+                ),
+                _ => assert_eq!(step, REPAINT_FLOOR_MS, "{page:?} step"),
+            }
         }
     }
 }
