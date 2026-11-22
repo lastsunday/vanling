@@ -49,7 +49,7 @@ Edition 2024 / Mantine v9 / zod v4 / `@vitejs/plugin-react-oxc` / sherpa-onnx / 
 - **AI 模块**: `XxxManager::init(config).await` 初始化 → `global().default()` 取用；禁止 `new()` 直接实例化
 - **日志**: tracing 必带 `component` + `event`，格式 `tracing::info!(component = "x", event = "y", key = %v, "msg")`；行格式 `[<组件> msg] component=x event=y [session_id=…]`、组件名大写；console→`FmtSpan::NONE`、file→`FmtSpan::CLOSE`；禁 `#[instrument]`/`println!()`
 - **测试**: `apps/server/api/tests/` 按功能分类；每次修改增/改对应测试
-- **注释默认不写**: 语义命名承载意图。判据是 reviewer 会不会在此提问；不会就不写——不复述名字、类型、值、文件名，不写「这个在哪里被用到」，不写逐步注释。代码不够清楚到无需解释的，改代码而不是加注释。`//` 只写 Why 与当前硬约束；`///`/`//!` 写用途与用法，面向使用者，大段概念说明集中文件头一处。注释密度、行数、比例都不是目标，也没有阈值
+- **注释默认不写**: 判据是 reviewer 会不会在此提问；不会就不写——不复述名字/类型/值/文件名，不写「在哪被用到」与逐步注释。`//!` ≤3 行、`///` 一句话、`//` 单行且只写 Why 与当前硬约束；超 3 行的论证先搬 `docs/content/records/` 再留指路，hazard 与实测锚点不可删。密度、行数、比例都不是目标，也没有阈值
 - **安全与证据不可删**: `# Safety`、`// SAFETY:`、hazard 与已知限制任何清理都不得删除，只可收紧措辞。注释中的断言须有测试或实测支撑，否则标「据称」并注明未复现；不写历史叙事（曾经做错、对比旧实现），此类内容归 `docs/content/records/`（带 `<!-- doc-audience: ai -->`）
 - **下载器**: `--data-dir ../../data`，从 `apps/server/` 执行
 - **重命名**: 确认旧名无残留后再收工

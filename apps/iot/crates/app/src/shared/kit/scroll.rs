@@ -1,10 +1,6 @@
-//! Scroll state for a page whose content is longer than its box: offsets, the fling after the
-//! finger lets go, the bounce at the edges, and the travel a view needs to draw a thumb.
-//!
-//! A page measures its named regions once, from the same declaration it draws, then drives
-//! them with [`ScrollState::scroll`] and advances them once per frame with
-//! [`ScrollState::tick`]. Layout never clamps an offset: the page owns the limit because only
-//! it knows how far past the edge its bounce goes.
+//! Scroll state for a page whose content outgrows its box: offsets, the fling after release, the
+//! edge bounce, and the travel a thumb needs. A page measures its regions once, then drives them
+//! with [`ScrollState::scroll`] and advances them with [`ScrollState::tick`].
 
 use iot_core::ui::{ScrollId, ScrollInfo, Ui};
 
@@ -20,12 +16,10 @@ pub const STOP_PX_S: i16 = 150;
 /// Lines one swipe steps before the fling takes over.
 pub const STEP_LINES: i8 = 3;
 
-/// Pixels one line of the panel's default face occupies; a region whose lines are taller
-/// says so with [`ScrollState::set_line_px`].
+/// Pixels one line of the panel's default face occupies; a taller face says so with `set_line_px`.
 pub const LINE_PX: i16 = 12;
 
-/// The two switches a page sets for all its regions: whether an edge gives, and whether a
-/// thumb is drawn. Both are layout-neutral, so flipping them needs no re-measure.
+/// The two layout-neutral switches a page sets for all its regions: edge bounce and thumb.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ScrollConfig {
     pub bounce: bool,
@@ -77,8 +71,7 @@ impl<const N: usize> ScrollState<N> {
         &self.areas
     }
 
-    /// The height of one line in `area`, which a swipe steps by. A region whose content is
-    /// set larger than the default face says so here.
+    /// The height of one line in `area`, which a swipe steps by.
     pub fn set_line_px(&mut self, area: u8, px: i16) {
         if let Some(slot) = self.line_px.get_mut(usize::from(area)) {
             *slot = px.max(1);
@@ -130,8 +123,7 @@ impl<const N: usize> ScrollState<N> {
         };
     }
 
-    /// Moves a region by `delta` pixels with the finger still down. Past an edge the extra
-    /// travel is halved, and the region is held so the spring does not pull against the finger.
+    /// Moves a region by `delta` pixels with the finger down; past an edge the travel is halved.
     pub fn drag(&mut self, area: u8, delta: i16) {
         let index = usize::from(area);
         if index >= N {
@@ -170,8 +162,7 @@ impl<const N: usize> ScrollState<N> {
         self.areas[index].offset = damped.clamp(-limit, max + limit) as i16;
     }
 
-    /// Lets go of a region at `speed` px/s, signed like the offset. Below the fling threshold
-    /// the region just comes home; either way it is no longer held.
+    /// Lets go at `speed` px/s: below the fling threshold the region just comes home.
     pub fn fling(&mut self, area: u8, speed: i16) {
         let index = usize::from(area);
         if index >= N || self.areas[index].id.is_none() {
@@ -187,8 +178,7 @@ impl<const N: usize> ScrollState<N> {
         };
     }
 
-    /// Advances every region by one frame step: the glide decays, an edge gives, a bounce
-    /// comes home.
+    /// Advances every region one frame: the glide decays, an edge gives, a bounce comes home.
     pub fn tick(&mut self, step_ms: u16) {
         for index in 0..N {
             let area = self.areas[index];
@@ -250,8 +240,7 @@ impl<const N: usize> ScrollState<N> {
         self.held = [false; N];
     }
 
-    /// How far past an edge a region may go. A region that fits does not bounce, and neither
-    /// does any region when the page switched the bounce off.
+    /// How far past an edge a region may go: a quarter viewport, or zero if it fits or bounce is off.
     fn limit(&self, area: ScrollInfo) -> i32 {
         if self.config.bounce && area.max() > 0 {
             i32::from(area.viewport) / 4

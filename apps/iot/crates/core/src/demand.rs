@@ -389,13 +389,9 @@ impl ClockGovernor {
 
     /// Puts `sink` at the speed this demand resolves to, and reports what it did.
     ///
-    /// `None` when the answer has not moved since last time. The switch itself
-    /// would be cheap every frame — a few microseconds against a 20 ms one — but
-    /// the line that announces it is not, and a caller that reports on change
-    /// should be able to say nothing while a page sits still.
-    ///
-    /// This returns what happened rather than logging it, leaving the output channel
-    /// to the layer that owns one.
+    /// `None` when the answer has not moved: the switch itself is cheap every frame, but the
+    /// line announcing it is not. Returns what happened rather than logging it, leaving the
+    /// output channel to the layer that owns one.
     pub fn apply<C: ClockSink>(
         &mut self,
         demand: &EffectiveDemand,

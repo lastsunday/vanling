@@ -23,16 +23,15 @@ const HPF_CORNER_WALK: bool = true;
 const CAL_SPL_LOG: bool = false;
 const CAL_LOG_MS: u64 = 5_000;
 
-/// How often a codec that failed its bring-up is asked again. One register sequence costs a
-/// few milliseconds on the shared bus, so the retry is paced rather than per poll.
+/// How often a codec that failed its bring-up is asked again: one register sequence costs a
+/// few milliseconds on the shared bus, so retrying every poll would starve the panel.
 const CODEC_RETRY_MS: u64 = 1_000;
 
 /// The reason the Audio page shows when the codec does not answer.
 const CODEC_FAULT: &str = "the microphone codec did not answer on I2C";
 
-// Bytes per DMA descriptor. A quarter of the poll period's worth of audio, so
-// the descriptors hand data over at a granularity a 20 ms poll does not notice
-// while the ring still bounds how far behind the panel can fall.
+// Bytes per DMA descriptor: a quarter of a poll period, so a 20 ms poll does not notice the
+// hand-over while the ring still bounds how far behind the panel can fall.
 const CHUNK_BYTES: usize = 480;
 
 const STREAM_BYTES: usize = BYTES_PER_POLL * 3;
@@ -47,8 +46,8 @@ const DRAIN_BYTES_PER_POLL: usize = BYTES_PER_POLL * 2;
 const DECIMATED_PER_POLL: usize =
     DRAIN_BYTES_PER_POLL / CAPTURE_BYTES_PER_FRAME / DECIMATION as usize + 1;
 
-// A short scratch drops a poll's tail with no counter and no log; the assertion is
-// the only thing that says so.
+// A short scratch drops a poll's tail with no counter and no log; the assertion is the only
+// thing that says so.
 const _: () = assert!(
     DECIMATED_PER_POLL > DRAIN_BYTES_PER_POLL / CAPTURE_BYTES_PER_FRAME / DECIMATION as usize,
     "a poll's drain budget produces more decimated samples than the scratch holds"
@@ -86,8 +85,8 @@ const _: () = assert!(
 /// The transfer a capture runs on.
 pub type Capture = I2sRxDmaTransfer<'static, Blocking, DmaRxStreamBuf>;
 
-/// The codec-facing half of the wire format: Philips framing, 16 data bits, and a frame
-/// left two slots wide, so both slots reach the DMA buffer.
+/// Codec-facing wire format: Philips framing, 16 data bits, a frame left two slots wide so both
+/// slots reach the DMA buffer.
 pub fn tdm_config() -> TdmConfig {
     TdmConfig::new_tdm_philips()
         .with_sample_rate(Rate::from_hz(SAMPLE_RATE_HZ))
@@ -147,7 +146,7 @@ pub fn stream() -> DmaRxStreamBuf {
     dma_rx_stream_buffer!(STREAM_BYTES, CHUNK_BYTES)
 }
 
-/// A microphone capture that folds its DMA ring into an envelope.
+/// Loudest raw sample per slot and the mic/reference gap, over one poll.
 #[derive(Clone, Copy, Default)]
 pub struct SlotPeaks {
     pub mic: u16,
@@ -178,14 +177,9 @@ pub struct Es7210Rx<C, const R: usize> {
     retried_at_ms: Option<u64>,
     decimator: Decimator,
     echo: EchoStage<AEC_TAPS>,
-    // Whether to run the canceller at all. Follows the microphone; see
-    // [`AEC_ENABLED`] for why, and [`Es7210Rx::set_collecting`] for what moves it.
-    //
-    // **What this does not buy is the number.** The residual is computed and
-    // discarded — the envelope still folds the raw microphone, because folding
-    // the residual in means resampling 16 kHz back to the 48 kHz the envelope is
-    // specified on, and the A-weighting IIR's coefficients are those 48 kHz ones.
-    // So the panel's level still reads a microphone that hears the speaker.
+    // Whether to run the canceller; [`AEC_ENABLED`] says why, `set_collecting` what moves it.
+    // It does not buy the number: the residual is computed and discarded, and the envelope
+    // still folds the raw mic: folding it in means resampling 16 kHz to the envelope's 48 kHz.
     cancel_echo: bool,
     scratch_mic: [i16; DECIMATED_PER_POLL],
     scratch_reference: [i16; REFERENCE_SCRATCH],
@@ -201,20 +195,17 @@ pub struct Es7210Rx<C, const R: usize> {
 
 pub struct EchoReport {
     outcome: EchoOutcome,
-    /// Pairs that never happened over the capture's whole life, not just this poll: a fault
-    /// that appears once is as much a fault as one that appears every poll, and a
-    /// cumulative count cannot be averaged away.
+    /// Pairs that never happened over the capture's whole life: a one-off fault counts as much
+    /// as one every poll, and a cumulative count cannot be averaged away.
     pub total_unpaired: u32,
     /// Kept samples the reference log holds unread.
     pub log_depth: usize,
     /// What the log can hold, from the ring geometry.
     pub log_capacity: usize,
-    /// The loudest coefficient and which tap it sits on — what a converged canceller says
-    /// the acoustic path runs through, and the one figure that can contradict the delay it
-    /// chose.
+    /// The loudest coefficient and its tap — the acoustic path a converged canceller found, and
+    /// the one figure that can contradict its chosen delay.
     pub loudest_tap: (usize, i32),
-    /// The loudest capture and reference sample of the last poll, as absolute LSB
-    /// magnitudes.
+    /// The loudest capture and reference sample of the last poll, as absolute LSB magnitudes.
     pub levels: (u16, u16),
     /// Bytes the DMA had finished before the last poll's drain, and bytes the drain took.
     pub drain: (usize, usize),
@@ -228,14 +219,13 @@ impl EchoReport {
         self.outcome.cancelled
     }
 
-    /// Pairs the last poll could not make, because the reference could not be reached that
-    /// far back.
+    /// Pairs the last poll could not make because the reference could not reach that far back.
     pub const fn unpaired(&self) -> usize {
         self.outcome.unpaired
     }
 
-    /// The enhancement over the stream so far, in decibels — **zero when nothing has been
-    /// paired**, because a meter that has measured nothing must not read as perfect.
+    /// The enhancement over the stream so far, in decibels — **zero when nothing was paired**,
+    /// so a meter that measured nothing does not read as perfect.
     pub const fn erle_decibels(&self) -> i32 {
         self.outcome.erle_decibels
     }
@@ -244,8 +234,7 @@ impl EchoReport {
         self.outcome.delay
     }
 
-    /// Whether the filter is adapting, so a reading can be read against the right state:
-    /// frozen is barge-in, adapting is far-end only.
+    /// Whether the filter is adapting: frozen is barge-in, adapting is far-end only.
     pub const fn adapting(&self) -> bool {
         self.outcome.adapting
     }
@@ -304,10 +293,8 @@ where
 }
 
 impl<C, const R: usize> Es7210Rx<C, R> {
-    /// Takes a transfer armed on [`stream`]'s ring — the one the watchdog is sized against,
-    /// so a ring built any other length would be judged by a deadline that does not
-    /// describe it — the codec that captured it, and what the speaker played for it to pair
-    /// against.
+    /// Takes a transfer armed on [`stream`]'s ring — the one the watchdog is sized against —
+    /// the codec that captured it, and what the speaker played to pair against.
     pub fn new(transfer: Capture, codec: C, reference: Side<R>) -> Self {
         if HPF_CORNER_WALK {
             log::info!(
@@ -346,38 +333,10 @@ impl<C, const R: usize> Es7210Rx<C, R> {
         }
     }
 
-    // Pairs the frames this pass drained against the speaker's play cursor.
-    //
-    // `lag_frames` is how deep the capture ring was when the drain started — **the
-    // single number that matters here.** The newest frame a drain sees was captured
-    // however long ago the ring was laid down, so the reference that goes with it is
-    // the frame the wire carried *then*; reading the play cursor as it stands at poll
-    // time pairs every sample against one up to 60 ms newer, fifteen times the delay
-    // search's window, and the search then answers "nothing found" and the filter
-    // converges on nothing, silently.
-    //
-    // Hence the play cursor rather than the write pointer: the transmit ring holds
-    // [`TRANSMIT_RUNWAY_FRAMES`](crate::virtual_components::audio_out) the DMA has not
-    // sent yet. It is also why a board with a microphone and no speaker cannot cancel
-    // at all — the transmit stream is what clocks the capture, and `Side::Silent` only
-    // guarantees the unpaired samples are zero, not that the two sides agree on time.
-    // Such a board gets the pairing and an empty run, not a quiet measurement of
-    // nothing.
-    //
-    // The two runs arrive at **opposite ends**: `scratch_mic[0]` is the oldest frame
-    // the drain saw, while the log is read backwards so `out[0]` is the frame on the
-    // wire now. Zipped as they stand every pair is wrong by the whole run, so the
-    // reference is reversed and both are fed oldest-to-newest — which is also the
-    // order the filter's own state has to be stepped in.
-    //
-    // **Fewer pairs than were asked for means the log has lapped or the wire has not
-    // started.** Pairing the prefix and reporting the rest is the whole answer:
-    // pairing the tail against frames the log does hold would cancel against a
-    // different stretch, which is the fault this type exists to keep visible.
-    //
-    // **Runs whether or not the canceller is on** — the pairing is one ring read and a
-    // reversal, the cancellation a filter per sample. A bench measurement of the room
-    // needs the pairing and has no use for the cancellation.
+    // Pairs this pass's drained frames against the speaker's play cursor. `lag_frames` is how
+    // deep the capture ring was at drain time: the newest frame was captured that long ago, and
+    // reading the cursor at poll time would pair against samples up to 60 ms newer, outside the
+    // delay search. Fewer pairs than asked means the log lapped or the wire has not started.
     fn pair(&mut self, lag_frames: usize, reference: &dyn Reference) {
         self.pair_lag = 0;
         self.paired_run = 0;
@@ -418,8 +377,7 @@ impl<C, const R: usize> Es7210Rx<C, R> {
     }
 
     /// Where the echo path sits over the whole capture history, and how strongly it matches
-    /// there — the answer to "is there no path, or is it further back than the canceller's
-    /// own search reaches?".
+    /// there: no path, or further back than the canceller's own search reaches?
     pub fn scan_wide(&mut self) -> (usize, i64) {
         self.echo.scan_wide()
     }
@@ -429,8 +387,7 @@ impl<C, const R: usize> Es7210Rx<C, R> {
         self.echo.unreachable_by(taps)
     }
 
-    /// Bytes the DMA had finished when the last poll started, and how many of them the
-    /// drain actually took.
+    /// Bytes the DMA had finished when the last poll started, and how many the drain took.
     pub const fn last_drain(&self) -> (usize, usize) {
         (self.arrived, self.drained)
     }
@@ -499,11 +456,8 @@ impl<C, const R: usize> Es7210Rx<C, R> {
     }
 
     fn drain(&mut self, lag_frames: usize, reference: &dyn Reference) -> usize {
-        // Destructured so the chain's borrow and the canceller's own fields are
-        // disjoint: `running_mut` borrows the whole struct otherwise, and holding
-        // that across the fold would forbid reading the samples at all. Folded in
-        // place rather than copied out, because a descriptor is 480 bytes and
-        // `architecture.md` budgets that stack.
+        // Destructured so the chain's borrow and the canceller's fields are disjoint; folded in
+        // place because a descriptor is 480 bytes and `architecture.md` budgets that stack.
         let cancelling = self.cancel_echo;
         let Self {
             chain,
@@ -608,8 +562,8 @@ where
     C::CornerError: core::fmt::Debug,
     C::InitError: core::fmt::Debug,
 {
-    /// Asks the codec to run if it is not already. The first failure and the recovery are
-    /// each logged once; the retry itself is paced by [`CODEC_RETRY_MS`].
+    /// Asks the codec to run if it is not already, pacing retries by [`CODEC_RETRY_MS`]. The
+    /// first failure and the recovery are each logged once.
     fn ensure_ready(&mut self, now_ms: u64) {
         if self.ready {
             return;
@@ -709,7 +663,7 @@ where
     }
 
     /// Drains whatever the DMA holds without folding it, so a silent codec's samples never
-    /// reach the envelope and the ring does not stay full for the poll after recovery.
+    /// reach the envelope and the ring is not full for the poll after recovery.
     fn discard(&mut self) -> usize {
         let Some(transfer) = self.chain.running_mut() else {
             return 0;

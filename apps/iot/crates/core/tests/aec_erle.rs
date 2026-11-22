@@ -50,18 +50,10 @@ struct Path {
 }
 
 impl Path {
-    // The path as a tap sequence.
-    //
-    // The first tap is a **direct reflection** and the rest are random in sign,
-    // which is the shape a room actually has: one loud arrival that gives the path
-    // an onset, then reflections that are individually weaker and arrive with no
-    // pattern to them. A path whose very first tap is also random has no onset at
-    // all — every lag correlates about equally — and the delay search then has
-    // nothing to lock onto and reports wherever the noise happened to peak. That
-    // was measured, not assumed: with the first tap no louder than the rest, a
-    // 12-sample path reported 15 and a 4-sample one reported 22, cross-checked
-    // offline where the peak genuinely was. The filter reached 0.4 dB because it
-    // was aiming at the wrong place.
+    // The path as a tap sequence: a direct reflection first, then random reflections.
+    // Without a dominant onset the delay search has nothing to lock onto — measured: a
+    // 12-sample path reported 15 and a 4-sample one 22, and the filter reached 0.4 dB
+    // because it aimed at the wrong place.
     fn taps(&self) -> Vec<f64> {
         let mut noise = Noise::new(self.seed);
         (0..self.length)
@@ -290,14 +282,8 @@ fn measure(room: &Room) -> Report {
 
 #[test]
 fn the_canceller_lands_near_the_offline_optimum_on_every_path() {
-    // The acceptance gate, and it is stated against the optimum rather than against
-    // a fixed number of decibels.
-    //
-    // A fixed bar would be a statement about the *path*, not about the algorithm: on
-    // the last path below, the offline optimum itself is 14.3 dB, so no 128-tap
-    // linear filter can reach 15 and asking one to is asking it to be wrong. The
-    // question a linear adaptive filter can be held to is whether it found the best
-    // linear solution for the path it was shown, and that is what this asks.
+    // Held to the offline optimum, not a fixed number of decibels: on the last path the
+    // optimum itself is 14.3 dB, so a 128-tap linear filter cannot reach 15.
     let samples = 64_000;
     println!(
         "{:30} {:>6} {:>9} {:>9} {:>7} {:>6}",
@@ -466,21 +452,11 @@ fn the_canceller_tracks_a_path_that_moves() {
 
 #[test]
 fn a_talker_over_the_speaker_does_not_get_learned_as_echo() {
-    // The barge-in case, and the reason the learning rate exists: with the near end
-    // present the error is speech, and a filter still adapting at full speed would
-    // model the speech as a room.
-    //
-    // **This measures what the design does, including the part it does not do well.**
-    // The freeze engages and holds, and the damage stops — but it does not start
-    // clean: for roughly half a second after a talker begins, the coherence estimate
-    // is still describing the room, and the filter adapts at full speed through the
-    // onset. What gets baked in during that window is measured here and bounded,
-    // not waved at.
-    //
-    // Growth is the quantity, not the share: a converged filter on a path shorter
-    // than itself carries coefficients past the end of that path, and on this path
-    // they hold 46% of the total energy before anyone speaks. An absolute share would
-    // report a healthy filter as a broken one.
+    // Barge-in: with a near end present the error is speech, and a filter adapting at full
+    // speed would model it as a room. The freeze engages and holds, but not cleanly — for
+    // ~0.5 s the coherence estimate still describes the room, and that damage is measured
+    // here. Growth, not share: a converged filter carries coefficients past the path, 46%
+    // of the energy on this one before anyone speaks.
     let path = &PATHS[1];
     let near_end_from = 32_000;
     let room = path.room(64_000, near_end_from, NEAR_END_ABOVE_FREEZE);

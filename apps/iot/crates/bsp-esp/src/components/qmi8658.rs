@@ -22,11 +22,8 @@ const REG_STATUS0: u8 = 0x2E;
 const REG_STATUS1: u8 = 0x2F;
 const REG_AX_L: u8 = 0x35;
 const REG_RESET: u8 = 0x60;
-// Section 5.9 and section 7.4 disagree on the reset byte — the register table
-// says 0xB0 while the prose says 0x0B, which are bit reversals of each other.
-// Table 27 describes the register itself, so 0xB0 is used, and the 0x4D flag
-// below turns the ambiguity into a checked outcome instead of a silent one: if
-// the byte is wrong the part never reports a completed reset.
+// §5.9 and §7.4 disagree on the reset byte — the register table says 0xB0, the prose 0x0B.
+// Table 27 describes the register, so 0xB0; the 0x4D flag makes a wrong byte never report a reset.
 const RESET_VALUE: u8 = 0xB0;
 const REG_RESET_FLAG: u8 = 0x4D;
 const RESET_FLAG_READY: u8 = 0x80;
@@ -35,11 +32,9 @@ const WHO_AM_I_VALUE: u8 = 0x05;
 const CTRL1_VALUE: u8 = 0x40;
 const CTRL2_VALUE: u8 = 0x13;
 const CTRL3_VALUE: u8 = 0x53;
-// Datasheet Table 22: bit4 `gLPF_EN` clear, bit0 `aLPF_EN` clear. The
-// accelerometer low-pass filter is off, keeping the full 896.8 Hz bandwidth
-// for the knock's broadband transient, and the core recognizer's bars (peak
-// 250 mG / quiet 150 mG) were calibrated on this unfiltered stream. The gyro
-// filter stays off because nothing reads the gyro path for peaks.
+// Datasheet Table 22: both filters clear. The accelerometer keeps its full 896.8 Hz bandwidth
+// for the knock's broadband transient, and the recognizer's bars (peak 250 mG / quiet 150 mG)
+// were calibrated on this unfiltered stream; the gyro filter is off because nothing reads it.
 const CTRL5_VALUE: u8 = 0x00;
 const CTRL7_VALUE: u8 = 0x03;
 
@@ -55,18 +50,13 @@ const CTRL_CMD_CONFIGURE_MOTION: u8 = 0x0E;
 
 const CMD_DONE_ATTEMPTS: u16 = 1_000;
 const CMD_DONE_POLL_US: u32 = 1_000;
-// Datasheet 7.4 puts 15ms as the worst case for the reset process, so the
-// budget is that plus margin. A blind fixed wait would be a guess in both
-// directions: too short leaves the part mid-reset when the first configuration
-// write lands, too long just delays boot.
+// Datasheet 7.4 puts the reset's worst case at 15 ms, so the budget is that plus margin: too
+// short leaves the part mid-reset at the first configuration write, too long just delays boot.
 const RESET_POLL_ATTEMPTS: u8 = 100;
 const RESET_POLL_US: u32 = 200;
 
-// This firmware enables both sensors, where note 13 makes the gyro set the
-// rate for both, so `0b0011` is the 6DOF ODR of 896.8 Hz. The No-Motion
-// engine counts samples while the product reasons in milliseconds, so the
-// index is pinned here to stop a retuned ODR from silently rescaling every
-// window.
+// Both sensors enabled and note 13 makes the gyro set the rate for both, so `0b0011` is the
+// 6DOF ODR of 896.8 Hz. The index is pinned so a retuned ODR cannot rescale every window silently.
 const ODR_INDEX: u8 = 0b0011;
 const ODR_HZ_X10: u32 = 8_968;
 const _: () = assert!(CTRL2_VALUE & 0x0F == ODR_INDEX && CTRL3_VALUE & 0x0F == ODR_INDEX);
@@ -101,18 +91,9 @@ struct SensorConfig {
     scale: MotionScale,
 }
 
-// The register set a configuration needs, or `None` when this driver cannot reach it without
-// guessing. Only the configurations that stay on the bring-up arrangement are spelled out:
-//
-// - `WakeDetector` needs the accelerometer alone, which changes both the power-mode fields in
-//   CTRL7 and which of the part's two ODR tables applies; the datasheet publishes both
-//   tables' frequencies but not the index each uses, and the engine windows below are
-//   wrong by exactly that much if guessed.
-// - `Fifo` needs the FIFO, whose registers start at the same 0x0B this driver writes
-//   motion calibration through — a sequencing problem, not a register write.
-//
-// Refusing is the point: each is reachable by adding one encoding with the register table
-// open, none by writing a plausible byte.
+// The register set a configuration needs, or `None` where this driver cannot reach it without
+// guessing: `WakeDetector` changes CTRL7's power fields and needs an unpublished ODR table;
+// `Fifo` shares 0x0B with motion calibration. Refusing is the point.
 const fn config_for(config: MotionConfig) -> Option<SensorConfig> {
     let both_sensors = SensorConfig {
         ctrl2: CTRL2_VALUE,
@@ -246,8 +227,8 @@ impl<D: I2c> Qmi8658<D> {
         Ok(())
     }
 
-    /// Reconfigure a part that is already running, under the same rules as `init_at`: a
-    /// sample straddling the switch is discarded rather than converted.
+    /// Reconfigures a running part under the same rules as `init_at`: a sample straddling the
+    /// switch is discarded rather than converted.
     pub fn set_config(
         &mut self,
         config: MotionConfig,

@@ -132,7 +132,6 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 - **`shared/kit` 不认页面**：`Panel` 把页面的声明布局成盒子再落墨，`chrome` 只提供跨页共用的边距、行距与标签槽；哪个页面声明什么由 `services::descriptor(page).view` 决定，页面自己画的槽由 `descriptor(page).custom` 决定
 - `shared` 是叶子：不依赖 `state`/`services`/`render`/`runtime`。`DeviceState`、`PageSnapshot` 与 `NetworkView` 放在这里，就是为了让页面、快照和渲染都只朝下看
 - `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`snapshot`（帧与页面视图）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
-- `shared/model` 放被多处读写的记录；`DeviceState` 是它们的聚合体，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读）
 - **测试跟着断言对象走**：一个测试放在它断言的模块的文件里，或该模块自己的 `tests.rs`；`state/tests/` 是唯一按主题分文件的测试树，夹具只有一份，在 `state/tests/support.rs`（`state::test_support` 只是它的再导出）。测试不算模块图的一条边，`module_boundaries.rs` 因此不扫 `tests/`、`tests.rs` 与 `test_support.rs`
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
@@ -209,7 +208,7 @@ WebUI 的传输是适配层：语义 API（资源 + 动作）定一次，传输�
 - **产品档 = feature 别名**：档定模块集、板定支持集，交点编译期裁剪校验
 - **模块可配置** = feature 开关 + const 参数
 - **渲染层运行时可插拔**：app 里一个零分配的中央 `Differ` 做 diff（闭包回调；先按 topic 选出各自该显示什么，只对选中项变化的 topic 通知，最后一次性写回快照），以及一个堆上的 `RenderSet` 注册表（`embedded-alloc` 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线。每个 renderer 只声明它认领的 `Topic`（`Surface(instance)` / `Frame` / `Demand`），灯带因此从不接触约 2 KB 的帧；`Appearance` 借用帧，只有屏幕留副本
-- **稳态页的光不参与呼吸**：`FrameSnapshot::steady` 来自 `PageId::steady()`，`ScreenRenderer` 因此把背光常置 100（只有关灯降到 0）、`LampRenderer` 让声明颜色停在相位 0 并返回 `Idle`；页面自己的动画仍由 `animating()` 驱动 `TimeDriven`，两者互不牵连
+- **稳态页的光不参与呼吸**：`FrameSnapshot::steady` 来自 `PageId::steady()`（见上文），`LampRenderer` 因此在相位 0 答 `Idle`，页面自己的动画仍由 `animating()` 驱动 `TimeDriven`
 
 ## 需求模型（要什么 / 多频繁 / 多敏感）
 
@@ -285,7 +284,7 @@ non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need t
 
 **硬件只由 State 驱动，State 只由 Action 改，Action 只由 Intent 触发，Intent 只由 Event 产生。**
 
-`shared/model/` 一个领域一个文件：`mod.rs` 只做 barrel 与 `MAX_LIGHTS`/`SurfaceRole` 这类 core 词汇的再导出，`audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` 各放工作者写入、渲染循环读取的记录，`device.rs` 是聚合体 `DeviceState`，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（`NetworkView`/`Entry`/`SetupWait`）——页面拥有它，快照复制它，链路从不读它。领域文件显式 import，禁止 `use super::*`（测试除外）——预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`；`DeviceManager::apply_intent` 定义在 `state/manager/write.rs`，按当前页走 `Services::bind`，先写记录再翻译。
+`shared/model/` 的文件布局见上表；这里只补一条硬规矩：领域文件显式 import，禁止 `use super::*`（测试除外），预导入会让新增符号静默穿过模块边界。`DeviceManager` 与手势→意图的分派在 `state/`，`DeviceManager::apply_intent` 定义在 `state/manager/write.rs`，按当前页走 `Services::bind`，先写记录再翻译。
 
 业务状态与页面状态分开放，且**谁写的就归谁**：`NetworkState` 只装射频报上来的东西（`link`/`mac`/`aps`/`outage_announced`），只有 `LinkIntent` 写它；`NetworkView` 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），由 `NetworkPage::apply` 响应手指的 `NetworkIntent` 与扫描落地的 `LinkIntent::Scan` 写它，不在 `DeviceState` 里。页面读 `&NetworkState`，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 `view` 子记录（`AudioView`、`PlaybackView`、`TouchView`），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：`LinkStatus.mode` 是 `NetworkMode`（`Link`/`Browsing`/`Setup { host, cancellable }`），不再用四个并列 bool 表示「页面在做什么」。
 

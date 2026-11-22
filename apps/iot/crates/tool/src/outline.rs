@@ -1,10 +1,8 @@
 //! The vector face: the release OTF's curves flattened into the polylines the panel fills.
 //!
-//! `outline` cuts the code points the wrap region's paragraph uses — the same file the page
-//! includes — out of `NotoSansMonoCJKsc-Regular.otf` and writes `vector.bin`, which
-//! `iot-core/src/ui/font.rs` reads. Coordinates are 1/64 em and y points up from the baseline;
-//! 1/4 em was the first idea and rounds a 24 px glyph to 6 px steps, which is why the table is
-//! finer than that.
+//! Cuts the wrap region's code points out of `NotoSansMonoCJKsc-Regular.otf` and writes
+//! `vector.bin` for `iot-core/src/ui/font.rs`. Coordinates are 1/64 em, y up from the
+//! baseline; 1/4 em rounds a 24 px glyph to 6 px steps, hence the finer table.
 //!
 //! File layout (little-endian):
 //!
@@ -22,8 +20,8 @@
 //! 30..32 descent
 //! ```
 //!
-//! The ascent/descent pair is the line box, not the typographic pair: each is widened to
-//! enclose every cut glyph's ink, so a descender cannot fall out of its own line.
+//! Ascent/descent is the line box, not the typographic pair: each is widened to enclose
+//! every cut glyph's ink.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};

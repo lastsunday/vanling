@@ -171,17 +171,10 @@ mod tests {
 
     #[test]
     fn a_small_misalignment_is_absorbed_and_a_large_one_is_not() {
-        // Measured, not assumed, and the answer was not the one this type was
-        // written expecting. The delay estimator searches ±`MAX_DELAY` samples
-        // and the filter's own window slides onto whatever it finds, so a
-        // reference one frame out is *recoverable*: the filter simply learns the
-        // path one tap over. An implementation that asserted "one frame off
-        // ruins it" would have been asserting something false.
-        //
-        // The misalignment that actually matters is one the search cannot reach,
-        // and that is not hypothetical — it is exactly the 120 ms the transmit
-        // ring's write pointer sits ahead of the wire. So the test pins the
-        // threshold where pairing stops being recoverable, and both sides of it.
+        // Measured: a reference one frame out is recoverable, because the delay search slides
+        // the filter's window onto it. What matters is a misalignment the search cannot reach —
+        // the 120 ms the transmit ring's write pointer sits ahead of the wire. This pins both
+        // sides of that threshold.
         let played = reference(SAMPLES, AMPLITUDE, 0x5150_1001);
         let heard = echo(&played, DELAY);
         let settled = SAMPLES / 2;

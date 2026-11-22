@@ -1,8 +1,5 @@
-//! One chain, five words: `Event` (what a driver saw) → `Intent` (what the device was told)
-//! → `Action` (the record's own verb table, or the intent itself) → `State` (RAM) →
-//! `Hardware`. An action only writes state; hardware only reads it.
-//!
-//! The Network key grid lives in `keyboard`.
+//! One chain, five words: `Event` → `Intent` → `Action` → `State` (RAM) → `Hardware`. An action
+//! only writes state; hardware only reads it. The Network key grid lives in `keyboard`.
 
 mod keyboard;
 
@@ -11,8 +8,7 @@ pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WI
 use iot_core::drivers::input::{InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 
-/// The action a confirmation is standing in front of. It is the page's question, kept with
-/// the business vocabulary because the answer is an intent like any other.
+/// The page's question, kept with the business vocabulary because the answer is an intent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Confirm {
     Leave,
@@ -20,7 +16,7 @@ pub enum Confirm {
 }
 
 impl Confirm {
-    /// The network this question is about, which is the row the page highlights behind it.
+    /// The network this question is about: the row the page highlights behind it.
     pub fn network(&self, link: LinkStatus) -> Option<AccessPoint> {
         match self {
             Confirm::Leave => link.ap,
@@ -33,13 +29,12 @@ impl Confirm {
 pub struct InputIntent {
     /// Wiring-order source that raised the event.
     pub source: u8,
-    /// The raw/folded input signal, verbatim from the driver.
+    /// The input signal, verbatim from the driver.
     pub event: InputEvent,
 }
 
 impl InputIntent {
-    /// The surface this input drives: a button carries its wiring order, and a touch is the
-    /// panel's own surface.
+    /// A button carries its wiring order; a touch is the panel's own surface.
     pub const fn surface(&self) -> u8 {
         match self.event {
             InputEvent::Button(_) => self.source,
@@ -48,9 +43,8 @@ impl InputIntent {
     }
 }
 
-/// What the device must act on, grouped by the record it writes. The dispatch table routes one
-/// arm per group to its one owner; the owner matches its own group exhaustively, so a new
-/// variant cannot be left unanswered and no other service learns a domain's variants.
+/// What the device must act on, grouped by the record it writes; each owner matches its group
+/// exhaustively, so a new variant cannot be left unanswered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BusinessIntent {
     /// Where the device goes: the boot splash, the page cycle, the setup request.
@@ -63,16 +57,14 @@ pub enum BusinessIntent {
     Playback(PlaybackAction),
     /// What a finger asks of a page's own scroll regions.
     Text(TextIntent),
-    /// One light surface and the verb it is asked for. The instance is routing, not part of
-    /// the verb: the record's `apply` only ever sees the action.
+    /// One light surface and the verb it is asked for; the instance is routing, not part of the verb.
     Light {
         instance: u8,
         action: LightAction,
     },
 }
 
-/// The device's own transitions: the splash ends, a hold asks for setup, the button turns the
-/// page.
+/// The device's own transitions: the splash ends, a hold asks for setup, the button turns the page.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavigationIntent {
     NextPage,
@@ -80,8 +72,7 @@ pub enum NavigationIntent {
     RequestSetup,
 }
 
-/// What the panel's fingers ask of the network record: the draft, the list, the box. The link
-/// is not asked anything here — the page turns these into [`NetworkCommand`]s.
+/// What the panel's fingers ask of the network record: the draft, the list, the box.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NetworkIntent {
     NoCopy(Ssid),
@@ -107,16 +98,14 @@ pub enum LinkIntent {
     Scan,
 }
 
-/// The Audio page's one transition: a recording starts, or the one in progress stops and
-/// keeps what it captured.
+/// The Audio page's one transition: start a recording, or stop and keep what it captured.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AudioIntent {
     Start,
     Stop,
 }
 
-/// What one swipe asks of a scroll region: which region, how many lines it steps, and the
-/// speed it was released at.
+/// What one swipe asks of a scroll region: which region, how many lines, and the release speed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TextIntent {
     /// A finger landed in a region: the region is now held.
@@ -132,9 +121,7 @@ pub enum TextIntent {
         y: u16,
         at_ms: u32,
     },
-    /// The finger lifted. `lines` and `speed` are the swipe's fallback when no drag sample
-    /// arrived; a gesture that was dragged keeps its own velocity instead. `at_ms` is when the
-    /// lift was seen, on the input clock: `None` for a hold, which is never a flick.
+    /// The lift. Falls back to `lines`/`speed` without a drag sample; `at_ms` is `None` for a hold.
     Release {
         id: u8,
         area: u8,
@@ -149,8 +136,7 @@ pub enum TextIntent {
     },
 }
 
-/// The lamp's verbs. `Cycle` is the only one that leaves `Off`; the rest need a mode to act
-/// in, which is what `LightState::can` answers.
+/// The lamp's verbs; `Cycle` is the only one that leaves `Off`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightAction {
     /// Off → breath → solid → off.
@@ -180,9 +166,7 @@ impl LightAction {
 }
 
 /// The output's trigger table: the page asks with `Next`/`SetMuted`, the worker answers with
-/// `Finished`/`Started`/`Ready`/`Refused`. One table, because both move one state machine. A
-/// tap while the part is down still reaches the worker: that is the recovery attempt, and
-/// `Started` is what confirms a sound actually played.
+/// `Finished`/`Started`/`Ready`/`Refused`. A tap while the part is down is the recovery attempt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlaybackAction {
     Next,
@@ -203,8 +187,7 @@ pub enum Intent {
     Business(BusinessIntent),
 }
 
-/// Stateless recognition: fold a raw input event plus its wiring-order source into an
-/// input intent.
+/// Stateless recognition: fold a raw input event and its source into an input intent.
 pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
     InputIntent { source, event }
 }

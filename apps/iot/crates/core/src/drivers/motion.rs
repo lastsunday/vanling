@@ -166,17 +166,11 @@ impl MotionReading {
 pub trait MotionSource {
     fn sample(&mut self, now_ms: u64) -> Result<Option<MotionReading>, MotionError>;
 
-    // Leaves the part in `wanted`, answering what it is now in, or reporting the
-    // configuration it cannot enter.
-    //
-    // No delay is passed because none is the caller's to give: waiting out a part's reset is
-    // the part's business, and a driver with no way to wait has no way to switch. Such a
-    // driver answers `Err` for a configuration it is not already in, which is the truth
-    // rather than a reconfiguration it would silently skip.
-    //
-    // The switch is destructive on a part that has to reset to change configuration: it
-    // loses whatever was in flight and drops whatever baseline it had accumulated. Being
-    // already in `wanted` is therefore success and not work.
+    // Leaves the part in `wanted` and answers what it is now in, or the configuration it
+    // cannot enter. No delay: waiting out a reset is the driver's business, so a driver that
+    // cannot wait answers `Err` rather than silently skipping the switch. A switch that has to
+    // reset loses whatever was in flight and any accumulated baseline; already being in
+    // `wanted` is success, not work.
     fn configure_for(
         &mut self,
         wanted: Option<MotionConfig>,

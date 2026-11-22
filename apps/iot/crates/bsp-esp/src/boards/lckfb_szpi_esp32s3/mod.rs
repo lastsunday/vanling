@@ -80,12 +80,9 @@ const MOTION_RETRY_ATTEMPTS: u8 = 3;
 const MOTION_RETRY_MS: u32 = 10;
 const CODEC_RETRY_ATTEMPTS: u8 = 3;
 const CODEC_RETRY_MS: u32 = 20;
-// The panel's own writes are internal-DRAM slices — the frame in `.bss`, commands and
-// arguments on the stack — and `SpiDma::write` transfers those in place, so the copy
-// buffers below never see them. The one thing that does go through them is a *promoted
-// constant*: `&[0x01]` has no runtime home, so rustc parks it in `.rodata`, which is flash
-// and out of the DMA's reach. Those are command arguments, a handful of bytes; 64 is
-// already more than the longest one, and anything larger is simply chunked through it.
+// The panel's writes are internal-DRAM slices, so the copy buffers never see them; the exception
+// is a promoted constant (`&[0x01]` parked in `.rodata`, out of DMA reach). Those are command
+// arguments, and 64 B is more than the longest; anything larger is chunked.
 const SPI_COPY_BUF_BYTES: usize = 64;
 const BACKLIGHT_PWM_HZ: u32 = 5_000;
 

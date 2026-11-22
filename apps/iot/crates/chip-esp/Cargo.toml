@@ -6,12 +6,9 @@ edition.workspace = true
 [features]
 default = ["esp32c6"]
 
-# One chip feature per part, and each carries the chip of every crate this one pulls
-# in that has a chip axis of its own. esp-hal, esp-rtos, esp-println, esp-backtrace and
-# esp-bootloader-esp-idf all fail their build script outright when no chip is named for
-# them, and naming them here rather than in each image is what lets a build that reaches
-# the chip layer without an app — what `scripts/iot-feature-check.sh` does — stand up on
-# its own.
+# One chip feature per part, carrying the chip of every esp crate this one pulls in.
+# Each of those crates fails its build script without a chip, so naming them here lets
+# the chip layer stand alone in `scripts/iot-feature-check.sh`.
 esp32c6 = [
   "esp-hal/esp32c6",
   "esp-rtos/esp32c6",
@@ -28,21 +25,12 @@ esp32s3 = [
   "esp-bootloader-esp-idf/esp32s3",
   "esp-alloc?/esp32s3",
 ]
-# The heap the Wi-Fi driver links against, and the scheduler integration its tasks
-# need. A component axis like any other here: the code lives in `radio/`, gated
-# once, and a build without a radio carries none of it.
-#
-# The chip of `esp-alloc` is named by the chip features above rather than here, the
-# same way a board names its radio's blob: which part is being built is the one that
-# knows. `scripts/iot-feature-check.sh` builds this component alone, so the entry
-# there names the chip for the same reason an image does.
+# The Wi-Fi driver's heap and its scheduler tasks. The code is `radio/`, gated once;
+# the chip of `esp-alloc` comes from the chip features above, as the board decides it.
 radio = ["dep:esp-alloc", "esp-rtos/esp-radio"]
 
-# Where `logging::LOGGER` writes. esp-println's build script fails the build unless
-# exactly one console is named, and this crate is what pulls esp-println in, so a
-# build that reaches the chip layer without an app alongside it has to be able to name
-# one here. An image picks its own: `iot-app`'s `console-auto` / `console-uart`
-# forward to these.
+# Where `logging::LOGGER` writes. esp-println requires exactly one console feature, so a
+# chip-only build has to be able to name one; images forward from `iot-app`.
 console-auto = ["esp-println/auto"]
 console-uart = ["esp-println/uart"]
 

@@ -50,9 +50,8 @@ const MODE_SLAVE_BIT: u8 = 0x01;
 /// produces.
 pub use super::audio_clock::{MCLK_HZ, SAMPLE_RATE_HZ};
 
-// The 12288000/48000 row of the datasheet clock table: ADC divide 1, the clock
-// doubler on, the DLL on, OSR 0x20, and an LRCK divide of 256 (0x01:0x00) —
-// 12.288 MHz over 256 is exactly 48 kHz.
+// The 12288000/48000 row of the datasheet clock table: ADC divide 1, clock doubler and DLL on,
+// OSR 0x20, LRCK divide 256 (0x01:0x00) — 12.288 MHz over 256 is exactly 48 kHz.
 const MAINCLK_48K: u8 = 0xC1;
 const OSR_48K: u8 = 0x20;
 const LRCK_DIVH_48K: u8 = 0x01;
@@ -76,8 +75,7 @@ const _: () = assert!(FILTER_SET & FILTER_CORNER_MASK == FILTER_CLEAR & FILTER_C
 const ANALOG_POWER_RUN: u8 = 0x43;
 const MIC_BIAS: u8 = 0x70;
 
-// Datasheet 4.8: bit4 enables a microphone's PGA and bits 0-3 hold its gain in
-// 3 dB steps. Index 10 is the 30 dB step.
+// Datasheet 4.8: bit4 enables a mic's PGA, bits 0-3 its gain in 3 dB steps; index 10 is 30 dB.
 const GAIN_ENABLE: u8 = 0x10;
 const GAIN_FIELD: u8 = 0x0F;
 const GAIN_30DB: u8 = 0x0A;
@@ -85,23 +83,19 @@ const MIC_POWER: u8 = 0x08;
 
 /// How far this microphone's full scale sits above 0 dB SPL: 0 dBFS is 102 dB SPL.
 ///
-/// From the two datasheets. ES7210: full scale is AVDD/3.3 Vrms, so at
-/// `ANALOG_POWER_RUN` it is 1.0 Vrms, not the 2 Vrms "headroom" would suggest.
-/// ZTS6216: −38 dBV/Pa is 12.59 mV/Pa, which through `GAIN_30DB` is 397.8 mV/Pa at
-/// the converter — so full scale is 2.51 Pa, or 101.98 dB against the 20 µPa
-/// reference.
+/// ES7210: full scale is AVDD/3.3 Vrms, so 1.0 Vrms at `ANALOG_POWER_RUN`, not the 2 Vrms
+/// headroom suggests. ZTS6216: −38 dBV/Pa through `GAIN_30DB` is 397.8 mV/Pa at the converter,
+/// so full scale is 2.51 Pa, or 101.98 dB against 20 µPa.
 ///
-/// Anchored against speech at 30 cm on 2026-09-28: a 66 dB SPL floor, peaks to 80.
-/// To re-anchor when the capsule or a gain step changes, set `CAL_SPL_LOG` in the
-/// capture driver and speak at the same distance.
+/// Anchored against speech at 30 cm on 2026-09-28: a 66 dB SPL floor, peaks to 80. To
+/// re-anchor, set `CAL_SPL_LOG` in the capture driver and speak at the same distance.
 pub const SPL_OFFSET_DECIBELS: i16 = 102;
 
 const SDP_FRAME_MASK: u8 = 0x03;
 const SDP_I2S: u8 = 0x00;
-// Datasheet 3.3: bits 6-5 hold the word width; 0b01 is 16 bit. Bit 7 is written
-// alongside them because the width write also clears it. The field is spelled
-// out rather than reusing the vendor's `&= 0x1f`, which clears the frame bits too
-// and only looks harmless because the frame write before it wrote zero.
+// Datasheet 3.3: bits 6-5 hold the word width, 0b01 = 16 bit; bit 7 is written alongside
+// because the width write also clears it. Spelled out rather than the vendor's `&= 0x1f`,
+// which clears the frame bits too and only looks harmless because the frame write was zero.
 const SDP_WIDTH_MASK: u8 = 0xE0;
 const SDP_16BIT: u8 = 0x60;
 const USE_MIC3_REFERENCE: bool = false;
@@ -283,8 +277,7 @@ impl<D: I2c> Es7210<D> {
         Ok(())
     }
 
-    /// Separate from `init` so a part that lost its clocks can be restarted without a full
-    /// re-init.
+    /// Separate from `init` so a part that lost its clocks restarts without a full re-init.
     pub fn start(&mut self) -> Result<(), Es7210Error<D::Error>> {
         let clock_off = register_seq::read_reg(&mut self.i2c, self.addr, REG_CLOCK_OFF)?;
         self.i2c
@@ -293,8 +286,7 @@ impl<D: I2c> Es7210<D> {
         Ok(register_seq::run(&mut self.i2c, self.addr, START)?)
     }
 
-    /// Moves every input pair's DC-blocking corner to `corner`, leaving every other bit of
-    /// the register exactly as the part holds it.
+    /// Moves every input pair's DC-blocking corner, leaving every other bit as the part holds it.
     pub fn write_hpf_corner(&mut self, corner: u8) -> Result<(), Es7210Error<D::Error>> {
         for reg in [
             REG_ADC12_FILTER_CLEAR,

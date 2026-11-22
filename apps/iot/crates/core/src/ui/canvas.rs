@@ -13,35 +13,33 @@ use super::Rect;
 use super::font::{Chars, Face, FontFamily, Glyph, Metrics, Outline, VectorFace};
 
 /// The points one glyph may hold before [`Canvas::draw_outline_at`] refuses it. The widest
-/// glyph in the shipped table holds 328; a cutter that outgrows this shows up in
-/// `no_outline_is_wider_than_the_canvas_scratch` rather than as a silently thin glyph.
+/// shipped glyph holds 328; a wider one trips `no_outline_is_wider_than_the_canvas_scratch`.
 pub(crate) const OUTLINE_POINTS: usize = 384;
 
-/// The coverage cache's glyph box: the text page's 24 px face. A bigger glyph rasterizes
-/// straight into the frame instead of into a slot.
+/// The coverage cache's glyph box, sized for the text page's 24 px face; larger glyphs
+/// rasterize straight into the frame.
 pub const GLYPH_BOX: usize = 24;
 
-/// Glyphs one page can keep rasterized. The text sample is 179 distinct glyphs across its 25
-/// lines at 24 px; the rest is headroom for a differently sized run.
+/// Glyphs one page can keep rasterized. The text sample needs 179 distinct glyphs.
 pub const GLYPH_SLOTS: usize = 192;
 
-/// Coverage is counted in sixteenths, so a pixel needs five bits, not four: a fully inked
-/// pixel is 16, which four bits cannot hold without turning its last sixteenth translucent.
+/// Coverage is counted in sixteenths, so a pixel needs five bits: a full pixel is 16, which
+/// four bits cannot hold.
 const INK_BITS: usize = 5;
 const GLYPH_STRIDE: usize = (GLYPH_BOX * INK_BITS).div_ceil(8);
 
 /// The widest and tallest ink the uncached path draws; a bigger face would overrun the row
-/// buffer, and shows up as an assertion rather than as a silently missing glyph.
+/// buffer and trips an assertion.
 const MAX_GLYPH_WIDTH: usize = 64;
 const MAX_GLYPH_ROWS: usize = 256;
 
 /// Where a glyph sits and how big its ink box is, in panel pixels.
 #[derive(Clone, Copy)]
 struct Placement {
-    /// The glyph's pen origin and baseline.
+    /// Pen origin.
     left: i32,
     baseline: i32,
-    /// The top-left of its ink box, and the box's size.
+    /// Ink box top-left and size.
     x: i32,
     y: i32,
     width: usize,
@@ -63,9 +61,8 @@ impl GlyphSlot {
 }
 
 /// The coverage every (code point, size, weight) has already rasterized to. A page lays a
-/// glyph on whole-pixel coordinates, so its coverage depends on nothing else; a scroll blends
-/// the slot instead of walking the outline again. Heap-only: the main stack has no room
-/// (`@/records/iot/hardware-constraints.md`).
+/// glyph on whole-pixel coordinates, so a scroll can blend the slot instead of re-walking the
+/// outline. Heap-only: the main stack has no room (`@/records/iot/hardware-constraints.md`).
 pub struct GlyphCache {
     slots: Box<[GlyphSlot]>,
     next: usize,
@@ -130,8 +127,8 @@ pub struct Canvas<'a> {
     clips: [Rect; 4],
     depth: usize,
     glyphs: Option<&'a mut GlyphCache>,
-    /// The rectangles this frame is allowed to touch; `None` means the whole canvas. A partial
-    /// repaint sets it so a page that declares everything still only inks what changed.
+    /// The rectangles this frame is allowed to touch; `None` means the whole canvas, so a
+    /// partial repaint still only inks what changed.
     damage: Option<FrameDamage>,
 }
 
@@ -208,9 +205,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Narrows every following mark to `rect` across the axis only, keeping the vertical clip
-    /// in force until [`Canvas::pop_clip`]: a run that may not overflow sideways is still
-    /// allowed to let its ink out of its own line box, the way a scroll box lets a line's
-    /// descender show.
+    /// in force: a run may not overflow sideways but may let a descender out of its line box.
     pub fn push_x_clip(&mut self, rect: Rect) {
         let base = self.clip().unwrap_or(Rect {
             x: 0,
@@ -239,8 +234,7 @@ impl<'a> Canvas<'a> {
         self.clips[self.depth - 1].contains(x as i32, y as i32)
     }
 
-    /// Sets the colour every following mark is laid down in; `None` turns the ground over
-    /// instead, which is what a page that names no colour gets.
+    /// Sets the colour every following mark is laid down in; `None` turns the ground over.
     pub fn set_color(&mut self, color: Option<Color>) {
         self.color = color;
     }
@@ -286,9 +280,8 @@ impl<'a> Canvas<'a> {
     }
 
     /// Lays a glyph down a pixel at a time, each set bit becoming a `scale`×`scale` block.
-    /// `heavy` adds one column: a bit is inked when it or its left neighbour is set, which
-    /// is the same widening two strikes give without striking the overlapping pixels twice.
-    /// Nothing inside the box is bounds-checked again.
+    /// `heavy` adds one column (a bit is inked when it or its left neighbour is set), the same
+    /// widening two strikes give without double-striking. Nothing inside the box is bounds-checked.
     fn draw_glyph_at(
         &mut self,
         glyph: &Glyph<'_>,
@@ -358,12 +351,11 @@ impl<'a> Canvas<'a> {
     }
 
     /// Fills one vector glyph's contours at a panel coordinate, its baseline on the row below
-    /// the line box's ascent. Coverage is sampled on four sub-scanlines and accumulated per
-    /// pixel in quarter-columns, so an edge between pixels becomes a mixed colour.
-    ///
-    /// A glyph that fits [`GLYPH_BOX`] is rasterized once into [`GlyphCache`]; a scroll then
-    /// blits the slot instead of walking the outline (about a millisecond a glyph on the S3).
-    /// A heavy glyph adds one column, so it is cached only while it still fits the box.
+    /// the line box's ascent. Coverage is sampled on four sub-scanlines into quarter-columns,
+    /// so an edge between pixels becomes a mixed colour. A glyph that fits [`GLYPH_BOX`] is
+    /// rasterized once into [`GlyphCache`], and a scroll blits the slot instead of walking the
+    /// outline (~1 ms a glyph on the S3); a heavy glyph adds a column, so it caches only while
+    /// it still fits.
     fn draw_outline_at(
         &mut self,
         ch: char,
@@ -636,11 +628,11 @@ impl<'a> Canvas<'a> {
 }
 
 /// Adds the coverage a scanline span from `a` to `b` gives the pixels of `ink`, in quarter
-/// columns relative to `origin`. The last pixel takes only the fraction the span reaches.
-/// Walks `outline`'s contours once, sampling four sub-scanlines per row, and hands every
-/// inked pixel's coverage to `put` relative to the box at `at`. The points are scaled into
-/// [`OUTLINE_POINTS`] once and every edge is filed under the first row that can reach it, so
-/// a row visits only the edges still crossing it; rescaling per row cost 238 ms a frame.
+/// columns relative to `origin`; the last pixel takes only the fraction the span reaches.
+/// Walks `outline`'s contours once, sampling four sub-scanlines per row and handing every
+/// inked pixel to `put`. Points are scaled into [`OUTLINE_POINTS`] once and each edge is filed
+/// under the first row that can reach it, so a row visits only the edges still crossing it —
+/// rescaling per row cost 238 ms a frame.
 fn rasterize(
     outline: &Outline<'_>,
     size: u16,
@@ -692,10 +684,9 @@ fn rasterize(
         }
         start = end;
     }
-    // File every edge under the first row whose samples can reach it. A row samples from +1
-    // to +7 quarter rows, so an edge whose top sits in a later pixel row may still cross this
-    // one; `top - 4` is the row whose window ends at that top. A `u16::MAX` chain entry ends
-    // the bucket.
+    // File every edge under the first row whose samples can reach it: a row samples +1 to +7
+    // quarter rows, so `top - 4` is the row whose window ends at that top. `u16::MAX` ends the
+    // bucket chain.
     let mut heads = [-1i16; MAX_GLYPH_ROWS];
     let mut chain = [u16::MAX; OUTLINE_POINTS];
     for (local, next) in succ[..count].iter().enumerate() {
@@ -1194,10 +1185,9 @@ mod tests {
         );
     }
 
-    /// The cache may only make drawing faster: every shipped glyph, drawn from a slot, has to
-    /// land on exactly the pixels the outline would. The third pass reuses slots rasterized at
-    /// a different position, which is what proves coverage does not depend on where the glyph
-    /// sits.
+    /// The cache may only make drawing faster: every shipped glyph drawn from a slot must land
+    /// on exactly the pixels the outline would. The third pass reuses slots rasterized at a
+    /// different position, proving coverage does not depend on where the glyph sits.
     #[test]
     fn a_cached_glyph_lands_on_the_outline_s_pixels() {
         const W: usize = 48;

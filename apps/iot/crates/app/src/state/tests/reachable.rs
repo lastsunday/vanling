@@ -1,18 +1,7 @@
-//! The page's moves, walked exhaustively rather than along the paths a test happened to pick.
-//!
-//! The tests above are examples: one path somebody thought of, with the state it expected beside
-//! it. That is the wrong shape for a move whose *precondition* an earlier move took away — such a
-//! rule can be green for every state its own test walks into while being wrong for a state none of
-//! them does. So this walks the reachable states instead: a breadth-first sweep over every move the
-//! page has, from the state a booted device is in, with `broken`'s invariants checked on every
-//! state a move lands on. The moves that reached a broken state are printed with it, so a failure
-//! here is a reproduction rather than a verdict.
-//!
-//! Two limits of the alphabet decide what the sweep's answer is worth. Every report it sends is one
-//! the radio really makes — `Connected` carries an address, `Connecting` may or may not have a name
-//! yet, `Off` and `Scanning` carry neither — because a sweep free to invent a report would find
-//! states the device cannot be in and call them reachable. And states are compared through `key`:
-//! a field left out that a move reads would merge two states the page tells apart.
+//! The page's moves, walked exhaustively rather than along one test's path: a breadth-first
+//! sweep over every move from a booted state, with `broken`'s invariants checked on each state
+//! a move lands on. Reports are only ones the radio really makes, and states compare through
+//! `key`, so the sweep cannot call an unreachable state reachable.
 
 use super::*;
 use crate::services::network::shape::{self, DialogChoice};

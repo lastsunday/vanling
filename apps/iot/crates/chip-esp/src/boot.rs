@@ -1,11 +1,9 @@
 //! Crash counting across resets, and the safe mode it leads to.
 //!
-//! The count lives in an RTC-domain scratch register (`store0`), which a core reset does
-//! not clear — that is the kind of reset both the panic path and the watchdog use. A
-//! power-on clears it, and that is also how a person gets out of safe mode.
-//!
-//! The rule for what a record means is `iot_core::boot`'s; this module supplies the
-//! register, the reset reason, and the loop that keeps a parked part observable.
+//! The count lives in an RTC-domain scratch register (`store0`), which a core reset — the kind
+//! both the panic path and the watchdog use — does not clear; a power-on does, and that is how a
+//! person leaves safe mode. What a record means is `iot_core::boot`'s rule; this module supplies
+//! the register, the reset reason, and the loop that keeps a parked part observable.
 
 use esp_hal::delay::Delay;
 use esp_hal::rtc_cntl::{SocResetReason, reset_reason};

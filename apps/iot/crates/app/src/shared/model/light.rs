@@ -1,5 +1,4 @@
-//! The light surfaces as the render loop reads them: the breathing schedule, the behaviour a
-//! page's snapshot carries, and the tables the lamp's verbs walk.
+//! The light surfaces as the render loop reads them: breathing, page behavior, and the verb tables.
 
 use iot_core::drivers::network::NetworkError;
 use iot_core::light::{GROUP_CAPACITY, Rgb, Sample};
@@ -83,8 +82,7 @@ impl ColorGroup {
     }
 }
 
-/// The hue groups a colour step walks, head first: the default sunset, the seven-way
-/// rainbow, one single-hue sweep, and the static group.
+/// The hue groups a colour step walks, head first: sunset, rainbow, one hue sweep, and static.
 pub const COLOR_GROUPS: [ColorGroup; 4] = [
     ColorGroup {
         hue_span: 255,
@@ -145,17 +143,14 @@ impl LightState {
     pub const DEFAULT_MAX_BRIGHTNESS: u8 = 80;
     pub const DEFAULT_SATURATION: u8 = 200;
     pub const DEFAULT_HUE: u8 = 0;
-    /// Warm sunset: amber, golden, deep rose — low-blue palette favored by circadian
-    /// research for a calm ambient breathing glow.
+    /// Warm sunset: amber, golden, deep rose, for a calm ambient glow.
     pub const DEFAULT_GROUP: [u8; Breath::MAX_GROUP] = [16, 32, 3, 0, 0, 0, 0];
     pub const DEFAULT_GROUP_LEN: u8 = 3;
 
-    /// Full-brightness entry point for solid mode; dimming is a long-press advance from
-    /// here.
+    /// Full-brightness entry point for solid mode; dimming is a long-press advance from here.
     pub const SOLID_DEFAULT_BRIGHTNESS: u8 = 255;
 
-    /// Backlight floor for the breathing envelope: the panel never sinks below this percent
-    /// while pixels are lit, so the trough stays a dim glow instead of a hard on/off blip.
+    /// Backlight floor for the breathing envelope: the trough stays a dim glow, not a hard blip.
     pub const BACKLIGHT_FLOOR_PCT: u8 = 12;
 
     /// Whether this state has anything for the action to move. `Off` answers only `Cycle`.
@@ -187,8 +182,7 @@ impl LightState {
         })
     }
 
-    /// The setup access point is up and the device is waiting for a phone: a slow blue
-    /// breath, the convention every provisioning firmware here shares.
+    /// The setup access point is up, waiting for a phone: a slow blue breath.
     pub const SETUP: Self = Self::Breath(Breath {
         period_ms: 2_000,
         hue_period_ms: 0,
@@ -201,8 +195,7 @@ impl LightState {
         group_len: 0,
     });
 
-    /// A credential is in hand and the radio is acting on it: the setup blue a step
-    /// quicker, so the mode and the attempt are told apart without a second colour.
+    /// A credential is in hand and the radio is acting on it: the setup blue, a step quicker.
     pub const JOINING: Self = Self::Breath(Breath {
         period_ms: 800,
         hue_period_ms: 0,
@@ -222,8 +215,7 @@ const REFUSED_FLASH_MS: u32 = 120;
 
 const FLASHES: u32 = 3;
 
-/// The one-shot news a lamp says instead of a page: a join that worked, a link that is not
-/// there, or a credential the radio refused.
+/// The one-shot news a lamp says instead of a page: joined, offline, or refused.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NoticeKind {
     Joined,
@@ -232,8 +224,7 @@ pub enum NoticeKind {
 }
 
 impl NoticeKind {
-    /// The news a failed attempt is: amber when the network could not be found, red when
-    /// the radio refused what it was handed.
+    /// The news a failed attempt is: amber when not found, red when the radio refused.
     pub const fn for_failure(kind: NetworkError) -> Self {
         match kind {
             NetworkError::NotFound => Self::Offline,
@@ -272,8 +263,7 @@ impl NoticeKind {
         }
     }
 
-    /// What the lamp shows this many milliseconds into the announcement, or `None` once the
-    /// news is over. The last flash ends on its dark half so the count matches the time.
+    /// What the lamp shows at `elapsed_ms`, or `None` once the news is over.
     pub const fn light_at(self, elapsed_ms: u32) -> Option<LightState> {
         let flash_ms = self.flash_ms();
         let step = flash_ms * 2;
@@ -292,15 +282,13 @@ impl NoticeKind {
     }
 }
 
-/// A piece of one-shot news riding on a light-only board's lamp, with the step of it that
-/// the clock last put up.
+/// One-shot news on a light-only board's lamp, with the step the clock last put up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Notice {
     pub kind: NoticeKind,
     /// Left `None` until the first frame that draws it.
     pub started_ms: Option<u32>,
-    /// What the lamp shows at the current step; rewritten by the owner of the clock so
-    /// reading the state never needs the time.
+    /// What the lamp shows at the current step; the clock's owner rewrites it.
     pub light: LightState,
 }
 

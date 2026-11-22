@@ -26,14 +26,12 @@ impl Differ {
         Self { last: None }
     }
 
-    /// Diff `state` against the last snapshot, invoking `notify` per changed topic; the
-    /// first call reports every known topic.
+    /// Diff `state` against the last snapshot, invoking `notify` per changed topic; the first
+    /// call reports every known topic.
     ///
-    /// What each topic shows is selected from the state first — the frame the screen reads,
-    /// the demand every surface obeys, the appearance one surface reads — and only the
-    /// topics whose selection moved are notified. A renderer therefore never receives an
-    /// appearance it would have to throw away, and the state is written once at the end,
-    /// after the selections are compared.
+    /// Each topic's selection is taken from the state first, and only topics whose selection
+    /// moved are notified, so a renderer never receives an appearance it would have to throw
+    /// away. The state is written once at the end, after the selections are compared.
     pub fn diff(
         &mut self,
         state: &DeviceState,

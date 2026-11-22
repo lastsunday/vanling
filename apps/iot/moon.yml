@@ -4,15 +4,9 @@ tags: ['iot']
 env:
   CARGO_ESP_TARGET: 'riscv32imac-unknown-none-elf'
 
-# What the tasks that compile this project read. Declaring `inputs` *replaces* moon's
-# default for a task, and the default is what these tasks had: every file of this
-# project. `**/*` keeps exactly that coverage (dotfiles and the non-Rust inputs —
-# `runtime/feature/playback/sounds/*.mid`, `partitions/*.csv`, `linker/*.x` — all still reach the hash) instead
-# of listing globs that would have to be kept in step by hand. The script is here
-# because no glob can leave the project (`..` is not a legal input) and iot-xtensa.sh
-# decides what the tasks that go through it compile; without it, editing the
-# dispatcher leaves a cached check passing and a cached probe image on disk that the
-# dispatcher no longer describes.
+# Declaring `inputs` replaces moon's default (every file), so `**/*` keeps that coverage —
+# dotfiles and the non-Rust inputs (`sounds/*.mid`, `partitions/*.csv`, `linker/*.x`) — and
+# the dispatcher is listed because no glob can leave the project.
 fileGroups:
   build-inputs:
     - '**/*'
@@ -49,13 +43,11 @@ tasks:
     deps:
       - ~:check
     options:
-      # `vanling` reads `IOT_WIFI_SSID`/`IOT_WIFI_PSK` with `option_env!` — see
-      # `build-s3` for why that costs the cache.
+      # `vanling` reads `IOT_WIFI_SSID`/`IOT_WIFI_PSK` with `option_env!`; a cached build
+      # would return the previous password.
       cache: false
 
-  # `iot-app`'s own tests run on the host backend rather than bare metal: the
-  # demand publisher is a task-boundary concern rather than a chip one, and
-  # `--lib` keeps the `vanling` bin out of it, since that one needs a board.
+  # `iot-app`'s tests run on the host backend; `--lib` keeps the `vanling` bin out.
   test:
     script: 'cargo test -p iot-core && cargo test -p iot-app --lib --no-default-features --features host'
     deps:
@@ -68,39 +60,29 @@ tasks:
     deps:
       - ~:check
 
-  # The sound catalogue's files are build products of a table that lives in
-  # `iot-tool`, so nothing else in the workspace holds them to it.
+  # The sound catalogue's files are build products of `iot-tool`'s table.
   test-tool:
     command: 'cargo test -p iot-tool'
 
-  # Rebuild `runtime/feature/playback/sounds/*.mid` from the recipes. Writes the source tree, and running
-  # it in CI would paper over exactly the failure `test-tool` exists to catch.
+  # Rebuild `sounds/*.mid` from the recipes. Writes the source tree, so never in CI.
   gen-midi-assets:
     command: 'cargo run --quiet -p iot-tool -- midi'
     options:
       cache: false
       runInCI: false
 
-  # Every component feature compiled on its own, which is what features.md rule 5
-  # asks for and what no other task here checks: a board feature is by
-  # construction the union of what that board wires, so a component reaching for a
-  # part it does not name stays invisible until the day a board wires one and not
-  # the other.
+  # Every component feature compiled on its own (features.md rule 5). A board feature is
+  # the union of what the board wires, so a component reaching for a part it does not name
+  # stays invisible otherwise.
   check-features:
     script: 'bash ../../scripts/iot-feature-check.sh'
     inputs:
       - '@group(build-inputs)'
       - '/scripts/iot-feature-check.sh'
     options:
-      # Cached, and that is the point of the group above. The matrix is real
-      # compiling — fifteen subsets, six on the host and nine against the bare-metal
-      # targets, where each one is a feature set cargo has not seen (~15s apiece; the
-      # container start is 0.5s, so none of it is dispatch overhead). `cache: false`
-      # therefore bought nothing and cost 2m20s on every `moon run`, changed files or
-      # not, where an unchanged tree now returns in ~0.1s. A change re-runs the whole
-      # matrix, which is the only moment the answer can have changed. Both scripts are
-      # named for the reason on `build-inputs`, and this one also names the script it
-      # runs.
+      # Real compiling: fifteen subsets, nine against bare-metal targets. Cached, an
+      # unchanged tree returns in ~0.1s; a changed tree re-runs the matrix, which is the
+      # only moment the answer can change.
       cache: true
 
   lint:
@@ -138,23 +120,12 @@ tasks:
     deps:
       - ~:check-host
     options:
-      # Cached like the checks, for the same reason: the same content runs the same
-      # smoke. A replay prints the recorded log behind moon's `cached` marker, and
-      # `moon run --force` is how to watch it happen again.
+      # The same content runs the same smoke; `moon run --force` replays it.
       cache: true
 
-  # Flashed against this repository's partition table rather than the one `espflash`
-  # writes by default: the default table has no `creds` partition, so the device
-  # came up with no saved networks on every boot and never reconnected. The table
-  # also carries `phy_init`, which the Wi-Fi driver restores its calibration from —
-  # see `partitions/esp32c6-devkitc-1.csv`.
-  #
-  # An explicit `espflash` rather than `cargo run`: the cargo runner in
-  # `.cargo/config.toml` cannot receive `--partition-table`, and passing it to
-  # `cargo run` would hand it to the firmware instead.
-  #
-  # `--flash-size 8mb` is the part's measured size; without it espflash assumes
-  # 4 MB and the table's last partition no longer matches the flash it writes.
+  # The partition table carries `creds` and `phy_init`; espflash's default has neither, so
+  # the device would boot with no saved networks. An explicit `espflash` because the cargo
+  # runner cannot receive `--partition-table`. `--flash-size 8mb` is the part's size.
   flash:
     script: |
       espflash flash --chip esp32c6 \
@@ -170,37 +141,17 @@ tasks:
       cache: false
       runInCI: false
 
-  # Builds the image the S3 tasks fall back to on hosts without a native espup
-  # toolchain. Idempotent: an existing tag is reused, so the build happens once
-  # per toolchain version.
+  # The S3 image for hosts without a native espup toolchain. Idempotent per toolchain.
   xtensa-image:
     script: bash ../../scripts/iot-xtensa-image.sh
     options:
       cache: false
       runInCI: false
 
-  # s3 (xtensa-esp32s3): dispatched by scripts/iot-xtensa.sh. Uses the espup
-  # "esp" toolchain natively (pinned to 1.98.1.0) when fully installed
-  # (CI/release); otherwise the local vanling/xtensa:esp32s3_1.98.1.0 image
-  # (macOS Intel, where esp-rs stopped shipping toolchains at v1.91+), built
-  # once by `~:xtensa-image`.
-  # The esp nightly fork ships no prebuilt Xtensa rust-std, hence -Z build-std.
-  # Names every bin so each probe is type-checked on every run. Only `vanling` is
-  # linked by `build-s3`, but a probe nothing compiles can rot in place: each one
-  # calls a bring-up or a chip API of its own, and a change to `Board`, `Speaker` or
-  # the chip layer would leave it failing to build with nobody noticing until the
-  # day it is needed on a bench.
-  #
-  # `wifi-probe` is named on its own rather than through the board feature: it
-  # needs the radio and its heap, which the board feature does carry, but it is
-  # also the one bin whose `required-features` are the `wifi` feature, so naming
-  # the bin is what keeps that feature reachable from here. Both checks name it,
-  # because the probe is the one image that has to build on both parts.
-  #
-  # One invocation, because `camera` is in the board feature: the board mounts the
-  # sensor, so every image of this board pays for the 150 KB frame arena the panel's
-  # DMA shares. `check-s3` does not link, so nothing here sees the memory that costs —
-  # `build-s3` / `image-s3` do, and that is the step that would fail on it.
+  # s3 (xtensa-esp32s3): dispatched by scripts/iot-xtensa.sh, which uses the espup
+  # toolchain (pinned 1.98.1.0) or the local image. Every bin is named so each probe is
+  # type-checked; `wifi-probe` is named for its own `required-features`. `check-s3` does not
+  # link, so the camera's 150 KB frame arena only shows up in `build-s3` / `image-s3`.
   check-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
@@ -210,8 +161,7 @@ tasks:
         --target xtensa-esp32s3-none-elf \
         -Z build-std=core,alloc \
         --no-default-features --features lckfb-szpi-esp32s3,console-auto
-      # The `panel-bench` feature selects the other branch of the product entry, so the product
-      # check above never sees `bench::run`.
+      # `panel-bench` selects the other branch of the product entry.
       bash ../../scripts/iot-xtensa.sh check -p iot-app \
         --bin vanling \
         --target xtensa-esp32s3-none-elf \
@@ -220,19 +170,9 @@ tasks:
     inputs:
       - '@group(build-inputs)'
 
-  # The C6 is the one of the two parts that is checked on the toolchain which
-  # produces its image, rather than through iot-xtensa.sh: `riscv32imac-unknown-none-elf`
-  # ships a prebuilt `core`/`alloc` (rust-toolchain.toml installs the target), so this
-  # needs neither the esp fork nor `-Z build-std`, and `build` / `image-c6` — the tasks
-  # that do link this board's firmware — already run on this toolchain. Through the
-  # container this check cost 1m12s per run to type-check the same source against the
-  # same target in a 4 GB VM; on the host it is seconds. The inputs are the same list
-  # `check` declares, because this is `check` plus `wifi-probe` — the one bin whose
-  # `required-features` are the `wifi` feature, and the reason both checks name it.
-  # The S3 keeps the container: Xtensa has no prebuilt rust-std at all. The
-  # dispatcher's own non-S3 path does not go uncovered by this: the C6 subsets in
-  # `check-features` stay on it, which is what holds the S3-only data-cache export
-  # honest (see that script).
+  # The C6 is checked on its own toolchain: `riscv32imac-unknown-none-elf` ships a prebuilt
+  # `core`/`alloc`, so no container and no `-Z build-std`. Same inputs as `check`; it adds
+  # `wifi-probe`, whose `required-features` are `wifi`.
   check-c6:
     command: >-
       cargo check -p iot-app --bin vanling --bin wifi-probe
@@ -257,33 +197,16 @@ tasks:
     deps:
       - ~:check-s3
     options:
-      # `vanling` reads the credentials this build was given with `option_env!` (`IOT_WIFI_SSID`
-      # / `IOT_WIFI_PSK`, forwarded by `scripts/iot-xtensa.sh`), and moon keys its cache on
-      # files and the environment variables a task names — not on the environment the shell
-      # happens to have. Cached, a changed password would come back as the previous build's
-      # image: right network in the log, wrong one on the air. Cargo tracks `option_env!`
-      # itself, so all a new password needs is the build being re-run. `probe-wifi-s3` is
-      # uncached for the same reason.
+      # Uncached: the credentials are compiled in (`option_env!`), and moon's cache does not
+      # key on them. Cargo tracks `option_env!` itself, so a new password re-runs the build.
       cache: false
       runInCI: false
 
-  # The same product, booting onto the camera page. A page that would otherwise need a
-  # triple-tap on the hardware is only benchable this way, so it is a second image rather
-  # than a second way of producing the first one.
-  #
-  # Cargo writes it to the same path the product's image lives at, because it is the same
-  # firmware from a different starting page, and there is no second target directory to put it
-  # in: a bench task is not worth another few GB of build cache. So the product image is saved
-  # and put back around the build, which is what keeps `vanling` meaning "the product" — without
-  # it, whichever of the two tasks ran last decides what `flash-s3` and `iot-image.sh` pick up,
-  # and a cached `build-s3` does not necessarily restore its own.
-  #
-  # Kept off CI: it is the same firmware with a different starting page.
+  # The same product booting onto the camera page. Cargo writes the same `vanling` path, so
+  # the product image is saved and put back around the build.
   build-s3-camera:
     script: |
-      # `set -e` because the build sits between the copy that saves the product image and the
-      # copy that publishes this task's variant: a failed build would otherwise publish the
-      # stale product as the variant, and the task would report success for it.
+      # `set -e`: a failed build must not publish the stale product as the variant.
       set -e
       out=target/xtensa-esp32s3-none-elf/release/vanling
       if [ -f "$out" ]; then cp "$out" "$out.product"; fi
@@ -299,19 +222,13 @@ tasks:
     deps:
       - ~:check-s3
     options:
-      # Uncached for `build-s3`'s reason: this is `vanling`, with the credentials compiled in.
       cache: false
       runInCI: false
 
-  # The product with two devices turned down — the only shipped path that both gates a
-  # device (`audio=off`) and stretches one (`motion=on:30000`), so both halves of the
-  # demand are exercised. Kept off CI like `build-s3-camera`: a different demand, not
-  # a different product.
+  # Two devices turned down — the only path that both gates (`audio=off`) and stretches
+  # (`motion=on:30000`) a demand.
   build-s3-thrift:
     script: |
-      # `set -e` because the build sits between the copy that saves the product image and the
-      # copy that publishes this task's variant: a failed build would otherwise publish the
-      # stale product as the variant, and the task would report success for it.
       set -e
       out=target/xtensa-esp32s3-none-elf/release/vanling
       if [ -f "$out" ]; then cp "$out" "$out.product"; fi
@@ -328,22 +245,12 @@ tasks:
     deps:
       - ~:check-s3
     options:
-      # Uncached for `build-s3`'s reason: this is `vanling`, with the credentials compiled in.
       cache: false
       runInCI: false
 
-  # Every S3 image is flashed against this repository's partition table rather than
-  # the one `espflash` writes by default: the Wi-Fi driver's prebuilt blobs do not fit
-  # the default 1 MB factory slot, and the table also decides whether the driver finds
-  # a PHY calibration partition — see `partitions/lckfb-szpi-esp32s3.csv` for both.
-  #
-  # `--flash-size 16mb` comes with the table: the board is a 16 MB part and espflash
-  # would otherwise assume 4 MB, which cannot hold a 6 MB factory slot — it then fails
-  # on the table rather than on the image.
-  #
-  # `-a watchdog-reset` on every S3 flash: a plain DTR reset is a core reset on native USB
-  # and does not re-sample the boot strapping pins, so the chip stays in the ROM downloader
-  # instead of starting the application.
+  # The Wi-Fi blobs do not fit espflash's default 1 MB factory slot, and the table decides
+  # whether the PHY calibration partition is found. `--flash-size 16mb` comes with it.
+  # `-a watchdog-reset`: a plain DTR reset does not re-sample strapping on native USB.
   flash-s3:
     script: |
       espflash flash --chip esp32s3 \
@@ -374,9 +281,8 @@ tasks:
       cache: false
       runInCI: false
 
-  # The no-replug way out of the ROM downloader: a physical RST can leave the chip there because
-  # the native-USB reset path does not re-sample strapping. The watchdog reset is a full system
-  # reset, so the application starts without unplugging the board.
+  # A watchdog reset is a full system reset, so a chip stuck in the ROM downloader starts
+  # the application without unplugging.
   reset-s3:
     script: |
       espflash reset --chip esp32s3 \
@@ -386,27 +292,9 @@ tasks:
       cache: false
       runInCI: false
 
-  # The product holding its own keyboard: the credential this build is given is typed on the panel
-  # at boot, at the cells `crates/app/src/services/network/layout/keyboard.rs` draws them in, and through the
-  # same intent ring a finger's taps arrive on. What it proves is the chain the setup path is end
-  # to end —
-  # a tap picks the row, the keys fill the draft, `OK` hands a credential to the state, the render
-  # loop publishes it and the radio associates — none of which a host test can reach, because all of
-  # it is decided against panel coordinates.
-  #
-  # The two variables are the bench's own input, and they are the same two `probe-wifi-s3` takes:
-  #
-  #   IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:flash-panel-typing-s3
-  #
-  # `IOT_BOOT_PAGE=network` is part of the bench rather than a convenience: the survey only asks the
-  # radio while that page is on the panel, and the list the row is picked from is what it fills.
-  # `IOT_PANEL_BENCH` is what makes the build come up unconfigured — a build that was handed its
-  # credentials would join them without touching the panel at all.
-  #
-  # The bench is the product entry compiled with `panel-bench`, so Cargo writes the same
-  # `vanling` path. Move the product aside for the duration and publish this image as
-  # `vanling-panel`, so `flash-s3` and `iot-image.sh` never pick it up — including when the build
-  # fails, or when there was no product ELF to keep.
+  # Types the credential on the panel at boot, through the same intent ring a finger uses.
+  # `IOT_BOOT_PAGE=network` is part of the bench; `IOT_PANEL_BENCH` keeps the build
+  # unconfigured so it has to use the panel.
   panel-typing-s3:
     script: |
       set -e
@@ -426,7 +314,6 @@ tasks:
     deps:
       - ~:check-s3
     options:
-      # Uncached for `build-s3`'s reason: this is a bench image, with the credentials compiled in.
       cache: false
       runInCI: false
 
@@ -446,16 +333,7 @@ tasks:
       runInCI: false
 
   # Bench images: one peripheral each, so a fault belongs to a path rather than to the
-  # product's three tasks contending for one executor. None is produced by build-s3, which
-  # names only the product's own bins, so the product's artifacts and its flash task are
-  # untouched. Repeated rather than shared: moon does not forward a child's `args` to an
-  # inherited script, and each probe builds only its own bin.
-  #
-  #   probe-audio-s3      the speaker alone, looping the catalogue
-  #   probe-camera-s3     the camera and the panel, and nothing else
-  #   probe-multicore-s3  the second core and the main stack beneath it
-  #   probe-demand-s3     one settled, measured cell per (configuration x cadence) pair
-  #   probe-aec-s3        what one audio tick of the linear canceller costs, per tap count
+  # product's tasks contending for one executor. Each builds only its own bin.
   probe-audio-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin audio-probe \
@@ -517,8 +395,7 @@ tasks:
       persistent: true
       cache: false
 
-  #   probe-echo-s3       the speaker playing while the microphone listens, and the
-  #                       canceller fed both: the pairing on a real room
+  # The speaker playing while the microphone listens, with the canceller fed both.
   probe-echo-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin echo-probe \
@@ -557,21 +434,9 @@ tasks:
     options:
       runInCI: false
 
-  #   probe-wifi-s3       the radio, the IP stack and the credentials this build was
-  #                       given, and nothing else: scan, associate, DHCP, then the
-  #                       driver's heap and the stage timings for as long as it holds
-  #   probe-wifi-c6       the same image on the other board: the probe's own code is
-  #                       chip-agnostic, so only the part's memory budget differs
-  #
-  # Credentials are a build-time input, named in FORWARDED_ENV, so a bench run is one
-  # command with two variables rather than a protocol typed on a panel this image
-  # never lights. The two names are set on the invocation:
-  #
+  # Credentials are build-time inputs named in FORWARDED_ENV:
   #   IOT_WIFI_SSID=home IOT_WIFI_PSK=secret moon run iot:probe-wifi-s3
-  #
-  # A build without them still runs and says that it has nothing to connect to, which
-  # is the answer to "does the scan work on its own" without pretending to be a
-  # connection test.
+  # A build without them still scans and says it has nothing to connect to.
   probe-wifi-s3:
     script: |
       bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin wifi-probe \
@@ -596,12 +461,8 @@ tasks:
       cache: false
       runInCI: false
 
-  # `-a watchdog-reset` on the S3 only. That board runs native USB, where a plain DTR reset
-  # is a core reset that does not re-sample the boot strapping pins, so it lands in the ROM
-  # downloader rather than the application — and espflash's watchdog reset is the way out. The
-  # C6 boots on a plain DTR reset (`rst:0x15 (USB_UART_HPSYS),boot:0x1c (SPI_FAST_FLASH_BOOT)`)
-  # and espflash refuses the watchdog reset on it outright, so adding it would break the task.
-  # `@/development/iot/flashing.md` has why.
+  # `-a watchdog-reset` on the S3 only: its native-USB reset path does not re-sample
+  # strapping. The C6 boots on a plain DTR reset and espflash refuses it there.
   flash-probe-wifi-s3:
     script: |
       espflash flash --chip esp32s3 \
@@ -733,9 +594,8 @@ tasks:
       cache: false
       runInCI: false
 
-  # C6 emulator smoke: builds with the esp-println UART console (esp-emu only
-  # scans UART0; see docs/content/development/iot/emulation.md) and boots the
-  # merged image through esp-emu, asserting `[IOT] boot complete`.
+  # C6 emulator smoke: the esp-println UART console, booted through esp-emu. See
+  # docs/content/development/iot/emulation.md.
   build-c6-emu:
     script: 'bash ../../scripts/iot-emu-image.sh'
     outputs:

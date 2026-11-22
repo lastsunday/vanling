@@ -1,14 +1,6 @@
-//! The pages as vocabulary: a route table declares, for every page, the name it answers to,
-//! what it needs from the board, what it claims of a demand, whether it can be booted on, and
-//! how long it lives. The enum is the destination; [`PageId::route`] is the one
-//! exhaustive map from a destination to its row, so a new page cannot exist without a route.
-//!
-//! How a page is painted — its ground, whether frames arrive from a camera, how often it may
-//! repaint, what a snapshot drift has to move — is the page's own answer (`services`), not
-//! this table's.
-//!
-//! [`PageId::ALL`] is the button's order too: one list, so a page cannot be listed and still be
-//! unreachable from the button. [`Navigator`] walks it (`nav`).
+//! The pages as vocabulary: each route row declares a page's name, what it needs from the board,
+//! its demand claims, whether it can be booted on, and how long it lives. [`PageId::ALL`] is the
+//! button's order, and [`Navigator`] walks it (`nav`).
 
 mod nav;
 
@@ -36,8 +28,7 @@ pub enum PageId {
 }
 
 impl PageId {
-    /// Whether the page is a still reading. A steady page holds the light and the backlight
-    /// where it found them: nothing on it breathes, so nothing should pulse under it.
+    /// Whether the page is a still reading: it holds the light and backlight where it found them.
     pub const fn steady(self) -> bool {
         matches!(self, Self::Text)
     }
@@ -45,8 +36,7 @@ impl PageId {
 
 /// One page's row in the route table: the properties that follow from being that page.
 struct Route {
-    /// The name the page answers to, trimmed and case-insensitive through
-    /// [`PageId::from_path`].
+    /// The name the page answers to, trimmed and case-insensitive through [`PageId::from_path`].
     path: &'static str,
     /// What the board must wire for this page to be reachable at all.
     needs: fn(Backed) -> bool,
@@ -185,8 +175,7 @@ impl PageId {
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
-    // Out of line on purpose: inlined, the lookup is folded into every caller and the seventh
-    // variant cost 456 B of DRAM, measured with `nm` against the S3's main stack budget.
+    // Out of line on purpose: inlined, the seventh variant cost 456 B of DRAM on the S3 (nm).
     #[inline(never)]
     const fn route(&self) -> &'static Route {
         match self {
@@ -202,8 +191,7 @@ impl PageId {
         }
     }
 
-    /// The page the button turns to: the next page in [`Self::ALL`] the board backs, wrapping.
-    /// A transient has no place in the lap and stays until its lifetime ends.
+    /// The next backed page in [`Self::ALL`], wrapping; a transient stays until its lifetime ends.
     pub fn next_page(&self, backed: Backed) -> Self {
         if self.is_transient() {
             return *self;
@@ -220,20 +208,17 @@ impl PageId {
         *self
     }
 
-    /// Whether the board can show this page: the route's own `needs`, so a page declares what
-    /// it takes next to what it draws.
+    /// Whether the board can show this page: the route's own `needs`.
     pub(crate) fn is_backed(&self, backed: Backed) -> bool {
         (self.route().needs)(backed)
     }
 
-    /// The name this page answers to. A transient page has one too; whether it can be booted
-    /// on is a route property, not a naming decision.
+    /// The name this page answers to, transient or not; bootability is a route property.
     pub const fn path(&self) -> &'static str {
         self.route().path
     }
 
-    /// Case- and whitespace-insensitive lookup by [`Self::path`]. Const so a build-time page
-    /// never becomes a run-time string — `@/development/iot/flashing.md`.
+    /// Case- and whitespace-insensitive lookup by [`Self::path`], const for build-time pages.
     pub const fn from_path(path: &str) -> Option<Self> {
         let wanted = path.trim_ascii().as_bytes();
         let mut index = 0;
@@ -262,8 +247,7 @@ impl PageId {
         self.timeout_ms().is_some()
     }
 
-    /// A stable wire code for tasks that cannot hold the enum: the discriminant, which
-    /// [`Self::ALL`] keeps in the same order.
+    /// A stable wire code for tasks that cannot hold the enum: the discriminant.
     pub const fn code(&self) -> u8 {
         *self as u8
     }

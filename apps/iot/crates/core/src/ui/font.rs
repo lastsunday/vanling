@@ -1,16 +1,9 @@
-//! The panel's faces: glyphs cut at 12 px, and the wrap region's outlines.
+//! The panel's faces: 12 px glyphs, and the wrap region's outlines.
 //!
-//! The bitmap table is built by `cargo run -p iot-tool -- font` from the subset BDF next to it;
-//! that BDF carries the licences. Coverage is GB2312's 7,475 glyphs plus Big5's 13,706 code
-//! points, 15,466 in all. 866 Big5 code points — 805 rare Level-2 hanzi and 61 symbols — have
-//! no glyph in the upstream `zh_hant` release and draw as [`MISSING`]; the other 12,840 do.
-//! Metrics are the BDF's own: `ascent` rows above the baseline, and a glyph's box is placed
-//! against that baseline, so a line is `height()` rows tall whatever it holds.
-//!
-//! The vector table is cut by `cargo run -p iot-tool -- outline` from the release Noto Sans Mono
-//! CJK SC and covers exactly the code points of `vector-sample.txt`, the paragraph the wrap
-//! region draws. Its coordinates are 1/64 em and y points up from the baseline; its header's
-//! ascent/descent enclose every glyph's ink, so a descender stays inside its own line.
+//! The bitmap table comes from the subset BDF (`cargo run -p iot-tool -- font`): GB2312 plus
+//! Big5, 15,466 code points, of which 866 Big5 points have no upstream glyph and draw as
+//! [`MISSING`]. The vector table is cut by `iot-tool outline` from the release Noto Sans Mono
+//! CJK SC for exactly `vector-sample.txt`; coordinates are 1/64 em, y up from the baseline.
 
 /// Where the tables and their sources live.
 mod table {

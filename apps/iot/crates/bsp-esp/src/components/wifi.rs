@@ -1,10 +1,7 @@
-//! The Wi-Fi station on top of the radio driver: what a scan keeps, how a connection
-//! attempt is made to fail, and what "connected" means.
-//!
-//! Connect by scanning every channel and taking the strongest AP, retrying it three times
-//! before falling back. A saved hint names one AP and one channel and skips the walk.
-//! `[实测]` the driver's fast scan connected at −79 dBm while a −73 dBm AP of the same name
-//! was in range. A listen interval of 10 beacons trades latency for power.
+//! The Wi-Fi station: what a scan keeps, how a connection is made to fail, and what "connected"
+//! means. Connect by scanning every channel and taking the strongest AP, retrying three times;
+//! a saved hint names one AP and channel and skips the walk. `[实测]` the driver's fast scan
+//! connected at −79 dBm while a −73 dBm AP of the same name was in range.
 
 use alloc::{boxed::Box, vec::Vec};
 use esp_radio::wifi::{
@@ -33,13 +30,9 @@ const STRONGEST_RETRIES: u8 = 3;
 
 const LISTEN_INTERVAL: u16 = 10;
 
-// How long the radio sits on each channel while scanning it.
-//
-// **Do not drop this back to the driver's 10–20 ms default.** A sweep at the default
-// finishes in 135–160 ms and reports one or two access points on this bench; at 50–120 ms
-// it takes ~0.8 s and reports three to six. The cost is a second of a user's wait, the
-// saving is the difference between a list and a list of the two loudest networks.
-// `@/records/iot/wifi.md`.
+// How long the radio sits on each channel while scanning. **Do not drop this to the driver's
+// 10–20 ms default**: a sweep then finishes in 135–160 ms and reports one or two APs, where
+// 50–120 ms takes ~0.8 s and reports three to six. See `@/records/iot/wifi.md`.
 const CHANNEL_DWELL: ScanTypeConfig = ScanTypeConfig::Active {
     min: esp_hal::time::Duration::from_millis(50),
     max: esp_hal::time::Duration::from_millis(120),
@@ -114,11 +107,9 @@ impl EspStation {
             disconnected.reason,
             disconnected.rssi
         );
-        // Three of the driver's reasons become kinds of their own, because they are the three a
-        // user standing at the panel can do something about, and they are told apart in the log by
-        // the driver's own word for them either way. The rest stay `Driver` rather than being
-        // guessed at: the reason set is long, and a wrong guess would put a confident word on the
-        // panel about a failure nobody diagnosed.
+        // Three driver reasons become kinds of their own: the three a user at the panel can act
+        // on. The rest stay `Driver` — the reason set is long, and a wrong guess puts a confident
+        // word on the panel about a failure nobody diagnosed.
         match disconnected.reason {
             DisconnectReason::NoAccessPointFound | DisconnectReason::BeaconTimeout => {
                 NetworkError::NotFound

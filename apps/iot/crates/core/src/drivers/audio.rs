@@ -92,10 +92,9 @@ fn log2_16(value: u16) -> i32 {
     LOG2_16_PER_OCTAVE * octave as i32 + mantissa as i32 + LOG2_16_CHORD_ERROR[mantissa] as i32
 }
 
-/// A peak in LSB as a `0..=255` bar height, over `SCOPE_FLOOR_LOG2_16` up to
-/// full scale. Here rather than beside the panel because the mapping has to be
-/// checkable: the sweep is the one drawing that can be silently useless, since a
-/// bar height that is always zero looks exactly like silence.
+/// A peak in LSB as a `0..=255` bar height, from `SCOPE_FLOOR_LOG2_16` to full scale. Here
+/// rather than beside the panel so it stays checkable: a bar height stuck at zero looks
+/// exactly like silence.
 pub fn scope_height(peak_lsb: u16) -> u8 {
     let height =
         (log2_16(peak_lsb) - SCOPE_FLOOR_LOG2_16) * i32::from(u8::MAX) / SCOPE_SPAN_LOG2_16;
@@ -119,12 +118,11 @@ pub fn spl(dbfs: i16, offset_decibels: i16) -> i16 {
     dbfs + offset_decibels
 }
 
-/// How much of its height a bar may lose in one column, as a shift: 1/16 is
-/// 0.561 dB per column, 56 dB/s at [`COLUMN_MS`], set by the window rather than by
-/// meter convention — a needle-slow release leaves every transient 30 dB above the
-/// floor for the whole sweep. 1/16 crosses [`SCOPE_FLOOR_DECIBELS`] in four-fifths
-/// of [`ENVELOPE_COLUMNS`], and belongs to the column rate, so a dropped frame
-/// costs a column of history.
+/// How much of its height a bar may lose per column, as a shift: 1/16 is 0.561 dB per
+/// column, 56 dB/s at [`COLUMN_MS`]. A needle-slow release would leave every transient
+/// 30 dB above the floor for the whole sweep; 1/16 crosses [`SCOPE_FLOOR_DECIBELS`] in
+/// four-fifths of [`ENVELOPE_COLUMNS`]. Tied to the column rate, so a dropped frame costs
+/// a column of history.
 pub const RELEASE_SHIFT: u32 = 4;
 
 /// The peak a bar is drawn at this column: its own, or the one before it after one step of
@@ -500,11 +498,9 @@ pub trait Armed: Sized {
     fn read(parked: Self::Parked) -> Result<Self, Self::Parked>;
 }
 
-/// Where a capture's chain is.
-///
-/// **The invariant: nothing stops a running chain except [`Self::take_to_arm`].**
-/// That is one method rather than a convention because losing this chain is
-/// unrecoverable and silent — the source keeps answering, with silence.
+/// Where a capture's chain is. Nothing stops a running chain except
+/// [`Self::take_to_arm`], because losing it is unrecoverable and silent: the source keeps
+/// answering, with silence.
 #[derive(Debug)]
 pub struct Chain<A: Armed> {
     running: Option<A>,
@@ -1029,17 +1025,9 @@ mod tests {
 
     #[test]
     fn the_depth_a_healthy_capture_settles_at_is_not_called_a_backlog() {
-        // A loop running a fixed beat behind the wire settles a whole poll
-        // deeper than the steady state for ever, so the depths below are what
-        // the panel reported while the ring stayed healthy.
-        //
-        // **Halved along with [`BYTES_PER_POLL`]**, and deliberately not
-        // re-measured: these were recorded when a poll period was counted with
-        // two slots per frame, so every figure in them was a poll count wearing
-        // twice the bytes. What they assert is a *depth in polls* — 2.0 to 2.13
-        // — and that is unchanged. Quoting them again in poll counts rather than
-        // bytes is what stops the next frame-width correction from silently
-        // invalidating them.
+        // A loop running a fixed beat behind the wire settles a whole poll deeper for ever;
+        // these are the depths the panel reported while the ring stayed healthy. They assert a
+        // depth in polls (2.0 to 2.13), so a frame-width correction does not invalidate them.
         let mut backlog = CaptureBacklog::new(RING_BYTES);
         for produced in [
             BYTES_PER_POLL * 2 + BYTES_PER_POLL / 51,

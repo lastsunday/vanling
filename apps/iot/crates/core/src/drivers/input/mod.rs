@@ -128,9 +128,8 @@ pub const SWIPE_MIN_DISTANCE_PX: u16 = 60;
 pub const MOVE_DEADBAND_PX: u16 = 2;
 
 /// Farthest a second contact may land from an already-down finger and still read as a
-/// self-cap phantom instead of a genuine second finger: a duplicate point the controller
-/// echoes on top of the real contact on press-in. Kept to the width of a fingertip so two
-/// fingers placed side by side still read as two.
+/// self-cap phantom (the duplicate the controller echoes on press-in) rather than a real
+/// second finger. One fingertip wide, so two side-by-side fingers still read as two.
 pub const PHANTOM_RADIUS_PX: u16 = 16;
 
 /// How recently a finger's down edge may be for a nearby second contact to count as its
@@ -169,9 +168,8 @@ impl FingerLast {
 
 const DEBOUNCE_SAMPLES: u32 = 3;
 
-/// Maximum simultaneous contacts a touch event can carry, aligned with Android's
-/// `MotionEvent.MAX_POINTERS` ceiling: 10-point controllers can occasionally report an
-/// extra contact, and the unused slots cost nothing because a `TouchEvent` is a transient
+/// Maximum contacts one touch event carries, matching Android's `MotionEvent.MAX_POINTERS`:
+/// 10-point controllers can report one extra, and unused slots cost nothing in a transient
 /// `Copy` value.
 pub const MAX_TOUCH_POINTS: usize = 16;
 
@@ -281,10 +279,9 @@ fn dominant_axis(dx: i32, dy: i32) -> SwipeDirection {
     }
 }
 
-/// Direction of the latest frame-to-frame move while a finger is down, for the live
-/// per-finger rows: `None` within `deadband_px` (jitter reads as holding still), otherwise
-/// the same answer as a resolved [`GestureEvent::Swipe`] so the live arrow and the slide
-/// digit never disagree.
+/// Direction of the latest frame-to-frame move while a finger is down: `None` within
+/// `deadband_px` (jitter reads as holding still), else the same answer as
+/// [`GestureEvent::Swipe`] so the live arrow and the slide digit never disagree.
 pub fn direction_between(
     from_x: u16,
     from_y: u16,
@@ -403,10 +400,9 @@ impl EventQueue {
         Self([None; QUEUED_EVENTS])
     }
 
-    /// Queues one event, keeping at most one pending `Drag` per finger.
-    ///
-    /// A finger that moved twice before the next poll only owes the panel its latest
-    /// position; queueing both is what starved a second finger out of a four-slot queue.
+    /// Queues one event, keeping at most one pending `Drag` per finger: a finger that moved
+    /// twice before the next poll owes the panel only its latest position, and queueing both
+    /// starves a second finger out of a four-slot queue.
     fn push(&mut self, event: InputEvent) {
         if let InputEvent::Gesture(GestureEvent::Drag { id, .. }) = event
             && let Some(slot) = self.0.iter_mut().find(|slot| {
@@ -1015,11 +1011,8 @@ impl TouchContinuity {
         changed.then_some(event)
     }
 
-    /// Pairs each raw point with at most one live tracker, smallest distance first. A new
-    /// finger landing near a tracked one must not inherit its id just because the panel
-    /// reported the newcomer first: the finger that stayed put is the nearer pair and claims
-    /// its own tracker before the newcomer is considered. The controller's slot only breaks
-    /// an exact-distance tie.
+    /// Pairs each raw point with at most one live tracker, nearest first, so a new finger landing
+    /// near a tracked one cannot inherit its id. The controller's slot only breaks an exact tie.
     fn assign(&self, raw: &[RawPoint], matched: &mut [Option<usize>; MAX_TRACKED_POINTS]) {
         const PAIRS: usize = MAX_TRACKED_POINTS * MAX_TRACKED_POINTS;
         let reach_sq = u32::from(Self::MAX_REACH_PX).pow(2);
@@ -1142,15 +1135,9 @@ impl PollEntry {
         }
     }
 
-    /// Moves the source's cadence, which is where a latency budget lands.
-    ///
-    /// The board's wiring is the floor, in either direction, since a plan is derived from
-    /// [`Self::board_cadence_ms`] each time. Below the floor is refused rather than clamped:
-    /// a caller that ignored the floor must not silently shorten a source whose debounce
-    /// windows were measured against it.
-    ///
-    /// The reading already scheduled stays where it is, so a stretch costs no reading that
-    /// was due and a relaxation costs no wait that was not.
+    /// Moves the source's cadence. The board's wiring is the floor in either direction; below it
+    /// is refused rather than clamped, because a caller that ignored the floor must not shorten a
+    /// source whose debounce windows were measured against it. A reading already scheduled stays.
     pub fn set_cadence_ms(&mut self, cadence_ms: u64) {
         if cadence_ms < self.board_cadence_ms || cadence_ms == self.cadence_ms {
             return;
@@ -1214,10 +1201,9 @@ impl PollEntry {
         }
     }
 
-    /// Poll once and hand over everything the sample resolved, oldest first.
-    ///
-    /// One sample of two moving fingers resolves two drags; a caller that takes only the
-    /// first leaves the second a whole cadence behind.
+    /// Poll once and hand over everything the sample resolved, oldest first: two moving
+    /// fingers resolve two drags, and taking only the first leaves the second a cadence
+    /// behind.
     pub fn poll_all(&mut self, now_ms: u64, emit: &mut dyn FnMut(InputEvent)) {
         if let Some(event) = self.poll(now_ms) {
             emit(event);

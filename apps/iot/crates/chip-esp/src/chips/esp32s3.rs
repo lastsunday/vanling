@@ -12,18 +12,12 @@ use esp_hal::rom::ets_update_cpu_frequency_rom;
 use esp_hal::system::Stack;
 use iot_core::demand::{DemandKind, Speed, SpeedTable};
 
-/// Brings the chip up, optionally at a clock other than [`CpuClock`]'s default.
+/// Brings the chip up at `clock`.
 ///
-/// [`CpuClock`]'s `Default` arm is `_80MHz` on this part, so the default here is
-/// 80 MHz on a chip rated for 240. That is a board-level fact every cost in this
-/// tree inherits.
-///
-/// The 240 MHz preset is not kept out on the strength of esp-hal's warning that
-/// changing the PLL breaks USB Serial/JTAG, which is this repository's console.
-/// That warning is about the PLL, and the presets do not touch it: all three
-/// pin `pll_clk` to 480 and differ only in the divider, so the console is not on
-/// the path. Measured at 240 MHz with the console intact — `clock-probe`, and
-/// the AEC cost figures that needed the clock.
+/// esp-hal's default is 80 MHz on a part rated for 240; every cost in this tree inherits
+/// that. The presets pin `pll_clk` to 480 and differ only in the divider, so they do not
+/// touch the PLL that USB Serial/JTAG depends on (`clock-probe` measured 240 MHz with the
+/// console intact).
 pub fn chip_init_at(clock: CpuClock) -> Peripherals {
     esp_app_desc!();
     let peripherals = esp_hal::init(esp_hal::Config::default().with_cpu_clock(clock));
@@ -35,11 +29,10 @@ pub fn chip_init() -> Peripherals {
     chip_init_at(CpuClock::_80MHz)
 }
 
-/// The clock the product boots at: 240 MHz, not the 80 the part's default picks.
+/// The clock the product boots at: 240 MHz, not the part's 80 MHz default.
 ///
-/// The AEC's delay search alone busts the 30 ms audio tick at 80 MHz, and the governor may
-/// only lower from here. `set_cpu_clock` never raises the bias, so starting lower would leave
-/// the speed the product needs most without one trimmed for it.
+/// The AEC's delay search already busts the 30 ms audio tick at 80 MHz, and the governor
+/// only lowers from here.
 pub fn chip_init_for_product() -> Peripherals {
     chip_init_at(CpuClock::_240MHz)
 }
@@ -74,14 +67,13 @@ pub(crate) fn psram_window() -> PsramWindow {
 }
 
 fn init_psram() {
-    // `Psram::new` wants the PSRAM peripheral, and that peripheral is one field of the
-    // `Peripherals` this module hands back: taking it out would be a partial move and
-    // leave nothing to return. esp-hal's `init` builds `Peripherals` by stealing these
-    // singletons, so stealing this one yields that same handle rather than a second one.
+    // `Psram::new` needs the PSRAM peripheral, which is one field of the `Peripherals` this
+    // module returns: taking it out would be a partial move. esp-hal's `init` builds
+    // `Peripherals` by stealing these singletons, so stealing it again yields the same handle.
     //
     // SAFETY: nothing downstream of `chip_init_at` reaches for PSRAM — every board
-    // destructures `Peripherals` with a `..` catch-all — so this handle is the only one
-    // that touches those registers, and `Psram` keeps it for the rest of the program.
+    // destructures with a `..` catch-all — so this handle is the only one touching those
+    // registers.
     let psram = PSRAM_HANDLE.init(Psram::new(
         unsafe { PSRAM::steal() },
         PsramConfig::default(),
@@ -122,9 +114,8 @@ fn reads_back(window: Window) -> bool {
     let expected = |index: usize| (index * STEP + BASE) as u8;
 
     [0, window.len.saturating_sub(SPAN)].into_iter().all(|at| {
-        // SAFETY: `at + SPAN` is inside the window `window` names, which is mapped for
-        // the life of the program, and nothing else has been handed this memory — the
-        // allocator that will own it is initialised after the chip is up.
+        // SAFETY: `at + SPAN` is inside the mapped window; the allocator that owns it starts
+        // after the chip is up.
         let bytes = unsafe { core::slice::from_raw_parts_mut(window.start as *mut u8, window.len) };
         let span = &mut bytes[at..at + SPAN];
         for (index, byte) in span.iter_mut().enumerate() {
@@ -171,31 +162,21 @@ pub(crate) const fn clock_mhz(speed: Speed) -> u32 {
     preset_for(speed).1
 }
 
-/// Moves the CPU to another preset while the chip is running.
+/// Moves the CPU to another preset while running.
 ///
-/// **This is outside what esp-hal supports.** Its own docs say the clock
-/// frequencies "become frozen and cannot be changed" once applied, and this
-/// reaches past that to write the registers directly. What esp-hal keeps sealed
-/// is the voltage bias — `regi2c` and the PVT helpers are `pub(crate)` or
-/// private — so this writes the frequency, the LDO divider and the ROM's tick
-/// calibration, and leaves the bias where init put it. Never lowering that bias
-/// makes every frequency below 240 run over-biased, which is the conservative
-/// direction; measured in `docs/content/records/iot/clock.md`, including the
-/// climb from an 80 MHz boot. Nothing outside the CPU moves: the PLL stays at 480
-/// MHz, APB is untouched, and the system timer is clocked from XTAL alone.
+/// Outside what esp-hal supports: it seals the clock, so this writes the frequency, the LDO
+/// divider and the ROM tick calibration directly, and leaves the voltage bias at init's 240 MHz
+/// value (over-biased below it, the conservative direction). The PLL, APB and system timer are
+/// untouched. Measured in `docs/content/records/iot/clock.md`.
 ///
 /// # Safety
 ///
-/// Interrupts must be disabled across the register writes, or a handler can
-/// observe the LDO divider and the frequency divider disagreeing — the core
-/// briefly running at one frequency against a divider set for another. Only the
-/// calling core's ROM tick calibration is updated; `ets_update_cpu_frequency_rom`
-/// documents this as per-core, so a second core's `ets_delay_us` is mis-scaled
-/// afterwards. Measured to cost nothing observable here, but that is one workload
-/// on one board, not a guarantee for code that depends on it elsewhere.
+/// Interrupts must be disabled across the register writes, or a handler can see the LDO divider
+/// and the frequency divider disagree. Only the calling core's ROM tick calibration is updated,
+/// so a second core's `ets_delay_us` is mis-scaled afterwards.
 pub unsafe fn set_cpu_clock(clock: CpuClock) {
-    // esp-hal's own mapping, with `pll_clk` pinned at 480 and the source at PLL
-    // for every preset — which is why only `cpuperiod_sel` actually differs.
+    // esp-hal's mapping: `pll_clk` stays at 480 and the source is PLL, so only
+    // `cpuperiod_sel` differs.
     let (period, mhz) = match clock {
         CpuClock::_80MHz => (0, 80),
         CpuClock::_160MHz => (1, 160),
@@ -227,19 +208,14 @@ static FEED_EXECUTOR: esp_hal::__macro_implementation::static_cell::StaticCell<
     esp_rtos::embassy::InterruptExecutor<2>,
 > = esp_hal::__macro_implementation::static_cell::StaticCell::new();
 
-/// Starts the executor the speaker's feed loop runs on, and hands back its spawner.
+/// Starts the executor the speaker's feed loop runs on.
 ///
-/// Not joined onto the cooperative scheduler because tasks sharing one executor
-/// round-robin and none preempts another — folding the capture envelope holds it
-/// ~17 ms, a panel write up to 16 ms — and this board slaves the capture's clock to
-/// the transmit unit, making a late feed both a gap in the sound and a stalled
-/// microphone.
+/// Not on the cooperative scheduler: a task there is held by the capture envelope (~17 ms) or a
+/// panel write (up to 16 ms), and the capture clock is slaved to the transmit unit, so a late
+/// feed is both a gap in the sound and a stalled microphone.
 ///
-/// Exactly one level above the thread: higher and the feed would starve input and
-/// render instead.
-///
-/// The second software interrupt, not the first: `FROM_CPU_INTR1` is what
-/// `esp_rtos::start_second_core` wakes the APP core with, so the two cannot share one.
+/// `FROM_CPU_INTR1` is what `esp_rtos::start_second_core` uses, so this takes INTR2. Priority 2
+/// is one level above the thread; higher would starve input and render.
 pub fn start_feed_executor(intr2: FROM_CPU_INTR2<'static>) -> SendSpawner {
     let executor = FEED_EXECUTOR.init(esp_rtos::embassy::InterruptExecutor::new(intr2));
     executor.start(esp_hal::interrupt::Priority::Priority2)
@@ -262,21 +238,17 @@ pub fn start_second_core<const STACK_SIZE: usize>(
     });
 }
 
-/// Holds the other core still, with this core's interrupts masked, for a span that writes
-/// flash.
+/// Holds the other core still, with this core's interrupts masked, across a flash write.
 ///
-/// `esp-storage`'s `multicore_auto_park` parks around each ROM call and lets interrupts back on
-/// in between — including after the last call, before it unparks. A pending scheduler interrupt
-/// then runs on this core while the other core is still stalled, and if that core was stalled
-/// holding what the interrupt wants to take, both wait on each other forever
-/// (esp-rs/esp-hal#6438; `[实测]` this board stops dead a few milliseconds after a credential is
-/// first saved, both cores, no panic). Masking this core for the whole span leaves nothing to
-/// run until the other core is running again.
+/// `esp-storage`'s `multicore_auto_park` lets interrupts back on between ROM calls, so a
+/// pending scheduler interrupt can run while the other core is still parked and both wait
+/// on each other forever (esp-rs/esp-hal#6438; this board stops dead milliseconds after a
+/// credential is first saved).
 pub fn with_other_core_parked<R>(f: impl FnOnce() -> R) -> R {
     critical_section::with(|_| {
         // SAFETY: `esp_rtos::start_second_core` consumed `CPU_CTRL`, and nothing else writes
-        // the park registers after boot. `park_core` asks its caller to name a core other than
-        // the one running this, which is exactly what `Cpu::other` yields.
+        // the park registers after boot. `Cpu::other` names the core that is not running this
+        // one, which is what `park_core` requires.
         let mut control = esp_hal::system::CpuControl::new(unsafe { CPU_CTRL::steal() });
         let held = esp_hal::system::Cpu::other().find(|core| esp_hal::system::is_running(*core));
         if let Some(core) = held {
@@ -292,15 +264,13 @@ pub fn with_other_core_parked<R>(f: impl FnOnce() -> R) -> R {
 
 const PANEL_CORE_STACK_BYTES: usize = 24 * 1024;
 
-/// What the second core's stack is filled with before the core starts, so the deepest word it
-/// ever wrote can be found afterwards: everything below the watermark is still paint. A whole
-/// word rather than a byte, because a lone `0xA5` byte turns up in ordinary data.
+/// What the second core's stack is filled with before it starts, so the deepest word it ever
+/// wrote can be found afterwards. A whole word rather than a byte, because `0xA5` turns up in
+/// ordinary data.
 const STACK_PAINT: u8 = 0xA5;
 
-/// The bytes above the stack's floor that the scan skips: esp-hal parks its entry closure in
-/// them before the core is running, so they read as used whatever the tasks do. Skipping them
-/// costs the bottom 512 B of the watermark's resolution — a real overflow lands there with the
-/// canary check, not with this reading.
+/// The bytes above the stack's floor that the scan skips: esp-hal parks its entry closure
+/// there before the core runs. A real overflow lands in the canary check, not in this reading.
 const STACK_SCRUB_BYTES: usize = 512;
 
 static PANEL_CORE_STACK: esp_hal::__macro_implementation::static_cell::StaticCell<
@@ -309,32 +279,24 @@ static PANEL_CORE_STACK: esp_hal::__macro_implementation::static_cell::StaticCel
 
 static PANEL_CORE_STACK_BOTTOM: AtomicUsize = AtomicUsize::new(0);
 
-/// How deep the second core's stack has been, in bytes below its ceiling, and how big it is.
+/// How deep the second core's stack has been, in bytes, and how big it is.
 ///
 /// `None` until [`start_panel_core`] has painted the stack. The reading is the historical
-/// maximum, not the current depth, and it is monotone: a task that went deep leaves paint
-/// destroyed below it. Only meaningful from an executor on that core — the scan reads a region
-/// nobody else writes, and a cooperative executor does not switch under it.
-///
-/// The firmware's own guard is elsewhere: `ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION` checks
-/// the canary below the floor on every context switch. This is headroom accounting, so a stack
-/// that is too big can be seen to be too big rather than merely believed to be needed.
+/// maximum and only meaningful from an executor on that core. The firmware's own guard is
+/// `ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION`; this is headroom accounting.
 pub fn panel_core_stack_peak() -> Option<(usize, usize)> {
     let bottom = PANEL_CORE_STACK_BOTTOM.load(Ordering::Relaxed);
     if bottom == 0 {
         return None;
     }
     let size = PANEL_CORE_STACK_BYTES;
-    // Up from the floor to the first word that is no longer paint. The ceiling itself is not
-    // written either, so walking down from it stops at the very first word. This direction reads
-    // the whole untouched remainder — 24 KiB of volatile loads every report — which is ~0.4 ms
-    // once per 5 s window.
+    // Up from the floor to the first word that is no longer paint. The ceiling is not written
+    // either, so walking down from it would stop at the first word. ~0.4 ms per 5 s report.
     let deepest = (STACK_SCRUB_BYTES..size)
         .step_by(4)
         .find(|&at| {
-            // SAFETY: `bottom + .. bottom + size` is this module's own static stack, and the
-            // writes it sees come from the core that is asking — a cooperative executor cannot
-            // switch to another task between these reads.
+            // SAFETY: this is the module's own static stack, and a cooperative executor cannot
+            // switch tasks between these reads.
             (0..4).any(|byte| unsafe {
                 core::ptr::read_volatile((bottom as *const u8).add(at + byte)) != STACK_PAINT
             })
@@ -343,21 +305,18 @@ pub fn panel_core_stack_peak() -> Option<(usize, usize)> {
     Some((size - deepest, size))
 }
 
-/// Boots the second core with a stack of its own, for everything the product runs there: the
-/// panel's transfers and every driver that blocks. 24 KiB of internal DRAM out of the main
-/// stack's wall — `.stack` fills whatever is left of the region, so this is a trade, not an
-/// addition.
-///
-/// The depth that size was chosen for is measured, not assumed: [`panel_core_stack_peak`]
-/// reports it, and the product logs it from the driver half that runs here.
+/// Boots the second core with a 24 KiB stack for the panel's transfers and every blocking
+/// driver. That memory comes out of the main stack's wall — `.stack` fills what is left — so
+/// this is a trade, not an addition. [`panel_core_stack_peak`] reports the depth it was
+/// chosen for.
 pub fn start_panel_core(
     cpu_control: CPU_CTRL<'static>,
     intr1: FROM_CPU_INTR1<'static>,
     init: impl FnOnce(Spawner) + Send + 'static,
 ) {
     let stack = PANEL_CORE_STACK.init(Stack::new());
-    // SAFETY: the region is uninitialized memory and nothing has started using it yet — the
-    // second core begins after this write and takes the same bytes as its stack.
+    // SAFETY: the region is uninitialized and the second core has not started; it takes these
+    // bytes as its stack after this write.
     unsafe {
         core::ptr::write_bytes(
             stack.mem.as_mut_ptr() as *mut u8,

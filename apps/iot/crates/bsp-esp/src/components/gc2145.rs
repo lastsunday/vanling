@@ -1,25 +1,6 @@
-//! Four nested quantities produce an image size, and the register constants below are one
-//! each of them:
-//!
-//! * **Array** — 1600×1200, what the part physically has.
-//! * **Read window** (`0x09`–`0x10`) — a rectangle of the array the part clocks out, plus
-//!   the margin it charges to its own line timing.
-//! * **Decimation ratio** (`0x99`) — how many read pixels are averaged into one emitted
-//!   pixel ([`EXTRACT_RATIO`]), and which of them are kept (`0x9b`–`0xa2`).
-//! * **Output window** (`0x95`–`0x98`) — the size that leaves the part.
-//!
-//! The field of view is the output width over the array width and no register moves it, so
-//! the ratio only has to divide the array exactly — which the compile-time assertion on
-//! [`EXTRACT_RATIO`] is there to keep true. A wider *view* needs a wider *output*, and the
-//! panel's width caps that.
-//!
-//! The table is transcribed from `gc2145_settings.h` (which register, which bits) and
-//! `gc2145.c` (which sequence, which value), replayed as written rather than sorted or
-//! split per page: one register number means different things on different pages, and the
-//! list carries its own page selects for that reason.
-//! `tests::power_on_table_pins_the_entries_that_decide_the_picture` pins the entries a
-//! transcription error would otherwise hide. Measured behaviour is in
-//! `@/records/iot/camera.md`; the comments here state the current setting and why.
+//! Four nested quantities produce the image size: the 1600×1200 array, the read window
+//! (`0x09`–`0x10`), the decimation ratio (`0x99`), and the output window (`0x95`–`0x98`).
+//! The table is transcribed from `gc2145_settings.h`/`gc2145.c` and replayed in order.
 use embedded_hal::delay::DelayNs;
 use embedded_hal::i2c::I2c;
 
@@ -29,16 +10,8 @@ pub const GC2145_I2C_ADDR: u8 = 0x3c;
 const CHIP_ID_HIGH: u8 = 0xf0;
 const CHIP_ID_LOW: u8 = 0xf1;
 
-// What this part answers with on that pair.
-//
-// **Checked, not merely logged**: [`Gc2145::probe`] compares against it and
-// refuses anything else before a single register of the table above is written,
-// so a board fitted with some other sensor cannot be brought up on this
-// driver's register map. The LCKFB wiki says this board ships a GC0308, which
-// is why the check earns its place — `[实测]` it answers `0x2145`.
-//
-// Not public: the board layer has no reason to compare again, and a second
-// comparison is a second thing that can drift from the driver's.
+// What this part answers with. `probe` refuses anything else before a table write, so another
+// sensor cannot come up on this map; the LCKFB wiki says GC0308, `[实测]` it answers `0x2145`.
 const CHIP_ID: u16 = 0x2145;
 
 const PAGE_SELECT: u8 = 0xfe;
@@ -57,7 +30,7 @@ const REG_OUTPUT_FORMAT: u8 = 0x84;
 const OUTPUT_FORMAT_FIELD: u8 = 0x1f;
 
 /// RGB565, one of the values that field accepts (`0x02` YCbCr, `0x06` RGB565, `0x0f` bypass
-/// 10-bit) — what `gc2145.c`'s `set_pixformat` writes for `PIXFORMAT_RGB565`.
+/// 10-bit); what `gc2145.c`'s `set_pixformat` writes for `PIXFORMAT_RGB565`.
 pub const FORMAT_RGB565: u8 = 0x06;
 
 const REG_ROW_START_HIGH: u8 = 0x09;
@@ -110,6 +83,7 @@ const ARRAY_HEIGHT: u16 = 1200;
 pub const EXTRACT_RATIO: u16 = 5;
 
 const _: () = {
+    // Field of view is output over array width, which no register moves; the ratio must divide it.
     assert!((ARRAY_WIDTH as usize).is_multiple_of(EXTRACT_RATIO as usize));
     assert!((ARRAY_HEIGHT as usize).is_multiple_of(EXTRACT_RATIO as usize));
     assert!(ARRAY_WIDTH / EXTRACT_RATIO == POWER_ON_OUT_WIDTH);
@@ -731,17 +705,13 @@ pub struct WindowGeometry {
     pub win_height: u16,
     /// Decimation factor, high nibble rows and low nibble columns.
     pub subsample: u8,
-    /// `0x9a` — which of "use" or "cut" the part does with the rows and columns the
-    /// decimation removes, and whether it averages them.
+    /// `0x9a` — whether the part uses or cuts the rows and columns the decimation removes.
     pub subsample_mode: u8,
-    /// `0x9b`–`0xa2`, the per-bin row and column numbers the part decodes by.
-    ///
-    /// Read rather than assumed: the datasheet's reset value is `0x02`/`0x04`, this crate's
-    /// power-on table does not mention these registers at all, and `write_decimation`
-    /// writes zero. So there are three candidate values and only the part knows which.
+    /// `0x9b`–`0xa2`, per-bin row and column numbers. Read rather than assumed: the datasheet's
+    /// reset is `0x02`/`0x04`, the power-on table omits them, and `write_decimation` writes zero.
     pub sub_bins: [u8; 8],
-    /// `0xfd`, read rather than written: it is left at the power-on table's `0x00` on
-    /// purpose, and this is how a caller checks that it took.
+    /// `0xfd`, read rather than written: it is left at the power-on table's `0x00` on purpose,
+    /// and this is how a caller checks that it took.
     pub scalar: u8,
     pub crop_enabled: bool,
 }
@@ -805,8 +775,7 @@ impl<D: I2c> Gc2145<D> {
         Ok(())
     }
 
-    /// Mirrors the picture horizontally, read-modify-written so it does not disturb the
-    /// vertical flip in the same register.
+    /// Mirrors horizontally, read-modify-written so it leaves the vertical flip alone.
     pub fn set_hmirror(&mut self, enable: bool) -> Result<(), Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         let current = self.read_reg(REG_ANALOG_MODE)?;
@@ -821,24 +790,10 @@ impl<D: I2c> Gc2145<D> {
         Ok(())
     }
 
-    /// Emits `width` x `height` by decimating a `ratio`-times-larger read window, centred
-    /// in the array.
-    ///
-    /// The read window (`0x09`–`0x10`) is what the sensor charges its line timing for and
-    /// is `ratio` times the output in each direction; the output window (`0x91`–`0x98`) is
-    /// what leaves the part. `0x99` is what connects them, and a part reading N pixels to
-    /// emit one has to be told N or the picture comes out stretched. `esp32-camera` is the
-    /// arithmetic:
-    ///
-    /// ```c
-    /// win_w = w * c_ratio;  win_h = h * r_ratio;
-    /// win_x = ((UXGA_HSIZE - win_w) / 2);  win_y = ((UXGA_VSIZE - win_h) / 2);
-    /// video_write_cci_reg(&cfg->i2c, GC2145_REG_WIN_ROW_START, win_y);
-    /// video_write_cci_reg(&cfg->i2c, GC2145_REG_WIN_COL_START, win_x);
-    /// video_write_cci_reg(&cfg->i2c, GC2145_REG_WIN_HEIGHT, win_h + 8);
-    /// video_write_cci_reg(&cfg->i2c, GC2145_REG_WIN_WIDTH, win_w + 16);
-    /// video_write_cci_reg(&cfg->i2c, GC2145_REG_SUBSAMPLE, (r_ratio << 4) | c_ratio);
-    /// ```
+    /// Emits `width` x `height` by decimating a `ratio`-times-larger read window centred in the
+    /// array. The read window (`0x09`–`0x10`) sets line timing, the output window (`0x91`–`0x98`)
+    /// is what leaves the part, and `0x99` connects them; the `+8`/`+16` margins are
+    /// `esp32-camera`'s.
     pub fn set_window(
         &mut self,
         width: u16,
@@ -900,8 +855,7 @@ impl<D: I2c> Gc2145<D> {
         Ok(())
     }
 
-    /// Every register the picture depends on, read in one pass, so a write that did not
-    /// land is visible here rather than showing up later as a picture of the wrong shape.
+    /// Every register the picture depends on, so a write that did not land shows up here.
     pub fn read_window_geometry(&mut self) -> Result<WindowGeometry, Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         let mut sub_bins = [0u8; SUBSAMPLE_BINS.len()];
@@ -953,8 +907,7 @@ impl<D: I2c> Gc2145<D> {
         Ok(u16::from(high) << 8 | u16::from(low))
     }
 
-    /// The format register's data-mode field, so a write that did not land is visible here
-    /// rather than later as a picture in the wrong format.
+    /// The format register's data-mode field, so a write that did not land is visible here.
     pub fn read_format(&mut self) -> Result<u8, Gc2145Error<D::Error>> {
         self.select_page(PAGE_0)?;
         Ok(self.read_reg(REG_OUTPUT_FORMAT)? & OUTPUT_FORMAT_FIELD)

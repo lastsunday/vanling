@@ -13,11 +13,8 @@ members = [
 version = "0.1.0"
 edition = "2024"
 
-# The AEC's cost is measured inside this profile, so the defaults are part of that
-# measurement: `lto = false` with 16 codegen units leaves cross-crate calls
-# unmoved and unoptimised across, which is a property of the schedule rather than
-# of the code. `aec-probe` calls the filter across `iot-core` -> `iot-app`, so it
-# is exactly the kind of call those defaults leave on the boundary.
+# The AEC cost is measured in this profile, so LTO and one codegen unit are part of the
+# measurement: `aec-probe` calls the filter across `iot-core` -> `iot-app`.
 [profile.release]
 lto = true
 codegen-units = 1
@@ -27,13 +24,11 @@ critical-section = { version = "1.2.0", default-features = false }
 embedded-alloc = { version = "0.7.0", default-features = false, features = ["llff"] }
 embedded-graphics-core = { version = "0.4.1", default-features = false }
 embedded-hal = { version = "1.0.0", default-features = false }
-# `compat` only: the Wi-Fi driver links prebuilt C that allocates through
-# `malloc`, so the binary needs those symbols. `global-allocator` stays off
-# because the app's own allocator is `embedded-alloc`.
+# `compat` only: the Wi-Fi driver's prebuilt C allocates through `malloc`. The app's own
+# allocator stays `embedded-alloc`.
 esp-alloc = { version = "0.11.0", default-features = false, features = ["compat"] }
-# `custom-halt` is what turns a panic into a reset: without it esp-backtrace prints the
-# backtrace and parks the core in an interrupt-free loop, which only a power cycle leaves.
-# The halt itself is defined by the chip layer, which is the layer that owns reset.
+# `custom-halt` turns a panic into a reset; without it the core parks in an interrupt-free
+# loop. The halt itself is defined by the chip layer.
 esp-backtrace = { version = "0.20.0", features = [
   "panic-handler",
   "println",
@@ -48,50 +43,33 @@ esp-hal-smartled = "0.18.0"
 esp-println = { version = "0.18.0", default-features = false, features = [
   "log-04",
 ] }
-# Pinned exactly: this is the only release whose `esp-hal ~1.2.0` / `esp-rtos ^0.4.0`
-# / `esp-config ^0.8.0` requirements match this tree (1.0.0-beta.2 is yanked), and a
-# beta's API moving under a caret is exactly what a pin is for. The chip feature is
-# added by the family alias, not here — one target's driver per build.
+# Pinned exactly: the only release whose `esp-hal ~1.2.0` / `esp-rtos ^0.4.0` /
+# `esp-config ^0.8.0` requirements match this tree (1.0.0-beta.2 is yanked). The chip
+# feature comes from the board.
 esp-radio = { version = "=1.0.0-beta.1", default-features = false, features = [
   "unstable",
   "wifi",
 ] }
 esp-rtos = { version = "0.4.0", features = ["embassy"] }
-# The credential store's side of the flash. The chip feature is added by the board
-# feature, the same way `esp-radio`'s is: which part is being built is the board's to say.
+# The credential store's side of flash; the board adds the chip feature.
 esp-storage = "0.10.0"
 embassy-executor = { version = "0.10.0", default-features = false }
 embassy-futures = "0.1.2"
-# The IP stack the Wi-Fi driver's frame interface feeds. `dhcpv4` is what turns
-# "associated" into "has an address". `tcp`/`udp` are on because setup mode serves
-# the config page and answers DHCP and DNS on the access point's own stack; the
-# station link still opens no socket of its own. `dns` stays off — the only name
-# lookups here are the captive-portal responder, which parses the wire format
-# itself. `dhcpv4-hostname` is left off because it needs `heapless` in the binary
-# to name the type, and a name in the router's lease table is not worth a
-# dependency until something reads it.
+# `dhcpv4` turns "associated" into "has an address"; `tcp`/`udp` serve the setup portal.
+# `dns` is off because the captive portal parses the wire format itself; `dhcpv4-hostname`
+# is off because it needs `heapless` for a name nothing reads.
 embassy-net = { version = "0.9.1", default-features = false, features = [
   "dhcpv4",
   "tcp",
   "udp",
 ] }
-# The setup access point's own services. `embassy-net` carries DHCP for a client
-# and nothing for a server, so the leases the config page's clients need come from
-# here. It is `0.8` because that is the line whose own deps are `embassy-net 0.9` /
-# `edge-nal 0.7`, which is this tree's pair: `edge-nal-embassy` 0.8.x is built
-# against `embassy-net 0.8`.
+# `embassy-net` has no DHCP server; the setup access point's leases come from here. `0.8` is
+# the line paired with `embassy-net 0.9` / `edge-nal 0.7`.
 edge-dhcp = { version = "0.8.0", default-features = false, features = ["io"] }
 edge-nal = { version = "0.7.0", default-features = false }
-# `udp` alone rather than the crate's `all`: the DHCP server binds a UDP socket through this
-# crate and nothing else here does — the name server and the page are `embassy-net`'s own
-# sockets — so `tcp`, `dns` and `icmp` would be code every board links and no board calls.
-#
-# `proto-ipv4` is not covered by `embassy-net` carrying IPv4: the crate gates its own address
-# conversion on its own copy of the feature, so with it off `to_emb_addr` answers `None` for
-# every IPv4 address and the DHCP server's reply — the one send it makes — dies as
-# `UnsupportedProto`. Nothing in the build says so: the crate compiles, the socket binds and
-# receives, and the only symptom is a phone that joined the access point sitting on
-# "connecting". A host test in `crates/app` holds the line.
+# `udp` alone: the DHCP server's one socket is the only user. `proto-ipv4` is required even
+# though `embassy-net` carries IPv4 — without it `to_emb_addr` answers `None` and the DHCP
+# reply dies as `UnsupportedProto`. A host test in `crates/app` holds the line.
 edge-nal-embassy = { version = "0.9.0", default-features = false, features = [
   "proto-ipv4",
   "udp",
@@ -106,4 +84,3 @@ smart-leds = "0.4.0"
 iot-core = { path = "crates/core" }
 iot-chip-esp = { path = "crates/chip-esp", default-features = false }
 iot-bsp-esp = { path = "crates/bsp-esp", default-features = false }
-

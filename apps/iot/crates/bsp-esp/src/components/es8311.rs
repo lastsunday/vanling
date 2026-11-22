@@ -53,11 +53,9 @@ const BCLK_INVERT_MASK: u8 = 0x20;
 const BCLK_DIV_MASK: u8 = 0x1F;
 const CLOCK_FIELD_MASK: u8 = 0xF0;
 
-// The 12288000/48000 row of the reference driver's clock table: pre-divider 1,
-// pre-multiplier 1, ADC divide 1, DAC divide 1, no fractional part, LRCK
-// divider 0x00:0xFF, BCLK divide 4, and an OSR of 0x10 on both converters. With
-// a 12.288 MHz MCLK that is exactly 48 kHz, and it is the same row the capture
-// half programs, so both codecs come up on one clock.
+// The 12288000/48000 row of the reference driver's clock table: pre-divider 1, pre-multiplier
+// 1, ADC and DAC divide 1, no fractional part, LRCK 0x00:0xFF, BCLK divide 4, OSR 0x10 on both
+// converters. With a 12.288 MHz MCLK that is exactly 48 kHz, the same row the capture half uses.
 const COEFF_48K: Coeff = Coeff {
     pre_div: 1,
     pre_multi: 1,
@@ -116,36 +114,27 @@ impl Coeff {
     }
 }
 
-// The serial ports. Bit 6 is the run bit the reference driver clears to let a
-// module out of reset, bits 3-2 are the word width — 0b11 is 16 bit, which is
-// what the host port emits — and bits 1-0 are the frame — 0b00 is standard I2S,
-// which is what the host peripheral emits in Philips mode. A width left at its
-// power-on value is not to be trusted: the reference driver sets it for every
-// sample format it configures, and a DAC told 24 bit treats each 16-bit host
-// frame as a different word and holds its output silent. Both ports are written
-// through masks because the DAC is the only one this board runs, and a
-// whole-byte write would carry the ADC's power-on bits into a port the ADC
-// never uses.
+// The serial ports: bit 6 is the run bit, bits 3-2 the word width (0b11 = 16 bit, what the
+// host emits), bits 1-0 the frame (0b00 = standard I2S, Philips mode). A width left at its
+// power-on value is not to be trusted: a DAC told 24 bit treats each 16-bit host frame as a
+// different word and holds its output silent. Writes are masked because the DAC is the only
+// port this board runs, and a whole-byte write would carry the ADC's power-on bits into it.
 const SDP_RUN_MASK: u8 = 0x40;
 const SDP_WIDTH_MASK: u8 = 0x0C;
 const SDP_16_BIT: u8 = 0x0C;
 const SDP_FRAME_MASK: u8 = 0x03;
 const SDP_I2S: u8 = 0x00;
 
-/// DAC volume: 0x00 is −95.5 dB, 0x5B is −50 dB, 0xBF is 0 dB and 0xFF is
-/// +32 dB, in 0.5 dB steps. Sixty per cent means −20 dB following the
-/// esp_codec_dev convention the xiaozhi reference uses (percent maps linearly
-/// onto dB from −50 at 0 to 0 at 100, not onto amplitude): unity drives the
-/// small power amp into clipping at full-scale tones, and the mute latch is
-/// still what a listener reaches for.
+/// DAC volume: 0x00 is −95.5 dB, 0xBF is 0 dB, 0xFF is +32 dB, in 0.5 dB steps. Sixty per
+/// cent is −20 dB per the esp_codec_dev convention (percent maps linearly onto dB from −50 at
+/// 0 to 0 at 100): unity drives the small power amp into clipping at full-scale tones.
 pub const DAC_VOLUME_60: u8 = 0x97;
 
 const DAC_MUTE_FIELD: u8 = 0x60;
 const DAC_MUTED: u8 = 0x60;
 
-/// The chip ID, as the part reports it. Checked rather than trusted: the address
-/// is the one thing on this bus that a board can get wrong silently, and an
-/// unverified part is a part that has to be assumed working.
+/// The chip ID as the part reports it. Checked rather than trusted: the address is the one
+/// thing on this bus a board can get wrong silently.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ChipId {
     pub first: u8,
@@ -197,11 +186,9 @@ const BRING_UP_CLOCKS: &[Step] = &[
     merge(REG_CLK_BCLK, BCLK_INVERT_MASK, 0x00),
 ];
 
-// The DAC's serial port in standard I2S, the mixed-signal and gain defaults the
-// reference driver writes, and the analog power-up. The frame is merged rather
-// than written so the run state and word width the bring-up has not committed
-// to yet stay as the part holds them; `START` pins the width to 16 bit the
-// moment the port comes out of reset.
+// The DAC's serial port in standard I2S, the mixed-signal and gain defaults, and the analog
+// power-up. The frame is merged so the run state and width the bring-up has not committed to
+// stay as the part holds them; `START` pins the width to 16 bit as the port leaves reset.
 const BRING_UP_DAC: &[Step] = &[
     merge(REG_SDP_DAC, SDP_FRAME_MASK, SDP_I2S),
     write(REG_SYSTEM_13, 0x10),
@@ -251,12 +238,10 @@ impl<D: I2c> Mute for Es8311<D> {
     }
 }
 
-/// What playback needs from the codec driver: the mute latch, and a bring-up it can retry
-/// when the part did not answer at boot.
+/// What playback needs from the codec: the mute latch, and a bring-up it can retry.
 pub trait StartableCodec: Mute {
-    /// Brings the part up if it is not running, trying the alternate address when the
-    /// primary does not answer. The returned words are the reason a page shows, so they name
-    /// the part's behaviour rather than an internal operation.
+    /// Brings the part up if it is not running, trying the alternate address when the primary
+    /// does not answer. The returned words are the page's, naming behaviour, not internals.
     fn ensure_started(&mut self) -> Result<(), &'static str>;
 
     /// Whether the part answered its bring-up and is running.

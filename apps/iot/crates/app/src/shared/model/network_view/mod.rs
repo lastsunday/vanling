@@ -1,10 +1,6 @@
-//! The Network page's view: the row a passphrase is being typed for, the draft itself, the
-//! question the page is asking, and where the list is scrolled. The link is not here — this
-//! record reads [`NetworkState`] and never writes it, so a report from the worker cannot land
-//! in a page field and a page edit cannot change what the radio said.
-//!
-//! The type lives beside the other shared records because the frame snapshot carries it; the
-//! one instance belongs to the page.
+//! The Network page's view: the typed-for row, the draft, the question, and the list scroll. The
+//! link is not here — this record reads [`NetworkState`] and never writes it, so a worker report
+//! cannot land in a page field and a page edit cannot change what the radio said.
 
 use crate::shared::intent::Key;
 use crate::shared::intent::NetworkIntent;

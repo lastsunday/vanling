@@ -1,15 +1,11 @@
-//! The adaptive filter: a normalized least-mean-squares loop over the speaker's own
-//! samples.
+//! The adaptive filter: a normalized least-mean-squares loop over the speaker's own samples.
 
-/// Fractional bits a coefficient carries. The same scale the weighting cascade
-/// uses, so both halves of the capture path read the same way.
+/// Fractional bits a coefficient carries, the scale the weighting cascade uses.
 ///
-/// **Thirty, and twenty does not work.** At twenty the scale fits i32 and
-/// `gain · x` stops widening — but the same constraint caps the gain at 2^15,
-/// and NLMS wants it two dozen bits wider while the power is still small and the
-/// error is still the whole microphone. The clamp then binds and convergence
-/// falls from 61.0 dB to 56.7 against a 62.9 dB offline optimum. The multiply is
-/// not what costs; everything around it is.
+/// **Thirty; twenty does not work.** At twenty the scale fits `i32` but caps the gain at 2^15,
+/// and NLMS wants it two dozen bits wider while the power is still small and the error is still
+/// the whole microphone. The clamp binds and convergence falls from 61.0 dB to 56.7 against a
+/// 62.9 dB offline optimum.
 pub const COEFFICIENT_SHIFT: u32 = 30;
 
 const STEP_FRACTION: u32 = 10;

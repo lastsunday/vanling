@@ -1,9 +1,6 @@
 //! The network worker's side: what the panel asks for, the page it is showing, and the scan
-//! list coming back. The command vocabulary itself belongs to the state machine
-//! (`crate::state::NetworkCommand`); this file only carries it.
-//!
-//! This is the one file under `workers` that names the radio's types, because the coordinator
-//! and the radio cannot reach each other and this is the ground they share.
+//! list. The command vocabulary belongs to `crate::state::NetworkCommand`. This is the one file
+//! under `workers` that names the radio's types.
 
 use core::future::Future;
 use core::sync::atomic::{AtomicU8, AtomicU32, Ordering};
@@ -15,18 +12,14 @@ use iot_core::drivers::network::{ApList, SavedNetworks};
 
 use super::inbox::{Inbox, Retained};
 
-/// How many commands may wait for the network worker: one frame's largest burst, because a pass
-/// takes every intent the bus holds and each one can carry a command. That depth is what keeps
-/// the normal path lossless — an entry gives way only when the worker is more than a frame
-/// behind, and then it is the request the panel has already moved past.
+/// How many commands may wait: one frame's largest burst, so the normal path is lossless. An
+/// entry gives way only when the worker is more than a frame behind.
 pub(crate) const COMMAND_SLOTS: usize = 8;
 
 pub type NetworkInbox = Inbox<NetworkCommand, COMMAND_SLOTS>;
 
-/// The coordinator's handle on the network worker.
-///
-/// Owned by the entry's [`crate::runtime::Runtime`], so the channels live in exactly one place
-/// and both halves reach them through this value.
+/// The coordinator's handle on the network worker, owned by [`crate::runtime::Runtime`] so the
+/// channels live in one place.
 pub struct Network {
     /// Coordinator → worker: what the panel asked the link to do.
     pub commands: NetworkInbox,

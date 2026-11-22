@@ -1,15 +1,9 @@
-//! The radio and the IP stack, and nothing else — no panel, no touch, no motion, no audio
-//! *task* — so a fault belongs to the network path rather than to whatever else was awake.
+//! The radio and IP stack, and no other task, so a fault belongs to the network path.
 //!
-//! It reports scan, association and DHCP as three numbers because they are three budgets (the
-//! radio's, the access point's reply and retries, the lease offer); it prints the driver's heap
-//! every few seconds so a thin margin shows while the link is up; and it answers whether the
-//! driver's PHY-calibration restore path is reachable here — esp-radio implements that hook as
-//! `todo!()` under `cfg(xtensa)`, and whether it runs depends on a `phy_init` partition existing.
-//!
-//! The board's own bring-up still runs, since the board feature brings it along; it costs DRAM
-//! and boot time, not accuracy. Credentials come from the build: a probe taking them over a
-//! keystroke protocol would measure that protocol too, on a panel this probe does not drive.
+//! It reports scan, association and DHCP as three budgets, prints the driver's heap every few
+//! seconds, and answers whether esp-radio's PHY-calibration restore hook is reachable (it is
+//! `todo!()` under `cfg(xtensa)`; whether it runs depends on a `phy_init` partition).
+//! Credentials come from the build, so the probe measures the link rather than a typing protocol.
 
 #![no_std]
 #![no_main]

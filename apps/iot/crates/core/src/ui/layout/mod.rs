@@ -3,11 +3,8 @@
 //! A page declares a tree while it runs; this lays it out once, in 1/64 px, and hands back
 //! integer rectangles whose shared edges round to the same pixel. Layout is a pure function of
 //! the tree, so a hit test can run the same declaration without a canvas and land on the same
-//! boxes.
-//!
-//! The vocabulary is Flutter's: [`BoxConstraints`], flex with grow/shrink/basis, wrapping runs,
-//! stack positioning, and a scroll box that clips. Measurement is top-down and each container
-//! hands its children the constraints its own box leaves.
+//! boxes. The vocabulary is Flutter's: [`BoxConstraints`], flex with grow/shrink/basis, wrapping
+//! runs, stack positioning, and a clipping scroll box. Measurement is top-down.
 
 mod constraints;
 mod node;

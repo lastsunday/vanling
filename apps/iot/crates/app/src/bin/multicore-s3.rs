@@ -1,14 +1,10 @@
-//! Probes whether starting the second core survives the main stack sitting under it: the ROM
-//! boots the APP core and its startup prologue runs on its own boot stack at the top of
-//! `dram2_seg`, so an unreserved main stack has its *top* overwritten — where the thread-mode
-//! executor keeps its `ThreadFlag`. What the second core runs is irrelevant; the damage predates
-//! any closure. The reservation that answers it lives in
+//! Probes whether the second core survives the main stack under it: the ROM's APP-core
+//! prologue runs on its own boot stack at the top of `dram2_seg`, so an unreserved main stack
+//! has its top — where the executor keeps its `ThreadFlag` — overwritten. The reservation is
 //! `crates/app/linker/esp32s3-main-stack.x`.
 //!
-//! [`CASE`] picks the shape, one per image so a fault cannot be blamed on the wrong deviation:
-//! 1 is esp-hal's `embassy_multicore` example transcribed; 2 adds a board-sized value held live
-//! on `main`'s stack across the bring-up, which fails without the reservation. Both cores run
-//! [`ROUNDS`] counter round trips; a case logging them on both cores has survived.
+//! [`CASE`] picks the shape; case 2 holds a board-sized value on `main`'s stack and fails
+//! without the reservation. Both cores run [`ROUNDS`] round trips.
 
 #![no_std]
 #![no_main]

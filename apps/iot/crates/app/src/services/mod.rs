@@ -1,9 +1,7 @@
-//! The product's services, one vertical slice each: a page or the device's own service and what
-//! it owns live in one file or one directory, and that is the unit of cohesion.
+//! The product's services, one vertical slice each: a page or device service and what it owns.
 //!
-//! [`Service`] is what every operating platform shares: a business intent comes in, its one
-//! owner answers. [`LocalPage`] is the face the local panel and buttons see: what a gesture
-//! means, the view the frame snapshot carries, the picture, and how it fills the panel.
+//! [`Service`] is what every platform shares — a business intent comes in, its one owner
+//! answers. [`LocalPage`] is what the panel and buttons see.
 
 pub mod ambient;
 pub mod attitude;

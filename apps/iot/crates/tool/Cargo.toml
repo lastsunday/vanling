@@ -4,6 +4,6 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-# The cutter's one dependency, and only for reading an OTF's outlines. It stays out of the
-# device crates: a change on that side cannot break the thing that builds its assets.
+# Reads OTF outlines for the cutter. Kept out of the device crates so a change here cannot
+# break the firmware build.
 ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }

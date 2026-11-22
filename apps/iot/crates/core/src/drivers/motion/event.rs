@@ -60,14 +60,10 @@ impl MotionEvent {
     }
 }
 
-/// How many times each semantic has been raised since boot, saturating. This
-/// is the tuning counterpart of a capability set: a threshold is verified by
-/// watching the bucket it feeds, so a semantic the board cannot report must
-/// stay visibly distinct from one whose threshold simply never fires.
-///
-/// Counts are `u16` rather than the `u8` the touch counters use because a
-/// shake runs near 3/s while its 300 ms refractory period allows it — 255
-/// would be gone in well over a minute of handling, too short to calibrate.
+/// How many times each semantic has been raised since boot, saturating. A threshold is verified
+/// by watching the bucket it feeds, so a semantic the board cannot report stays visibly distinct
+/// from one whose threshold never fires. `u16` rather than the touch counters' `u8`: a shake runs
+/// near 3/s, so 255 would be gone in a minute of handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct MotionCounts {
     pub taps: u16,

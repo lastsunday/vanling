@@ -1,14 +1,9 @@
 //! A-weighting for the acoustic readout.
 //!
-//! The panel's scope and dBFS rows see the capture as the codec handed it over, and
-//! that is unweighted — so a room humming at 60 Hz scores far higher than a phone app's
-//! dB(A). This turns the same stream into the IEC 61672-1 A-weighted level, so the
-//! corner readout can say "dBA" and mean a number comparable with one from elsewhere.
-//!
-//! Textbook analog A-weighting (zeros at DC; poles at 20.6, 107.7, 737.9 Hz and two at
-//! 12.194 kHz), prewarped and bilinearly transformed at
-//! [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ), run as a fixed point IIR. Fixed point
-//! because there is no floating point in this crate's capture path.
+//! The capture is unweighted, so a 60 Hz hum scores far higher than a phone app's dB(A). This
+//! applies IEC 61672-1 A-weighting (analog zeros and poles, prewarped and bilinearly
+//! transformed at [`SAMPLE_RATE_HZ`](super::SAMPLE_RATE_HZ)) as a fixed-point IIR, because the
+//! capture path has no floating point.
 
 const COEFFICIENT_SHIFT: u32 = 30;
 

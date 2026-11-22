@@ -1,9 +1,6 @@
-//! The played stream, shared between the transmit driver that writes it and the capture
-//! driver that reads it.
-//!
-//! A critical-section cell because the two run on different executors: the feed is on a
-//! higher-priority interrupt and the capture on the cooperative loop. Taken once per feed
-//! and once per poll, never per sample. [`Silent`] is the same trait with no speaker.
+//! The played stream, shared between the transmit driver that writes it and the capture driver
+//! that reads it. A critical-section cell because the feed runs on a higher-priority interrupt
+//! and the capture on the cooperative loop; taken per feed/poll, never per sample.
 
 use core::cell::RefCell;
 
@@ -14,17 +11,9 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use iot_core::drivers::aec::{ReferenceLog, required_frames};
 use iot_core::drivers::audio::DECIMATION;
 
-/// How many kept samples a log needs, from the two ring geometries.
-///
-/// A caller passes them rather than this module reading them, because the two
-/// numbers belong to two drivers and this one is shared by both: reading either
-/// would make the reference a dependency of a module it must not depend on, and
-/// `features.md`'s rule that every component stands on its own would fail.
-///
-/// The division rounds **up**: a log one sample short does not read wrong, it
-/// silently laps and starts answering from a lap ago — the fault
-/// `ReferenceLog::has_lapped` exists to report, and this sizing exists to make
-/// unreachable.
+/// How many kept samples a log needs, from the two ring geometries. A caller passes them because
+/// the numbers belong to two drivers and this module is shared by both. The division rounds up:
+/// a log one sample short silently laps and answers from a lap ago.
 pub const fn samples_for(transmit_runway_frames: usize, receive_latency_frames: usize) -> usize {
     required_frames(transmit_runway_frames, receive_latency_frames).div_ceil(DECIMATION as usize)
 }

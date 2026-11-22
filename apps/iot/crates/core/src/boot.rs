@@ -1,14 +1,9 @@
-//! What this boot inherited and what it has proved: the crash record the reset handed
-//! over, and the readiness the running boot reports.
+//! What this boot inherited and what it has proved: the crash record the reset handed over,
+//! and the readiness the running boot reports.
 //!
-//! The chip layer stores the record in a register the reset does not clear; this module is
-//! the part that decides what that word means, so the rule can be tested without a board.
-//! Readiness is the opposite: it lives in RAM and must not survive a reset.
-//!
-//! A boot counts as crashed when the previous boot raised a panic (the panic handler sets
-//! the flag before resetting) or when this reset's reason says a watchdog fired. A power
-//! cycle, a manual reset, or a reflash starts the count over at zero, so a healthy device
-//! cannot drift into safe mode just by being reset often.
+//! The chip layer stores the record in a register the reset does not clear; this module decides
+//! what that word means. A boot crashed when the previous boot panicked or this reset was a
+//! watchdog; a power cycle, manual reset or reflash starts the count at zero.
 
 /// The mark that separates a record this product wrote from whatever a cold register holds.
 const MAGIC: u32 = 0x5642;
@@ -107,15 +102,9 @@ pub const fn record_boot(previous: ResetRecord, crashed: bool) -> (ResetRecord, 
     (record, mode)
 }
 
-/// What the product has proved about this boot: it can draw a frame, and the radio path (or
-/// the deliberate absence of one) has reached its steady state.
-///
-/// Time alone is not evidence: a boot that hangs after a minute of feeding is exactly the boot
-/// safe mode exists for. Both halves are reported by the code that can actually answer them,
-/// and the watchdog clears the crash record only once both have been seen.
-///
-/// A value rather than a module-level static: the entry owns one, the frame loop and the
-/// network worker note into it, and the watchdog feeder reads it through the same hand.
+/// What the product has proved about this boot: it can draw a frame, and the radio path (or its
+/// deliberate absence) has settled. Time alone is not evidence. The entry owns one value; the
+/// frame loop and the network worker note into it, and the watchdog feeder reads it.
 pub struct Readiness {
     bits: core::sync::atomic::AtomicU8,
 }

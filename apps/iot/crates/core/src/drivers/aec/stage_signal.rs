@@ -1,16 +1,9 @@
-//! The room the pairing tests in this module are built from, because they all
-//! need the same property: **broadband, and a dominant direct reflection**.
+//! The room the pairing tests share: broadband, with a dominant direct reflection.
 //!
-//! A near-periodic reference gives an adaptive filter more than one correct
-//! answer, so a pairing test built on one can pass without the pairing being
-//! right. And a path whose taps are all the same size has no peak for the delay
-//! search to lock onto — the record's own finding, that adding a dominant direct
-//! reflection took a generated room from 0.4 dB to 61 dB. A test room without one
-//! measures a filter pointed at noise.
-//!
-//! Only the room is local here; the broadband source and the sum of squares are
-//! [`super::signal`]'s, shared rather than copied so a seed names one signal
-//! everywhere in the driver.
+//! A near-periodic reference gives an adaptive filter more than one correct answer, and a path
+//! with equal taps gives the delay search no peak — adding a dominant reflection took a
+//! generated room from 0.4 dB to 61 dB. Only the room is local; [`super::signal`] owns the
+//! source and the sum of squares.
 use alloc::vec::Vec;
 
 /// The echo path, in ppm per tap: a dominant direct reflection then a decaying tail, which

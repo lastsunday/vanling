@@ -1,17 +1,9 @@
-//! Capture-rate frames down to the rate the canceller works at.
+//! Capture-rate frames down to the canceller's 16 kHz.
 //!
-//! The codec runs at [`SAMPLE_RATE_HZ`] and Espressif's AEC takes 16 kHz and
-//! nothing else, so something has to throw two frames out of every three. Which
-//! two is not free: the microphone and the reference are numbered by their own
-//! transfers' frame counters, and a pair taken from different frames of the two
-//! groups is up to two thirds of a sample apart — a shift the correlation peak
-//! cannot sit on, so the canceller would be decorrelating itself from the very
-//! signal it exists to predict. [`Decimator::with_phase`] is how a caller pins
-//! the two to the same frame of each group.
-//!
-//! In core because a mismatch here is silent: every number the canceller reports
-//! stays plausible while the two streams are a fraction of a sample apart, and
-//! nothing on the board can show it.
+//! Two of every three frames are dropped, and which two is not free: the microphone and the
+//! reference are numbered by their own transfers, and pairing different frames of the two
+//! groups leaves a shift the correlation peak cannot sit on. [`Decimator::with_phase`] pins
+//! them to the same frame. The failure is silent, which is why this lives in `core`.
 use super::SAMPLE_RATE_HZ;
 use crate::drivers::aec::SAMPLE_RATE_HZ as CANCELLER_HZ;
 

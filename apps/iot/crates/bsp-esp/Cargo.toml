@@ -5,8 +5,8 @@ edition.workspace = true
 
 [features]
 default = ["esp32c6-devkitc-1"]
-# Real components: one feature per module (one axis, module-backed); a board
-# feature below is the aggregate of the wiring it needs.
+# Real components: one feature per module. A board feature below is the union of the
+# components its wiring needs.
 backlight = ["dep:esp-hal"]
 button = ["dep:esp-hal"]
 pca9557 = ["dep:embedded-hal"]
@@ -17,40 +17,22 @@ ft6336 = ["dep:embassy-embedded-hal", "dep:embassy-sync", "dep:embedded-hal"]
 gc2145 = ["dep:embedded-hal"]
 ws2812 = ["dep:esp-hal", "dep:esp-hal-smartled", "dep:smart-leds"]
 st7789 = ["dep:esp-hal", "dep:embedded-hal", "dep:mipidsi", "dep:embassy-futures"]
-# Virtual components: assembled from real components.
-# The Audio page reports the codec's own levels, so it needs the calibration
-# that codec's gain and analog rail imply — which is why the driver is one of
-# its inputs and not only a thing the board wires up. The backlight is the
-# panel's own brightness channel, and this surface drives it to follow the
-# breathing envelope, so the component is named here rather than left to the
-# board aggregation that happens to enable it today.
+# Virtual components, assembled from real ones.
+# `screen` names the codec because the Audio page reads its calibrated levels, and the
+# backlight because the surface drives it with the breathing envelope.
 screen = ["st7789", "es7210", "backlight", "dep:embassy-sync", "dep:embassy-executor"]
-# The capture side: a ring in DMA memory, so the chip HAL and the codec driver.
-# `embassy-sync` is the shared cell the reference between the two audio halves
-# sits in — the capture reads it from the cooperative input loop while the
-# speaker's feed writes it from an interrupt executor, so it has to be a cell
-# rather than a field on either driver.
+# Capture: a DMA ring and the ADC. `embassy-sync` is the reference cell shared with the
+# speaker's interrupt-driven feed, so it cannot live on either driver.
 audio = ["es7210", "dep:esp-hal", "dep:embassy-sync"]
-# The playback side: the DAC driver, and a ring in DMA memory for the transport.
-# It does not depend on the capture, because a speaker with no microphone is a
-# real board and the other way round — and the reference cell it shares is
-# written on its own, read by nobody.
+# Playback: the DAC and its DMA ring. Independent of capture, because a speaker without a
+# microphone is a real board.
 audio-out = ["es8311", "dep:esp-hal", "dep:embassy-sync"]
-# The capture side: the sensor driver plus the chip HAL for the ring and the DMA
-# behind it. Separate from `gc2145` because the driver stands on its own on a host
-# and its register table is worth testing without a chip in the room.
+# The sensor plus the chip HAL for its ring and DMA. Separate from `gc2145` so the driver's
+# register table can be tested on a host.
 camera = ["gc2145", "dep:esp-hal"]
-# The radio. `iot-chip-esp/radio` is named here rather than left to the app because
-# the driver's heap lives in the chip layer and a component that needs it has to say
-# so: with only `esp-radio` on, the build compiles and then fails at link with an
-# undefined `malloc`, which is the shape of a self-sufficiency bug features.md rule 5
-# exists to prevent. The dependency is named for the same rule: this board powers the
-# radio's domain in `take_wifi`, so the chip layer is part of the feature rather than
-# something the app happens to bring.
-#
-# The credential store rides with the radio, because what it keeps is the network the
-# panel named on the radio's own page: a build with no radio has nothing to keep, and
-# the two crates it needs are the whole of the axis there is to gate.
+# The radio, with the chip layer named here because the driver's heap lives there: with
+# only `esp-radio` on, the build links without `malloc` (features.md rule 5).
+# The credential store rides along: no radio means nothing to keep.
 wifi = [
   "dep:esp-radio",
   "dep:esp-storage",
@@ -59,12 +41,8 @@ wifi = [
   "iot-chip-esp?/radio",
 ]
 
-
 esp32c6-devkitc-1 = ["button", "ws2812", "wifi", "esp-radio/esp32c6", "esp-storage/esp32c6"]
-# The board features are the hardware axis, so they are also where a component's
-# chip feature is contributed: `esp-radio/<chip>` picks the blob for this part, the
-# same way the app's family alias picks the HAL's. Both boards have a radio soldered
-# to them, so both carry the component; the parts differ in what the component costs.
+# Board features are the hardware axis, so they contribute each component's chip feature.
 lckfb-szpi-esp32s3 = ["button", "pca9557", "qmi8658", "st7789", "screen", "backlight", "ft6336", "audio", "audio-out", "camera", "wifi", "esp-radio/esp32s3", "esp-storage/esp32s3"]
 
 [dependencies]
@@ -72,15 +50,12 @@ embedded-hal = { workspace = true, optional = true }
 embassy-embedded-hal = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 iot-core = { workspace = true }
-# The chip layer: the radio domain's power-up and the heap it allocates from are this part's
-# business, not the app's.
 iot-chip-esp = { workspace = true, optional = true }
 log = { workspace = true }
 mipidsi = { workspace = true, optional = true }
 
-# The chip HAL only builds for a bare-metal target, so keeping it out of the
-# host build is what lets the pure `embedded_hal` components above be unit
-# tested on a workstation.
+# The chip HAL only builds for bare metal; keeping it out of the host build is what lets
+# the `embedded_hal` components above be unit tested on a workstation.
 [target.'cfg(target_os = "none")'.dependencies]
 embassy-executor = { workspace = true, optional = true }
 embassy-futures = { workspace = true, optional = true }

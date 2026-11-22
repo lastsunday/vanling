@@ -1,18 +1,11 @@
 //! The liveness watchdog: the one reset a hung executor cannot suppress.
 //!
-//! The RWDT is disabled by esp-hal's own `init`, so this is the only place that arms it.
-//! It is armed twice: once with a boot-sized timeout right after the chip is up, so a hang
-//! in board bring-up still resets, and again with the product timeout once the coordinator
-//! owns an executor and can feed it.
+//! esp-hal's `init` disables the RWDT, so this arms it: a boot-sized timeout before board
+//! bring-up, then the product timeout once the coordinator can feed it. The feeder is a task
+//! on that executor, so anything that stops yielding also stops feeding.
 //!
-//! The feeder is an ordinary task on the coordinator's executor, which is exactly the
-//! property wanted: a driver or a coordinator that stops yielding also stops feeding, and
-//! the part resets instead of parking a dead UI in front of a person.
-//!
-//! The reset action is [`RwdtStageAction::ResetCore`], not `ResetSystem`: a system reset
-//! clears the RTC domain, which is where [`crate::boot`] keeps the crash count, and
-//! the panic path (`software_reset`) is a core reset too. Both kinds then leave the count
-//! intact so a boot loop can reach safe mode.
+//! `ResetCore`, not `ResetSystem`: the RTC domain holds [`crate::boot`]'s crash count, and
+//! both this and the panic path must leave it intact for safe mode.
 
 use core::cell::RefCell;
 
@@ -24,16 +17,15 @@ use esp_hal::rtc_cntl::{Rtc, Rwdt, RwdtStage, RwdtStageAction};
 use esp_hal::time::Duration as HalDuration;
 use iot_core::boot::Readiness;
 
-/// Long enough to cover the slowest legitimate blocking section on the product path, short
-/// enough that a hang is visible before a person gives up on the panel.
+/// Covers the slowest legitimate blocking section, and is short enough that a hang is visible
+/// before a person gives up on the panel.
 const TIMEOUT_MS: u64 = 5_000;
 
-/// Three feeds per timeout, so one late or missed wake cannot reset a healthy device.
+/// Three feeds per timeout, so one late wake cannot reset a healthy device.
 const FEED_INTERVAL_MS: u64 = 1_000;
 
-/// The timeout the part runs under while board bring-up owns it: generous enough for every
-/// probe and driver retry, short enough that a hang is still a reset rather than a dark
-/// panel. `start_watchdog` tightens it to [`TIMEOUT_MS`].
+/// The timeout while board bring-up owns the part: generous for probes and driver retries.
+/// `start_watchdog` tightens it to [`TIMEOUT_MS`].
 const BOOT_TIMEOUT_MS: u64 = 30_000;
 
 const _: () = assert!(
@@ -45,8 +37,8 @@ static WATCHDOG: Mutex<RefCell<Option<Rwdt>>> = Mutex::new(RefCell::new(None));
 
 /// Arms the RWDT before board bring-up, with a timeout sized for the whole boot.
 ///
-/// Call once, after `esp_hal::init` (which disables the watchdog) and before anything that
-/// can block for a driver's own timeout. No task feeds it yet; the timeout is the budget.
+/// Call once after `esp_hal::init` (which disables the watchdog) and before any driver that
+/// can block for its own timeout. No task feeds it yet; the timeout is the budget.
 pub fn arm_boot_watchdog() {
     let mut rwdt = take_rwdt();
     configure(&mut rwdt, BOOT_TIMEOUT_MS);
@@ -57,9 +49,8 @@ pub fn arm_boot_watchdog() {
     );
 }
 
-/// Tightens the timeout to the product's and spawns the task that feeds it.
-///
-/// Call once, on the executor that runs the coordinator, after the timer driver is up.
+/// Tightens the timeout to the product's and spawns the feeder. Call once, on the
+/// coordinator's executor, after the timer driver is up.
 pub fn start_watchdog(spawner: Spawner, readiness: &'static Readiness) {
     critical_section::with(|cs| {
         let mut slot = WATCHDOG.borrow_ref_mut(cs);
@@ -80,10 +71,8 @@ fn configure(rwdt: &mut Rwdt, timeout_ms: u64) {
 }
 
 fn take_rwdt() -> Rwdt {
-    // SAFETY: `Peripherals` is consumed by the board's `Board::new`, whose destructuring ends
-    // in a `..` catch-all and therefore leaves `RTC_TIMER` alone; esp-hal's `init` only
-    // reborrows it while setting the chip up. Nothing else in this program names the RTC
-    // timer, so this is its sole owner for the rest of the boot.
+    // SAFETY: `Board::new` destructures `Peripherals` with a `..` catch-all, so `RTC_TIMER` is
+    // left alone; nothing else in this program names the RTC timer.
     Rtc::new(unsafe { RTC_TIMER::steal() }).rwdt
 }
 

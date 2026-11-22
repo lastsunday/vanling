@@ -18,15 +18,10 @@ pub mod components;
 
 pub mod hardware;
 
-// Abstract components assembled from real ones. Gated on whichever is present
-// rather than on one of them: each virtual component carries its own gate
-// below, so a board wiring only the speaker still gets its transport and a
-// board wiring only the microphone still gets its own.
-//
-// Every virtual component's own feature has to appear here. A component left
-// out compiles under every board that happens to enable a sibling and under
-// none of its own, so `check-features` — which builds each feature alone —
-// silently never builds it.
+// Abstract components assembled from real ones. Each carries its own gate below, so a board
+// wiring only the speaker still gets its transport. Every virtual component's feature has to
+// appear here: a component left out compiles under a sibling's board and under none of its own,
+// so `check-features` would never build it alone.
 #[cfg(any(
     feature = "screen",
     feature = "audio",

@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "fb7ac3a614b1f5b0256c190f970b9c29a8975005"
-translated_at = "2026-11-20T00:00:00Z"
+source_file_hash = "42aecd73b27c6172a74bfdd331e5bb9b76c593e4"
+translated_at = "2026-11-22T00:00:00Z"
 +++
 
 # Architecture
@@ -138,7 +138,6 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 - **`shared/kit` names no page**: `Panel` lays a page's declaration out into boxes and then inks them, and `chrome` offers only the shared margins, line rhythm and label slot; which page declares what is `services::descriptor(page).view`, and what the page paints itself is `descriptor(page).custom`
 - `shared` is a leaf: it does not depend on `state`/`services`/`render`/`runtime`. `DeviceState`, `PageSnapshot` and `NetworkView` live there so pages, the snapshot and rendering all look downward
 - `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `snapshot` (the frame and page views); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
-- `shared/model` holds the records more than one place reads or writes; `DeviceState` is their aggregate, `shared/snapshot.rs` holds the `FrameSnapshot` and the `PageSnapshot` the pages publish, and `network_view/` is the Network page's view (owned by the page, copied by the snapshot, never read by the link)
 - **A test lives with the item it asserts**: in that module's own file, or in the module's own `tests.rs`; `state/tests/` is the only test tree split by topic, and the fixtures exist once, in `state/tests/support.rs` (`state::test_support` is only its re-export). Tests are not edges of the module graph, so `module_boundaries.rs` skips `tests/`, `tests.rs` and `test_support.rs`
 - `runtime::workers` carries no `wifi` gate: the host build still holds `Network`, nobody answers
 - `runtime::workers` never reaches a worker: it knows only `core` types, so `playback`/`network`/`input` can depend on it one way
@@ -218,7 +217,7 @@ Hardware (board feature) ⊥ module (module feature) ⊥ capability (`iot-core` 
 - **Product tier = feature alias**: the tier fixes the module set, the board fixes the supported set, and the intersection is trimmed and checked at compile time.
 - **Module configurability** = feature switch + const parameters.
 - **Runtime-pluggable render layer**: `iot-app`'s allocation-free central `Differ` (diff closure callback; selections are computed per topic first, only the ones that moved are notified, and the snapshot is written once at the end) plus a heap `RenderSet` registry in the same crate (`embedded-alloc` heap: 512 KiB PSRAM on the S3, 64 KiB internal DRAM on the C6). Each renderer is registered beside its surface at start-up, and all live in the same render task; there is no cross-task bus. Each renderer declares only the `Topic`s it claims (`Surface(instance)` / `Frame` / `Demand`), so a lamp never touches the ~2 KB frame; `Appearance` borrows the frame and only the screen keeps a copy.
-- **A steady page's light does not breathe**: `FrameSnapshot::steady` comes from `PageId::steady()`, so `ScreenRenderer` keeps the backlight at 100 (only an off light drops it to 0) and `LampRenderer` holds the declared colour at phase 0 and answers `Idle`; a page's own animation still drives `TimeDriven` through `animating()`, and the two do not entangle.
+- **A steady page's light does not breathe**: `FrameSnapshot::steady` comes from `PageId::steady()` (above), so `LampRenderer` holds the declared colour at phase 0 and answers `Idle`; a page's own animation still drives `TimeDriven` through `animating()`
 
 ## The demand model (what / how often / how sensitive)
 
@@ -298,7 +297,7 @@ One chain, five words: `Event → Intent → Action → State → Hardware` — 
 
 **Hardware is driven by State alone, State is changed by Action alone, Action is triggered by Intent alone, and Intent is raised by Event alone.**
 
-`shared/model/` holds one file per domain: `mod.rs` is only the barrel plus re-exports of `core` vocabulary such as `MAX_LIGHTS`/`SurfaceRole`, and `audio.rs`/`playback.rs`/`network.rs`/`light.rs`/`motion.rs`/`touch.rs`/`health.rs` hold the records the workers write and the render loop reads, while `device.rs` is the aggregate `DeviceState`, `shared/snapshot.rs` holds the `FrameSnapshot` and the `PageSnapshot` the pages publish, and `network_view/` is the Network page's view (`NetworkView`/`Entry`/`SetupWait`) — the page owns it, the snapshot copies it, and the link never reads it. Domain files import explicitly and never use `use super::*` outside tests — a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`; `DeviceManager::apply_intent` is defined in `state/manager/write.rs`, binds through `Services::bind` for the current page, and writes the record before translating.
+`shared/model/`'s file layout is in the table above; one hard rule to add: domain files import explicitly and never use `use super::*` outside tests, because a prelude lets a new symbol cross a module boundary unseen. `DeviceManager` and gesture→intent dispatch live in `state/`, and `DeviceManager::apply_intent` is defined in `state/manager/write.rs`: it binds through `Services::bind` for the current page and writes the record before translating.
 
 Business state and page state sit apart, and **whoever writes a field owns it**: `NetworkState` holds only what the radio reported (`link` / `mac` / `aps` / `outage_announced`) and only `LinkIntent` writes it; `NetworkView` holds only what the page is in the middle of (the selected row, the draft, keys, the confirmation, the list's scroll position) and `NetworkPage::apply` writes it in answer to the finger's `NetworkIntent` and to the landing `LinkIntent::Scan`; it is not a `DeviceState` field. The page reads `&NetworkState`; the link never reads or writes a page field, so neither "a worker's report lands in a page field" nor "a page edit changes what the radio said" can happen. The other domains keep a `view` sub-record (`AudioView`, `PlaybackView`, `TouchView`) with the same meaning: only what the page is in the middle of, read by notifications and rendering. The link's own shape is a value too: `LinkStatus.mode` is a `NetworkMode` (`Link` / `Browsing` / `Setup { host, cancellable }`) instead of four parallel booleans describing what the page is about.
 

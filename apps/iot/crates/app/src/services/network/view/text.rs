@@ -85,13 +85,9 @@ pub fn format_window(top: u8, rows: usize, buf: &mut [u8; 12]) -> &[u8] {
     &buf[..n]
 }
 
-// The draft as the row above the keyboard shows it: masked, or as typed while the reveal is on.
-//
-// The *tail* of it rather than the head, because the end is what the finger just typed and a
-// character to fix is at the end of a passphrase about as often as anywhere. What does not fit is
-// marked with a leading `+` rather than silently dropped, and the mark is one of the row's own
-// glyphs: the row's width is what the columns above leave it, so a draft a glyph wider than that
-// would run into the phase word beside it.
+// The draft as the row above the keyboard shows it: masked, or as typed while revealed. The
+// tail, because the end is what was just typed; what does not fit gets a leading `+`, one of
+// the row's own glyphs, so it cannot run into the phase word.
 pub fn format_psk<'a>(entry: &Entry, revealed: bool, buf: &'a mut [u8]) -> &'a [u8] {
     let shown = entry.len().min(buf.len());
     let more = entry.len() > shown;

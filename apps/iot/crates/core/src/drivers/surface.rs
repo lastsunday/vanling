@@ -179,9 +179,9 @@ pub trait ScreenSurface: RgbLight + CameraTarget {
     }
 
     /// Draws the frame the snapshot describes over the colour the last fill left. The board
-    /// supplies its own buffer and the app's painter decides the ink. `force` redraws even
-    /// when no colour moved; the product's repaint gate is what asks for that. Answers
-    /// whether a frame is now pending for [`Self::flush`].
+    /// supplies its buffer and the app's painter decides the ink. `force` redraws even when no
+    /// colour moved — the product's repaint gate asks for that. Answers whether a frame is now
+    /// pending for [`Self::flush`].
     ///
     /// Required rather than defaulted: a screen surface that cannot draw a frame is a wiring
     /// mistake, and a `false` default would hide it behind a screen that never fills.

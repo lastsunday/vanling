@@ -1,11 +1,6 @@
-//! The Text page: the face's coverage, a wrapped paragraph, and the glyph rows — the last two
-//! as independent scroll regions.
-//!
-//! Both regions are named in the declaration and measured once at construction: the panel is a
-//! fixed size and the content is static, so a headless layout is the same layout the page will
-//! draw. The paragraph is broken once there too, and every line is declared as its own nowrap
-//! run, so a frame never walks the face to break it again. A finger drags a region live; the
-//! lift flings it. The header prints where that region currently sits.
+//! The Text page: the face's coverage, a wrapped paragraph, and the glyph rows — the last two as
+//! independent scroll regions. Both are measured once at construction and broken once, so a
+//! frame never walks the face again. A finger drags a region live; the lift flings it.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, TextIntent};
 use crate::shared::kit::scroll::{

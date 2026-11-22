@@ -209,12 +209,9 @@ fn scroll_blit(frame: &mut [u8], width: usize, text: &TextSnapshot, shift: [i16;
     }
 }
 
-/// What a scroll frame changed: the rows the page inks again (the strip that entered each box,
-/// the header whose reading moved, the thumb that slid), and the rows the panel has to receive.
-///
-/// The panel is GRAM and cannot move its own pixels, so the second set is the whole box: every
-/// row the blit shifted changed on the glass, not only the strip painted over the ground. A
-/// shift as tall as the box reuses no row: the strip is the whole box and the blit skips it.
+/// What a scroll frame changed: rows to ink again, and rows the panel has to receive. The panel
+/// is GRAM and cannot move its own pixels, so the second set is the whole box. A shift as tall
+/// as the box reuses no row.
 fn scroll_damage(
     text: &TextSnapshot,
     shift: [i16; TEXT_AREAS],

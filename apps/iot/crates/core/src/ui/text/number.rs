@@ -2,11 +2,9 @@
 
 /// A coordinate pair written `x y`.
 ///
-/// Sized for the widest pair a panel-space reading can take — five digits either side of a
-/// space — rather than for the five-glyph block it is usually written in. A buffer sized to
-/// the block indexes past its end on exactly the readings that are widest, and those are the
-/// ones worth printing: a window that reads `319 239` fits anywhere, and one that overflows is
-/// wrong only at the interesting value.
+/// Sized for the widest pair a panel-space reading can take — five digits either side of a space
+/// — not for the five-glyph block it is usually written in. A buffer sized to the block indexes
+/// past its end on exactly the readings that are widest, and those are the ones worth printing.
 pub fn format_pair(pair: Option<(u16, u16)>, buf: &mut [u8; 12]) -> &[u8] {
     match pair {
         Some((x, y)) => {
@@ -24,10 +22,8 @@ pub fn format_pair(pair: Option<(u16, u16)>, buf: &mut [u8; 12]) -> &[u8] {
 
 /// `u32` in a glyph buffer, for counters that outgrow a `u16`.
 ///
-/// Over [`write_u64`] rather than writing digits here, because a second implementation of the
-/// same arithmetic is how a caller ends up with one format filling a buffer from the right and
-/// every reader taking it from the left — which reads a label one glyph into the value beside
-/// it, and overflows the moment the buffer is the narrower of the two.
+/// Goes through [`write_u64`] rather than writing digits here: a second copy of the arithmetic is
+/// how one format fills a buffer from the right while every reader takes it from the left.
 pub fn format_u32(value: u32, buf: &mut [u8; 12]) -> &[u8] {
     let n = write_u64(u64::from(value), buf, 0);
     &buf[..n]

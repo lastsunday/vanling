@@ -20,26 +20,13 @@ use iot_core::drivers::playback::{
 use crate::components::es8311::StartableCodec;
 use crate::virtual_components::reference::{Writer, samples_for};
 
-// This is the distance between where a sample is *put on the ring* and where it
-// is *on the wire* — 120 ms on this board — and it is the whole reason the
-// reference is read through a play cursor rather than a write pointer. A
-// reference taken at the write pointer would sit thirty times outside the delay
-// search's window, and a filter handed one converges on whatever the correlation
-// grid happens to favour.
+// Distance from a sample's place on the ring to the wire — 120 ms on this board — hence the
+// play cursor: read at the write pointer, the reference sits thirty times outside the search.
 const TRANSMIT_RUNWAY_FRAMES: usize = RING_BYTES / BYTES_PER_FRAME;
 
-// Frames of microphone latency the reference has to reach back across to pair
-// with: this board's capture ring, three poll periods.
-//
-// Stated here rather than read from `audio` so neither driver depends on the
-// other, and asserted against the real ring in both — a figure two modules each
-// spelled out is free to disagree, and a stale copy makes the pairing stop short
-// of the ring's real depth silently.
-//
-// **Counted in capture frames, not transmit ones.** The receive ring holds one
-// sample per frame where the transmit ring holds two — see
-// [`CAPTURE_BYTES_PER_FRAME`] — so a capture ring three poll periods deep is
-// twice as many *frames* as the same byte count read as transmit frames.
+// Frames of microphone latency the reference must reach back across: this board's capture
+// ring, three poll periods, asserted against the real ring in both drivers so neither depends
+// on the other. Counted in capture frames, half the size of transmit ones.
 const RECEIVE_LATENCY_FRAMES: usize = 3 * 1_920 / CAPTURE_BYTES_PER_FRAME;
 
 const _: () = assert!(
@@ -55,14 +42,11 @@ const _: () = assert!(
     "the reference log cannot hold this ring's runway"
 );
 
-// Bytes per DMA descriptor: a 5 ms slice of the wire at [`SAMPLE_RATE_HZ`] —
-// one feed cadence, the sensible grain for a feed to take over as the DMA
-// finishes one.
+// Bytes per DMA descriptor: a 5 ms slice of the wire at [`SAMPLE_RATE_HZ`], one feed cadence.
 const CHUNK_BYTES: usize = 960;
 
-// Descriptors in the ring. Twenty-four, so the whole ring is a generous slice
-// of runway that absorbs the kind of sub-120 ms delay a shared executor can
-// occasionally hand the feed loop.
+// Twenty-four descriptors, a generous runway that absorbs the sub-120 ms delay a shared
+// executor can occasionally hand the feed loop.
 const RING_CHUNKS: usize = 24;
 
 const RING_BYTES: usize = CHUNK_BYTES * RING_CHUNKS;
@@ -78,9 +62,8 @@ pub fn shared_tdm_config() -> TdmConfig {
         .with_signal_loopback(true)
 }
 
-/// Allocates the streaming ring in DMA-capable internal memory — once, for the
-/// driver's whole life. The macro hands out a single `const` static, so a second
-/// call panics and the one ring is reused.
+/// Allocates the streaming ring in DMA-capable internal memory — once per driver: the macro
+/// hands out a single `const` static, so a second call panics.
 pub fn stream() -> DmaTxStreamBuf {
     dma_tx_stream_buffer!(RING_BYTES, CHUNK_BYTES)
 }
@@ -121,18 +104,15 @@ pub struct Es8311Tx<C> {
 
 impl<C> Es8311Tx<C> {
     /// Takes the transmit unit and the codec and arms the streaming transfer: the ring is
-    /// prefilled with silence and handed to the DMA, which starts the codec's clocks with
-    /// it.
+    /// prefilled with silence and handed to the DMA, which starts the codec's clocks.
     pub fn new(
         i2s: I2sTx<'static, Blocking>,
         codec: C,
         reference: Writer<REFERENCE_SAMPLES>,
     ) -> Result<Self, I2sError> {
         let mut ring = stream();
-        // Zero the ring while it is still CPU-owned: the DMA starts the moment
-        // `write` arms it, and a boot that handed the codec a garbage buffer
-        // would pop the speaker. The silence this queues also covers the codec
-        // while it settles into its locked clock.
+        // Zero the ring while it is still CPU-owned: `write` arms the DMA at once and a garbage
+        // buffer would pop the speaker; the silence also covers the codec's clock settling.
         ring.push_with(|slot| {
             slot.fill(0);
             slot.len()
@@ -210,10 +190,6 @@ impl<C> Es8311Tx<C> {
             }
         }
     }
-
-    fn recover_drained(&mut self) -> bool {
-        self.restart()
-    }
 }
 impl<C> Speaker for Es8311Tx<C>
 where
@@ -279,7 +255,7 @@ where
 
     fn recover(&mut self) -> Option<Recovery> {
         let recovery = self.pending.take()?;
-        let repaired = self.recover_drained();
+        let repaired = self.restart();
         Some(Recovery {
             repaired,
             restarts: self.restarts,

@@ -51,12 +51,9 @@ pub fn scan_pause_after(mode: NetworkMode, empty_rounds: u8, idle_rounds: u8) ->
     })
 }
 
-/// Whether the access point this setup raises starts under a passphrase.
-///
-/// A board with a page surface can show the passphrase the station generated, so every entry
-/// into setup mode is secured — including the one the splash asks for. A board with no page
-/// has no way to show it, so its access point has to stay open; that is the only way a
-/// radio-only build can be provisioned.
+/// Whether the setup access point starts under a passphrase. A board with a page can show the
+/// generated passphrase, so every entry into setup is secured; a board with no page has no way to
+/// show it and stays open, which is the only way a radio-only build can be provisioned.
 pub const fn setup_ap_starts_secured(has_pages: bool) -> bool {
     has_pages
 }
@@ -65,11 +62,8 @@ pub const fn setup_ap_starts_secured(has_pages: bool) -> bool {
 /// given up and joined again.
 pub const ADDRESS_LOST_WINDOWS: u8 = 3;
 
-/// Counts consecutive windows without an address.
-///
-/// An address that appears resets the run: a link that loses its lease once is not the same
-/// as one that never got it. The judgement lives here rather than in the link loop because
-/// the loop only ever runs on hardware.
+/// Counts consecutive windows without an address; an address resets the run. The judgement lives
+/// here rather than in the link loop because the loop only runs on hardware.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct AddressWatch {
     missing: u8,
@@ -106,18 +100,13 @@ impl AddressWatch {
 /// places reconnects without being told which.
 pub const MAX_SAVED_NETWORKS: usize = 10;
 
-/// Characters in the setup access point's passphrase.
-///
-/// Ten symbols from the alphabet the station generates it from: about 50 bits, which is what a
-/// phone's own keypad can be expected to take without a second look, and long enough that a
-/// captured handshake is not the afternoon of a GPU's time that six would be.
+/// Ten symbols from the station's alphabet: about 50 bits, short enough for a phone keypad and
+/// long enough that a captured handshake is not an afternoon of GPU time.
 pub const SETUP_PASS_LEN: usize = 10;
 
-/// The setup access point's passphrase, as the panel may show it.
-///
-/// Fixed length rather than an [`Ssid`]: the station generates it at [`SETUP_PASS_LEN`], and this is
-/// copied with the link status on every window of every loop, so a 32-byte name field for a
-/// ten-byte value is 22 bytes of the main task's own frame paid wherever the link is handled.
+/// The setup access point's passphrase, fixed length rather than an [`Ssid`]: it is copied with
+/// the link status every window, so a 32-byte field for a ten-byte value would cost 22 bytes of
+/// the main task's frame.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub struct SetupPass {
     octets: [u8; SETUP_PASS_LEN],
@@ -166,11 +155,8 @@ impl Ssid {
         self.len == 0
     }
 
-    /// The name as text, or `None` when the radio reported bytes that are not text.
-    ///
-    /// A UTF-8 name is carried whole, not narrowed to ASCII: the face covers Big5, and a
-    /// character it lacks still draws as the fallback mark rather than hiding the name behind
-    /// its BSSID. Control characters stay out; they are not something a panel can show.
+    /// The name as text, or `None` for bytes that are not text. UTF-8 is carried whole, not
+    /// narrowed to ASCII; control characters stay out because a panel cannot show them.
     pub fn as_display_text(&self) -> Option<&str> {
         core::str::from_utf8(self.as_bytes())
             .ok()
@@ -672,11 +658,9 @@ pub struct Credentials {
 }
 
 impl Credentials {
-    /// Build from text, refusing what the radio would refuse.
-    ///
-    /// An over-long name or passphrase is rejected rather than truncated, because
-    /// the driver rejects it too: a silently shortened passphrase authenticates
-    /// against nothing and reads as a wrong password.
+    /// Builds from text, refusing what the radio refuses. Over-long values are rejected rather
+    /// than truncated: a shortened passphrase authenticates against nothing and reads as a wrong
+    /// password.
     pub fn from_text(ssid: &str, password: &str) -> Result<Self, NetworkError> {
         if ssid.is_empty() || ssid.len() > SSID_BYTES || password.len() >= PASSWORD_BYTES {
             return Err(NetworkError::InvalidArguments);
@@ -748,12 +732,9 @@ pub enum SetupHost {
     AccessPoint,
 }
 
-/// What the page is about, when that is not simply the link.
-///
-/// Setup mode and the offline list are modes the page is in, and each carries the facts that
-/// only mean something inside it — which host is serving setup, whether there is a way back.
-/// Kept together as one value so a page that is in setup mode on no host, or browsing with a
-/// link up, is not a state anyone can write down.
+/// What the page is about when that is not simply the link. Setup mode and the offline list each
+/// carry facts that only mean something inside it, kept together so "setup on no host" or
+/// "browsing with a link up" cannot be written down.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum NetworkMode {
     /// The page is about the link: [`LinkStatus::phase`] says what it is doing.

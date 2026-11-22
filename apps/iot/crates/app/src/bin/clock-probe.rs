@@ -1,12 +1,8 @@
-//! What changing the CPU clock costs on this chip, and what it leaves behind.
+//! What changing the CPU clock costs, and what it leaves behind.
 //!
-//! **Outside what esp-hal supports**: its docs say the frequencies "become frozen and cannot be
-//! changed" once applied, so the switch writes the registers directly. It works because the chip
-//! comes up at 240 MHz and the voltage bias trimmed there is never lowered — a chip brought up
-//! slow has no such bias to fall back on.
-//!
-//! No board: the questions are the clock tree and the system timer. The second core is up
-//! because the ROM's tick calibration is per-core.
+//! Outside what esp-hal supports, so the switch writes registers directly. It works because the
+//! chip boots at 240 MHz and that voltage bias is never lowered; the second core is up because
+//! the ROM's tick calibration is per-core.
 
 #![no_std]
 #![no_main]

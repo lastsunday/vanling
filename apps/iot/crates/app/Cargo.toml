@@ -12,77 +12,46 @@ name = "host-smoke"
 path = "src/bin/host-smoke/main.rs"
 required-features = ["host"]
 
-# Playback isolation probe. Gated on the S3 board because that is the only board
-# whose speaker this bring-up knows how to wire, and left out of the product
-# tasks by name: every `iot:*` task that builds firmware passes `--bin vanling`.
+# Probes are gated on the board whose hardware they wire, and named out of the product
+# tasks (`--bin vanling`). `echo-probe` is declared because Cargo gives a discovered bin
+# no `required-features`, so the C6 build would otherwise try to compile S3-only symbols.
 [[bin]]
 name = "audio-probe"
 path = "src/bin/audio-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# Camera isolation probe: the sensor and the panel and nothing else, so a fault belongs to
-# the capture path rather than to the product's pages contending for one buffer. Gated on the
-# S3 alone because the board feature now carries `camera` with the rest of the panel wiring,
-# so there is nothing extra to ask for.
 [[bin]]
 name = "camera-probe"
 path = "src/bin/camera-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# AEC cost probe: what one audio tick of the linear canceller costs on this chip, per tap
-# count. The canceller itself is arithmetic and wires no peripheral, but the probe brings the
-# chip up at a clock of its own and measures it on the second core — neither of which exists
-# on the C6, so it is gated on the S3 board like `multicore-s3`. Left out of the product tasks
-# by name, like the rest.
 [[bin]]
 name = "aec-probe"
 path = "src/bin/aec-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# Clock switch probe: what moving the CPU between presets costs and what it leaves behind.
-# Writes the clock registers directly, which is S3-specific work and nothing else can do it.
 [[bin]]
 name = "clock-probe"
 path = "src/bin/clock-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# Motion demand matrix: one settled, measured cell per (configuration x policy) pair the driver
-# can reach, so the cost table carries measurements rather than arithmetic done from a
-# datasheet. Gated on the S3 and left out of the product tasks by name, like the rest.
 [[bin]]
 name = "demand-probe"
 path = "src/bin/demand-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
-
-# Multi-core isolation probe: the second core and the main stack beneath it. Gated on
-# the S3 because it is the only board here whose ROM boots a second core. Left out of
-# the product tasks by name, like the other probes.
 
 [[bin]]
 name = "multicore-s3"
 path = "src/bin/multicore-s3.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# Auto-discovered without this: Cargo gives a bin it discovers no
-# `required-features`, so the C6 clippy in the pre-commit hook built it and found
-# S3-only symbols gated out. The other probes above are declared for the same
-# reason.
 [[bin]]
 name = "echo-probe"
 path = "src/bin/echo-probe.rs"
 required-features = ["lckfb-szpi-esp32s3"]
 
-# Network probe: the radio, the IP stack and the credentials, and nothing else —
-# no panel, no touch, no motion, no audio. It exists to answer four questions that
-# only hardware can: whether the driver's heap and this part's DRAM budget agree,
-# what the firmware costs against a partition table, how long a scan and a
-# connection take, and whether the driver's PHY-calibration restore path is
-# reachable at all on this chip (esp-radio leaves it `todo!()` on Xtensa, and the
-# partition table decides whether it is called).
-#
-# Credentials come from the build, named in `FORWARDED_ENV`, so a bench run is a
-# command rather than a keystroke protocol, and a build without them says so
-# instead of connecting to something it was not told to.
+# Radio, IP stack and credentials only: no panel, touch, motion or audio.
+# Credentials come from the build (`FORWARDED_ENV`); a build without them says so.
 [[bin]]
 name = "wifi-probe"
 path = "src/bin/wifi-probe.rs"
@@ -90,8 +59,7 @@ required-features = ["wifi"]
 
 [features]
 default = ["esp32c6-devkitc-1", "console-auto"]
-# The product entry replaying a credential through the panel instead of being handed one. Same
-# bin and boot; the feature only selects `bench::run` over `lib::run`.
+# Selects `bench::run` over `lib::run` for the panel-typing replay; same bin and boot.
 panel-bench = ["lckfb-szpi-esp32s3"]
 esp32c6 = [
   "dep:iot-chip-esp",
@@ -106,9 +74,8 @@ esp32c6 = [
   "esp-println/esp32c6",
   "esp-rtos/esp32c6",
 ]
-# The board carries its own `wifi` the same way the S3 one does: this devkit has a radio
-# soldered to it, so the driver's heap and the IP stack have to fit this part's DRAM too,
-# which is a different budget from the S3's and only a build here answers it.
+# The devkit's radio is on the board, so its heap and the IP stack must fit this part's
+# DRAM too.
 esp32c6-devkitc-1 = [
   "esp32c6",
   "dep:iot-bsp-esp",
@@ -128,28 +95,19 @@ esp32s3 = [
   "esp-println/esp32s3",
   "esp-rtos/esp32s3",
 ]
-# The board carries its own `wifi` the same way it carries `camera`: the radio is
-# on this board, so the product's link is where the driver's heap and the IP stack
-# have to fit, and `build-s3` is what answers that. Naming it here is also what
-# lets `check-s3` compile the network probe without a second feature set.
+# The board carries its own radio, so the product's link is what proves the driver's heap
+# fits; naming it also lets `check-s3` compile `wifi-probe` without a second feature set.
 lckfb-szpi-esp32s3 = [
   "esp32s3",
   "dep:iot-bsp-esp",
   "iot-bsp-esp/lckfb-szpi-esp32s3",
   "wifi",
 ]
-# The camera, on its own. The S3 board feature carries it with the rest of its wiring, so
-# this exists for a board that mounts a sensor the product does not draw, and for
-# `check-features` to build the capture path alone. It is not a product tier: the product's
-# camera is not optional at runtime, because the panel has the buffer either way.
+# The camera alone, for `check-features` and a board that mounts a sensor the product does
+# not draw. Not a product tier: the panel allocates the buffer either way.
 camera = ["iot-bsp-esp/camera"]
-# The radio on its own, with the IP stack on top of it. Same shape as `camera`: the board
-# feature carries the driver's wiring and this is the pair the isolation bring-up and the
-# network probe ask for, so `check-features` can build the path alone.
-#
-# The setup access point's services come with it rather than behind a feature of their own:
-# a board that has a radio and no screen has no other way to be configured, so the portal is
-# part of "has a radio", not an option a build can leave out. See `iot/features.md`.
+# The radio alone. The setup access point's services come with it: a board with a radio and
+# no screen has no other way to be configured.
 wifi = [
   "iot-bsp-esp/wifi",
   "iot-chip-esp?/radio",
@@ -159,19 +117,13 @@ wifi = [
   "dep:edge-nal-embassy",
 ]
 
-# Log console routing for esp_println. `console-auto` mirrors device behavior:
-# USB-Serial/JTAG when a host is attached, UART otherwise. `console-uart` forces
-# UART0, which the esp-emu smoke build needs -- the emulator only scans UART0
-# for --exit-on (see docs/content/development/iot/emulation.md).
-#
-# Forwarded to the chip layer as well: `esp-println` insists on exactly one
-# console feature and this crate pulls it in through `iot-chip-esp`, so a build that
-# reaches the chip layer without an app in it -- what `scripts/iot-feature-check.sh`
-# does -- has to be able to name the console too.
+# `console-auto` mirrors the device: USB-Serial/JTAG when a host is attached, UART
+# otherwise. `console-uart` forces UART0 for the esp-emu smoke. Both forward to the chip
+# layer, which is where esp-println is pulled in.
 console-auto = ["esp-println/auto", "iot-chip-esp?/console-auto"]
 console-uart = ["esp-println/uart", "iot-chip-esp?/console-uart"]
 
-# Host testing backend (runs on the development machine, no ESP hardware).
+# Host testing backend (development machine, no ESP hardware).
 host = [
   "embassy-executor/platform-std",
   "embassy-executor/executor-thread",

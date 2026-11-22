@@ -7,45 +7,26 @@ rustflags = ["-C", "link-arg=-Tlinkall.x"]
 
 [target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor"
-# The second script lands after linkall.x and moves the main stack's top out of
-# dram_seg into dram2_seg, less the ROM's per-core boot stacks. See
-# crates/app/linker/esp32s3-main-stack.x.
+# The second script lands after linkall.x and moves the main stack out of dram_seg.
+# See crates/app/linker/esp32s3-main-stack.x.
 rustflags = [
   "-C", "link-arg=-Tlinkall.x",
   "-C", "link-arg=-Tesp32s3-main-stack.x",
 ]
 
 [env]
-# The main stack gets whatever DRAM the static data leaves over, so a `.bss` that
-# grows silently eats it and the first sign is an overflow at runtime. esp-hal
-# turns this into a link-time assertion, which is a far better place to find out.
+# The main stack gets whatever DRAM static data leaves over, so a `.bss` that grows eats
+# it silently. esp-hal turns this into a link-time assertion.
 ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM = "65536"
 
-# esp-hal/esp-rtos arm hardware STORE watchpoints as stack-overflow guards
-# (esp-hal init + per-context-switch re-arm, 128-byte store window at the stack
-# floor). The armed window overlaps legitimate stores and trips a level-6 Debug
-# exception that panics the boot (observed at render `on_appearance` on
-# esp32s3). esp-rtos defaults the software canary to off, so turn it on: it
-# checks the canary below the stack floor on every context switch and panics
-# with the offending task instead of corrupting memory.
+# esp-hal/esp-rtos hardware store watchpoints trip on legitimate stores and panic the boot
+# (seen at render `on_appearance` on S3). Use the software canary instead: it checks the
+# canary on every context switch and panics with the offending task.
 ESP_RTOS_CONFIG_HW_TASK_OVERFLOW_DETECTION = "false"
 ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"
 ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 
-# The two build-time inputs — `IOT_BOOT_PAGE` (which page to come up on:
-# ambient, attitude, audio, speaker or camera) and `IOT_DEMAND` (which data
-# planes in what mode, at what cadence) — are named here only to say they are
-# deliberately absent, because both are read with `option_env!` and their
-# defaults live in the firmware instead: `boot_page_from_env` and
-# `parse_override` each fall back and each say at boot which one it used.
-#
-# A default in this file would work — an `[env]` entry applies only where the
-# environment does not already have the variable, so `build-s3-camera`'s
-# invocation still wins — but it would put each default in two places, and the
-# copy in this file is the one that cannot complain: a typo in
-# `IOT_BOOT_PAGE` names a page that does not exist, and the firmware says so,
-# while a wrong default here is indistinguishable from no setting at all.
-#
-# To pin one for a build, set it on the invocation, as `build-s3-camera` and
-# `build-s3-thrift` do. `scripts/iot-xtensa.sh` forwards these two by name into
-# the container fallback.
+# `IOT_BOOT_PAGE` and `IOT_DEMAND` are deliberately absent: both are read with `option_env!`
+# and their defaults live in the firmware, which reports at boot which one it used. A default
+# here would duplicate it, and a typo here is indistinguishable from no setting. Pin one per
+# build on the invocation, as `build-s3-camera` and `build-s3-thrift` do.

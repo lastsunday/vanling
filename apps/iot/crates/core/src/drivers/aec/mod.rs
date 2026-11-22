@@ -116,14 +116,10 @@ impl<const L: usize> Default for Canceller<L> {
     }
 }
 
-/// What the whole canceller costs to hold, so a board that has to fit it knows
-/// before asking.
-///
-/// `L` is the tap count rather than a number so this cannot drift from the type
-/// it describes: a runtime `taps` argument invited a caller to pass a figure
-/// the compiler could not check, and that is how the previous version of this
-/// function went on reporting 898 B for a structure that holds 3064 B — it
-/// counted the filter and none of the rest.
+/// What the whole canceller costs to hold, so a board that has to fit it knows before asking.
+/// `L` is the tap count rather than a runtime argument so this cannot drift from the type it
+/// describes — the earlier runtime-`taps` version reported 898 B for a 3064 B structure,
+/// counting the filter and none of the rest.
 pub const fn state_bytes<const L: usize>() -> usize {
     size_of::<Canceller<L>>()
 }

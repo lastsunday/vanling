@@ -1,5 +1,5 @@
-//! Internal DRAM only, one frame deep: the descriptor chain is a line, not a circle, so
-//! descriptors come back only by rebuilding it, which drops what the sensor sends meanwhile.
+//! One frame of internal DRAM: the descriptor chain is a line, not a circle, so it returns
+//! only by rebuilding, dropping what the sensor sends meanwhile.
 
 use esp_hal::dma::aligned::{DmaAlignedMut, DmaAlignedRef};
 use esp_hal::dma::{
@@ -13,16 +13,15 @@ use iot_core::drivers::camera::{CameraCounters, FrameAdvance, FrameSource, Windo
 
 use crate::components::gc2145::WindowGeometry as SensorGeometry;
 
-/// A sensor that can report the window it is reading out.
+/// A sensor that reports the readout window.
 pub trait WindowReadable {
     fn window(&mut self) -> Option<SensorGeometry>;
 }
 
-/// A sensor the capture can bring up after the frame path exists, so a part that did not
-/// answer at boot is retried while its page is open.
+/// A sensor the capture brings up after the frame path exists, so a part that missed boot is
+/// retried while its page is open.
 pub trait SensorStart {
-    /// Configures the window this capture reads and starts the part. The reason is what the
-    /// Camera page shows.
+    /// Configures the capture window and starts the part; the error is the page's words.
     fn bring_up(&mut self) -> Result<(), &'static str>;
 }
 
@@ -50,8 +49,7 @@ fn window_geometry<S: WindowReadable>(sensor: &mut S) -> Option<WindowGeometry> 
 
 const BYTES_PER_PIXEL: usize = 2;
 
-/// The camera's frame: the panel's full width and height, so the picture fills the glass
-/// and the readout is drawn over it.
+/// The panel's full size: the picture fills the glass and the readout is drawn over it.
 pub const FRAME_WIDTH: u16 = 320;
 pub const FRAME_HEIGHT: u16 = 240;
 
@@ -61,44 +59,24 @@ const CHUNK_BYTES: usize = 3840;
 
 const DESCRIPTORS_PER_FRAME: usize = FRAME_BYTES / CHUNK_BYTES;
 
-// One, and deliberately so: two would let the peripheral refill while the panel reads the
-// first, which is the only thing that would raise the frame rate — and the frame period is
-// set by the sensor's readout, not by how fast the chain is drained. Doubling the ring buys
-// nothing here and costs another 153,600 B of DRAM, which does not fit. Measured frame rates
-// per ratio are in `@/records/iot/camera.md`.
+// One: the frame period is the sensor's readout, not the drain rate, and a second frame would
+// cost 153,600 B of DRAM that does not fit. Rates in `@/records/iot/camera.md`.
 const RING_FRAMES: usize = 1;
 
-/// 153,600 B: the panel's whole 150 KB frame buffer, which the board hands the capture. It is
-/// not a second allocation — the camera fills the frame and the page draws its readout over
-/// it, so this ring costs no memory of its own. The arena it sits in is what a probe's heap is
-/// sized against once `.rwtext` and the panel's SPI buffers take their share of `dram_seg`.
-///
-/// DRAM rather than PSRAM not for want of the 8 MB this part has: Espressif gates the receive
-/// descriptor and data burst bits on `//internal SRAM only` and esp-hal cannot express that
-/// split, so a PSRAM ring is always left in a configuration the part streams scrambled into.
-/// A descriptor list may not point into PSRAM either. The hardware can be told otherwise —
-/// `CONFIG_CAMERA_PSRAM_DMA` in esp-idf's camera driver, itself documented as experimental —
-/// so the limit is this HAL's, not the chip's.
+/// 153,600 B: the panel's frame buffer, handed in by the board. DRAM, not PSRAM: the receive
+/// descriptor and burst bits are gated on internal SRAM, so a PSRAM ring streams scrambled.
 pub const RING_BYTES: usize = FRAME_BYTES * RING_FRAMES;
 
 pub const DESCRIPTOR_COUNT: usize = DESCRIPTORS_PER_FRAME * RING_FRAMES;
 
-// Bytes the peripheral's receive counter matches, meaningful only while the frame boundary
-// comes from a byte count. Not reliably present: esp-hal programs it before requesting the
-// module clock and a write that lands first is dropped silently, which is why
-// [`report_peripheral_config`] reads it back.
+// The byte count the receive counter matches; meaningful only while the frame boundary comes
+// from a byte count. esp-hal programs it before requesting the module clock, and a write that
+// lands first is dropped silently — hence the read-back in [`report_peripheral_config`].
 const EOF_BYTE_LEN: u16 = CHUNK_BYTES as u16 - 1;
 
-/// Bytes every chunk has to be a whole multiple of, and the alignment the frame arena is
-/// declared with. Public because the board asserts its placed address against this: a type's
-/// alignment constrains the declaration, not where the linker put the thing.
-///
-/// The DMA pads a receive to its alignment, so a chunk that is not shifts everything after
-/// it. In DRAM that alignment is the cache line — the S3's 32 bytes.
-///
-/// Not what esp-hal asks for: it requires a whole multiple of 4 on this part, because S3
-/// internal DRAM is not cached and so needs no cache-line alignment of its own. This is the
-/// peripheral's requirement, met deliberately rather than by accident.
+/// Bytes every chunk must be a multiple of, and the frame arena's declared alignment. The DMA
+/// pads a receive to its alignment, so a chunk that is not shifts everything after it; in DRAM
+/// that is the S3's 32-byte cache line.
 pub const DMA_ALIGNMENT_BYTES: usize = 32;
 
 const _: () = assert!(
@@ -111,23 +89,21 @@ const _: () = assert!(
     "the DMA pads a receive to its alignment, and a chunk that is not a whole multiple is padded \
      to a size the frame geometry did not account for"
 );
-// XCLK the sensor runs at, and the peripheral's pixel clock: 24 MHz, the datasheet's master
-// clock. Not a free choice — off it the sensor's PLL does not lock and the part streams
-// correctly framed noise, which no register read reports. `@/records/iot/camera.md`.
+// XCLK and pixel clock: 24 MHz, the datasheet's master clock. Off it the PLL does not lock and
+// the part streams framed noise that no register read reports. `@/records/iot/camera.md`.
 const PIXEL_CLOCK_HZ: u32 = 24_000_000;
 
 const STALL_MS: u64 = 400;
 
-/// How often a frame path that never started, or a sensor that did not answer, is asked
-/// again. The bring-up holds the I2C bus for a couple of register sequences, so retrying on
-/// every frame would starve the panel.
+/// How often a frame path that never started, or a sensor that did not answer, is asked again:
+/// bring-up holds the I2C bus for two register sequences, so per-frame retries starve the panel.
 const SENSOR_RETRY_MS: u64 = 5_000;
 
 /// The page's words for a frame path whose DMA would not start.
 const START_FAULT: &str = "the camera stream would not start";
 
-/// Data-enable, not sync-and-enable: the sensor has no HSYNC line, and asking for one
-/// leaves the peripheral waiting on a pin that never moves.
+/// Data-enable, not sync-and-enable: the sensor has no HSYNC line, and asking for one leaves
+/// the peripheral waiting on a pin that never moves.
 pub fn config() -> cam::Config {
     cam::Config::default()
         .with_frequency(Rate::from_hz(PIXEL_CLOCK_HZ))
@@ -135,7 +111,7 @@ pub fn config() -> cam::Config {
         .with_eof_mode(EofMode::ByteLen(EOF_BYTE_LEN))
 }
 
-/// A descriptor chain over an arena of internal DRAM, sized in whole frames.
+/// A descriptor chain over an internal-DRAM arena, sized in whole frames.
 pub struct FrameRing {
     descriptors: DmaAlignedMut<'static, [DmaDescriptor]>,
     buffer: DmaAlignedMut<'static, [u8]>,
@@ -190,20 +166,15 @@ impl FrameRing {
         log::info!("[CAM] chain verified: {walked} descriptors, ending at null");
     }
 
-    /// Lays the ring out over `arena`: [`RING_BYTES`] of internal DRAM the caller owns for the
-    /// rest of the run.
+    /// Lays the ring out over `arena`: [`RING_BYTES`] of internal DRAM the caller owns.
     ///
-    /// **Once per run, and once only.** The descriptor list comes from a `ConstStaticCell`, and
-    /// taking one of those a second time panics rather than handing out a second array — so a
-    /// caller that loses the ring cannot build another, and must have kept it instead. Every
-    /// rebuild after this point goes through [`DmaRxBuffer::prepare`], which is what the
-    /// re-arm after each whole frame already uses.
+    /// **Once per run.** The descriptor list comes from a `ConstStaticCell`, and taking one twice
+    /// panics; later rebuilds go through [`DmaRxBuffer::prepare`].
     ///
     /// # Safety
     ///
-    /// `arena` must address [`RING_BYTES`] bytes of RAM the DMA can write and the CPU
-    /// can read, that nothing else aliases, and that stays valid and unmoved for as long
-    /// as this ring is used.
+    /// `arena` must address [`RING_BYTES`] bytes of RAM the DMA can write and the CPU can read,
+    /// that nothing else aliases, and stay valid as long as this ring is used.
     pub unsafe fn new(arena: *mut u8) -> Result<Self, DmaBufError> {
         // SAFETY: the caller guarantees the extent, ownership and lifetime, which is
         // what this reference asserts.
@@ -319,11 +290,8 @@ unsafe impl DmaRxBuffer for FrameRing {
         Preparation {
             start: self.descriptors.as_mut_ptr(),
             accesses_psram: false,
-            // Burst on, 32 bytes. The HAL offers one enum per memory kind and picks
-            // between them by `accesses_psram`, so this is the internal setting. Not the
-            // 64 the peripheral also takes: at 64 (`ext_mem_bk_size = 2`) writes come out
-            // scrambled — complete, correctly sized and correctly framed frames with the
-            // pixels wrong inside them.
+            // Burst on, 32 bytes; the HAL picks internal vs external by `accesses_psram`. Not
+            // the 64 the peripheral also takes: at 64 frames arrive complete but scrambled inside.
             burst_transfer: BurstConfig::from(InternalBurstConfig::Enabled),
             check_owner: None,
             auto_write_back: true,
@@ -344,10 +312,8 @@ unsafe impl DmaRxBuffer for FrameRing {
 
 type Transfer = CameraTransfer<'static, FrameRing>;
 
-/// Logs what the peripheral's configuration registers actually hold, against what the HAL
-/// asked for: esp-hal programs them before requesting the module clock, so a write that
-/// lands first is dropped silently. Free-standing because it is about the peripheral,
-/// answerable with or without a ring.
+/// Logs the peripheral's configuration registers against what the HAL asked for: esp-hal
+/// programs them before requesting the module clock, so a write that lands first is dropped.
 pub fn report_peripheral_config(label: &str) {
     let ctrl1 = esp_hal::peripherals::LCD_CAM::regs().cam_ctrl1().read();
     let ctrl = esp_hal::peripherals::LCD_CAM::regs().cam_ctrl().read();
@@ -365,10 +331,8 @@ pub fn report_peripheral_config(label: &str) {
 
 /// What one poll of the capture reports.
 pub struct Gc2145Capture<S> {
-    // `None` once a re-arm has failed — the one state a capture cannot come back from,
-    // since a transfer that does not take has no ring to put back in the chain. An
-    // `Option` so a failed repair leaves a capture that reports no frames rather than one
-    // that panics on the next poll.
+    // `None` once a re-arm failed: a transfer that does not take has no ring to put back, so a
+    // failed repair reports no frames instead of panicking on the next poll.
     transfer: Option<Transfer>,
     parked: Option<(esp_hal::lcd_cam::cam::Camera<'static>, FrameRing)>,
     sensor: S,
@@ -389,8 +353,7 @@ pub struct Gc2145Capture<S> {
 }
 
 impl<S> Gc2145Capture<S> {
-    /// Takes a transfer armed on a ring built by [`FrameRing::new`], and a sensor that is
-    /// already up.
+    /// Takes a transfer armed on a ring built by [`FrameRing::new`], and a sensor already up.
     pub fn new(transfer: Transfer, sensor: S) -> Self {
         log::info!(
             "[CAM] {FRAME_WIDTH}x{FRAME_HEIGHT} RGB565, ring {RING_FRAMES} frames \
@@ -415,9 +378,8 @@ impl<S> Gc2145Capture<S> {
         }
     }
 
-    /// Takes whatever the frame path could hand over at boot — a running transfer, or the
-    /// peripheral and ring that would not start — and a sensor still to be brought up. The
-    /// first page entry retries both, and reports why nothing is drawn in the meantime.
+    /// Takes what the frame path handed over at boot — a transfer, or the peripheral and ring
+    /// that would not start — and a sensor still to come up; the first page entry retries both.
     pub fn pending(
         start: Result<Transfer, (DmaError, Camera<'static>, FrameRing)>,
         sensor: S,
@@ -451,8 +413,8 @@ impl<S> Gc2145Capture<S> {
         capture
     }
 
-    /// A capture whose frame path could not be laid out at all. The page stays and names the
-    /// reason, though no retry can bring the path back.
+    /// A capture whose frame path could not be laid out: the page stays and names the reason,
+    /// though no retry can bring the path back.
     pub fn without_path(sensor: S) -> Self {
         log::error!("[CAM] the frame ring could not be laid out, the Camera page stays up empty");
         Self {
@@ -478,13 +440,13 @@ impl<S> Gc2145Capture<S> {
         self.ready
     }
 
-    /// Why nothing is being drawn, when nothing is.
+    /// Why nothing is drawn, when nothing is.
     pub const fn fault(&self) -> Option<&'static str> {
         self.fault
     }
 
-    /// Asks the frame path and the sensor to come up. The first failure and the recovery are
-    /// each logged once; the retry is paced by [`SENSOR_RETRY_MS`].
+    /// Asks the frame path and the sensor to come up, pacing retries by [`SENSOR_RETRY_MS`].
+    /// The first failure and the recovery are each logged once.
     fn ensure_ready(&mut self, now_ms: u64)
     where
         S: SensorStart,
@@ -641,8 +603,7 @@ impl<S: WindowReadable + SensorStart> Gc2145Capture<S> {
         }
     }
 
-    /// The running totals, for a consumer that drains the capture on another core and so
-    /// reports from its own loop.
+    /// The running totals, for a consumer that drains the capture on another core.
     pub fn counters(&self) -> CameraCounters {
         CameraCounters {
             frames: self.frames,
@@ -668,10 +629,8 @@ impl<S: WindowReadable + SensorStart> FrameSource for Gc2145Capture<S> {
         let Some(transfer) = self.transfer.take() else {
             return;
         };
-        // Keeps the ring, and that is the whole point. `FrameRing::new` cannot be called twice
-        // — the descriptor list it draws from is a `ConstStaticCell`, and `take` on one panics
-        // on the second call — so a pause that dropped the ring would leave `resume` with no way
-        // to hand the chain a buffer, and rebuilding one is the panic rather than the repair.
+        // Keeps the ring: `FrameRing::new` cannot run twice (the descriptor list is a
+        // `ConstStaticCell`), so dropping it would leave `resume` no buffer to hand the chain.
         let (camera, ring) = transfer.stop();
         self.parked = Some((camera, ring));
         self.advanced_at = None;

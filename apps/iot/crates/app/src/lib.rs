@@ -41,10 +41,8 @@ pub enum Feed {
     Inline,
 }
 
-/// Where the I/O half runs. `Inline` spawns it on the coordinator's executor, which is what
-/// a single-core chip has; `Elsewhere` parks it on `queue` for whatever executor the caller
-/// started on another core. The task is the same either way — a placement changes timing,
-/// never meaning.
+/// Where the I/O half runs: on the coordinator's executor (`Inline`), or on another core's
+/// via `queue`. The task is the same either way; placement changes timing, never meaning.
 #[derive(Clone, Copy)]
 pub enum IoPlacement {
     Inline,
@@ -58,8 +56,7 @@ pub type IoQueue = embassy_sync::channel::Channel<
     1,
 >;
 
-/// The half of the composition that touches drivers: input polling, the codec, the speaker
-/// and the panel bus. Everything in here blocks, so it is the part that must not share an
+/// The half of the composition that touches drivers and blocks, so it must not share an
 /// executor with the coordinator.
 pub struct Io {
     pub sources: Vec<PollEntry>,
@@ -68,18 +65,17 @@ pub struct Io {
     pub speaker: Option<&'static runtime::feature::playback::Shared>,
     pub playback: &'static Playback,
     pub feed: Feed,
-    /// Where this half reports upward: the entry's bus, carried because on a second core this
-    /// task is handed the bundle and cannot reach the coordinator's stack.
+    /// Where this half reports upward; a second-core task cannot reach the coordinator's stack.
     pub bus: &'static IntentBus,
-    /// The feeder's poke, for the same reason the bus is here.
+    /// The feeder's poke, carried for the same reason as `bus`.
     pub feed_wake: &'static FeedWake,
-    /// How to read the second core's stack, when the part has one. The composition root
-    /// injects it, so the library names no chip family.
+    /// How to read the second core's stack, when the part has one; injected by the composition
+    /// root so the library names no chip family.
     pub second_core_peak: fn() -> Option<(usize, usize)>,
 }
 
-/// Starts the network worker. The composition root built it from the station it took off the
-/// board, so `run` starts it without ever naming the radio or the driver.
+/// Starts the network worker from the station the board took off itself, so `run` names neither
+/// the radio nor its driver.
 pub struct NetworkWorker(Box<dyn FnOnce(Spawner)>);
 
 impl NetworkWorker {
@@ -92,10 +88,8 @@ impl NetworkWorker {
     }
 }
 
-/// The radio as the composition root hands it over. One value, because there is one radio:
-/// `Absent` leaves the Network page dark, `Unattended` is a wired radio this composition starts
-/// no worker for — the host smoke drives the page on its own — and `Worker` is how `run` starts
-/// it.
+/// The radio as the composition root hands it over: `Absent` leaves the Network page dark,
+/// `Unattended` is a wired radio this composition starts no worker for, `Worker` starts one.
 pub enum Wifi {
     Absent,
     Unattended,
@@ -111,25 +105,22 @@ impl Wifi {
 
 pub struct Wiring<C> {
     pub clock: C,
-    /// The handles the entry built once; every half below reaches them through this value.
+    /// The handles the entry built once, shared by both halves.
     pub runtime: &'static Runtime,
     pub feed: Feed,
-    /// The radio: whether there is one, and how to start the worker that uses it.
     pub wifi: Wifi,
-    /// The wired output surfaces, each carrying what the board says it is for.
+    /// The wired output surfaces, each carrying the role the board gave it.
     pub surfaces: Vec<WiredSurface>,
-    /// Where the driver half runs; the caller is the only one that knows how many cores it
-    /// has.
+    /// Where the driver half runs; only the caller knows how many cores it has.
     pub io: IoPlacement,
     /// The executor the driver half starts on. Every other worker is spawned by whoever owns
     /// its drivers, before this call.
     pub spawner: Spawner,
-    /// How to read the second core's stack on this part; `None`-returning when it has no
-    /// second core. Injected by the family entry point, like the clock.
+    /// How to read the second core's stack; `None` when the part has none. Injected by the
+    /// family entry point, like the clock.
     pub second_core_peak: fn() -> Option<(usize, usize)>,
 }
 
-/// The driver half: poll the sources, keep the codec fed, answer playback commands.
 async fn io_loop(io: Io) {
     let Io {
         sources,
@@ -154,8 +145,8 @@ pub async fn run_io(io: Io) {
     io_loop(io).await
 }
 
-/// The same task, picked up from the queue the coordinator fills after boot: on a second
-/// core it is spawned before the coordinator has built the bundle.
+/// The same task, picked up from the queue: on a second core it is spawned before the
+/// coordinator has built the bundle.
 #[embassy_executor::task]
 pub async fn run_io_from(queue: &'static IoQueue) {
     let io = queue.receive().await;
@@ -171,11 +162,10 @@ where
     run_with(board, wiring, None).await
 }
 
-/// The coordinator half: one renderer per wired surface, the driver half, then the frame
-/// loop. Every other worker was spawned by whoever owns its drivers, before this call.
+/// The coordinator half: one renderer per wired surface, the driver half, then the frame loop.
 ///
 /// `extra` is the one system the caller may add to the schedule; only the panel replay's entry
-/// uses it, so the product path and the library name no bench.
+/// uses it, so the product path names no bench.
 pub(crate) async fn run_with<B, C>(
     mut board: B,
     wiring: Wiring<C>,
@@ -218,8 +208,7 @@ where
         network: wifi.wired(),
     };
     if !matches!(&wifi, Wifi::Worker(_)) {
-        // No worker means no radio to wait for: absent by wiring, or driven by the caller.
-        // The boot can finish its network half here, and the first frame finishes the rest.
+        // No worker means no radio to wait for: the boot can finish its network half here.
         readiness.note_network();
     }
     let configurator = Configurator::new(board.motion_configurations());
@@ -257,8 +246,7 @@ where
 
     // One shared handle: the feed runs on the preemptible executor, and the codec's I2C calls must not.
     let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));
-    // Leaked because the driver half outlives this future: on a second core it is another
-    // task, and a task cannot borrow the coordinator's stack.
+    // Leaked because the driver half outlives this future and cannot borrow the coordinator's stack.
     let demand: &'static SharedDemand =
         Box::leak(Box::new(SharedDemand::new(Cell::new(*manager.demand()))));
     log::info!("[IOT] demand {}", manager.demand());
@@ -281,8 +269,7 @@ where
         IoPlacement::Elsewhere(queue) => queue.send(drivers).await,
     }
 
-    // Started here, where the coordinator is built: the closure is the composition root's, so
-    // this half names neither the radio nor its driver.
+    // The closure is the composition root's, so this half names neither the radio nor its driver.
     if let Wifi::Worker(worker) = wifi {
         worker.spawn(spawner);
     }

@@ -46,11 +46,11 @@ const MODEM_RESET_FIELD_WHEN_PU: u32 = (1 << 0) | (1 << 1) | (1 << 2);
 /// Un-gates the modem clocks and powers the WiFi domain up, the way esp-radio's uncalled
 /// `init()` would have.
 ///
-/// Call once, after the scheduler is up and **before** the radio is built: the driver's own
-/// `wifi_init` runs after these and expects the domain powered. This is the S3 arm of
-/// upstream's `radio_clocks/clocks_ll/esp32s3.rs` and `common_adapter.rs`, 10 µs delay
-/// included. It does not steady the scan — measured both ways — but no driver should run on a
-/// radio whose power state nobody set.
+/// Call once, after the scheduler is up and **before** the radio is built: the driver's
+/// `wifi_init` runs after these and expects the domain powered. The S3 arm of upstream's
+/// `radio_clocks/clocks_ll/esp32s3.rs` and `common_adapter.rs`, 10 µs delay included. It does not
+/// steady the scan — measured both ways — but no driver should run on a radio whose power state
+/// nobody set.
 pub fn ungate_radio() {
     use esp_hal::peripherals::{APB_CTRL, RTC_CNTL};
 
