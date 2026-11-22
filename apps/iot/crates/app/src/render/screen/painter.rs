@@ -167,9 +167,6 @@ fn scroll_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<[i16; TEXT
         if before.rect.w <= 0 || before.rect.h <= 0 {
             return None;
         }
-        if shift[slot].unsigned_abs() >= before.rect.h as u16 {
-            return None;
-        }
     }
     let moving_ended = before.moving && !after.moving;
     before.moving = false;
@@ -216,7 +213,8 @@ fn scroll_blit(frame: &mut [u8], width: usize, text: &TextSnapshot, shift: [i16;
 /// the header whose reading moved, the thumb that slid), and the rows the panel has to receive.
 ///
 /// The panel is GRAM and cannot move its own pixels, so the second set is the whole box: every
-/// row the blit shifted changed on the glass, not only the strip painted over the ground.
+/// row the blit shifted changed on the glass, not only the strip painted over the ground. A
+/// shift as tall as the box reuses no row: the strip is the whole box and the blit skips it.
 fn scroll_damage(
     text: &TextSnapshot,
     shift: [i16; TEXT_AREAS],
@@ -229,7 +227,7 @@ fn scroll_damage(
             continue;
         }
         let rect = view.rect;
-        let rows = delta.unsigned_abs() as i32;
+        let rows = (delta.unsigned_abs() as i32).min(rect.h);
         let y = if delta > 0 {
             rect.y + rect.h - rows
         } else {
@@ -356,6 +354,16 @@ mod tests {
         frame[at..at + 2].copy_from_slice(&value.to_be_bytes());
     }
 
+    /// The box rectangles in one damage set: its 100-px-wide marks, not header or gutter.
+    fn boxes(damage: FrameDamage, x: u16) -> Vec<(u16, u16)> {
+        damage
+            .rects()
+            .iter()
+            .filter(|rect| rect.x == x && rect.w == 100)
+            .map(|rect| (rect.y, rect.h))
+            .collect()
+    }
+
     #[test]
     fn the_overlay_does_not_turn_a_scroll_into_a_full_repaint() {
         let mut painter = AppPainter::new(true);
@@ -477,14 +485,6 @@ mod tests {
         let text = two(10).pages.text;
         let (width, height) = (WIDTH as u16, HEIGHT as u16);
         let (ink, ship) = scroll_damage(&text, [6, -4], width, height);
-        let boxes = |damage: FrameDamage, x: u16| {
-            damage
-                .rects()
-                .iter()
-                .filter(|rect| rect.x == x && rect.w == 100)
-                .map(|rect| (rect.y, rect.h))
-                .collect::<Vec<_>>()
-        };
         assert_eq!(boxes(ink, 10), vec![(64, 6)]);
         assert_eq!(boxes(ink, 170), vec![(40, 4)]);
         assert_eq!(boxes(ship, 10), vec![(40, 30)]);
@@ -494,6 +494,27 @@ mod tests {
             6,
             "a whole box replaces its strip, it does not add a rect"
         );
+    }
+
+    #[test]
+    fn a_fast_flick_keeps_the_scroll_path() {
+        let before = two(10);
+        let after = two(40);
+        assert_eq!(
+            scroll_shift(&before, &after),
+            Some([30, 30]),
+            "a shift as tall as the box is still a scroll"
+        );
+        let mut painter = AppPainter::new(true);
+        painter.last = Some(before);
+        assert!(
+            painter.keeps_frame(&after),
+            "a fast flick must not refill and repaint the whole page"
+        );
+        let (ink, ship) = scroll_damage(&after.pages.text, [30, 30], WIDTH as u16, HEIGHT as u16);
+        assert_eq!(boxes(ink, 10), vec![(40, 30)], "the whole box re-inks");
+        assert_eq!(boxes(ship, 10), vec![(40, 30)]);
+        assert_eq!(ship.rects().len(), 6);
     }
 
     #[test]
@@ -559,6 +580,8 @@ mod tests {
         for offset in (1..=40).step_by(2) {
             steps.push((offset as i16, 0));
         }
+        // A jump at least as tall as the box: no row is reusable, so the box re-inks whole.
+        steps.push((40, 40));
         for offset in (1..=40).step_by(2) {
             steps.push((40, offset as i16));
         }

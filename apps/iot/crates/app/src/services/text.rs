@@ -206,6 +206,15 @@ impl super::Service for TextPage {
 impl super::LocalPage for TextPage {
     fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
         let area = |x: u16, y: u16| self.scroll.area_at(i32::from(x), i32::from(y));
+        // A lift belongs to the finger that claimed a region, not to where it landed: a press
+        // outside both boxes can claim one on a later drag, and only the tracked area frees it.
+        let tracked = |id: u8| {
+            self.drag
+                .iter()
+                .flatten()
+                .find(|drag| drag.id == id)
+                .map(|drag| drag.area)
+        };
         match op.event {
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
                 let area = area(x, y)?;
@@ -233,7 +242,7 @@ impl super::LocalPage for TextPage {
                     SwipeDirection::Down => (-STEP_LINES, fling_speed(distance_px, held_ms)),
                     _ => (0, 0),
                 };
-                let area = area(x, y)?;
+                let area = tracked(id).or_else(|| area(x, y))?;
                 Some(BusinessIntent::Text(TextIntent::Release {
                     id,
                     area,
@@ -245,7 +254,7 @@ impl super::LocalPage for TextPage {
             InputEvent::Gesture(GestureEvent::Tap {
                 id, x, y, at_ms, ..
             }) => {
-                let area = area(x, y)?;
+                let area = tracked(id).or_else(|| area(x, y))?;
                 Some(BusinessIntent::Text(TextIntent::Release {
                     id,
                     area,
@@ -255,7 +264,7 @@ impl super::LocalPage for TextPage {
                 }))
             }
             InputEvent::Gesture(GestureEvent::LongPress { id, x, y, .. }) => {
-                let area = area(x, y)?;
+                let area = tracked(id).or_else(|| area(x, y))?;
                 Some(BusinessIntent::Text(TextIntent::Release {
                     id,
                     area,
@@ -1182,6 +1191,52 @@ mod tests {
             "the region follows the finger that never pressed"
         );
         assert_eq!(page.scroll.areas()[0].offset, 0);
+    }
+
+    #[test]
+    fn a_press_outside_a_box_that_drags_in_still_releases_it() {
+        use iot_core::drivers::input::{TouchGestures, TouchStatus};
+
+        let mut page = TextPage::default();
+        let area = page.scroll.areas()[0];
+        let (x, y) = center(&area);
+        let header = u16::try_from(area.rect.y - 1).expect("a header row");
+        let mut agg = TouchGestures::new();
+        drive(
+            &mut agg,
+            &mut page,
+            sample(&[(TouchStatus::Down, 0, x, header)]),
+            0,
+        );
+        drive(
+            &mut agg,
+            &mut page,
+            sample(&[(TouchStatus::Contact, 0, x, header + 20)]),
+            10,
+        );
+        drive(
+            &mut agg,
+            &mut page,
+            sample(&[(TouchStatus::Release, 0, x, header + 20)]),
+            40,
+        );
+        assert!(
+            page.drag.iter().all(Option::is_none),
+            "the lift frees the region the drag claimed, not the header it landed on"
+        );
+        drive(
+            &mut agg,
+            &mut page,
+            sample(&[(TouchStatus::Down, 1, x, y)]),
+            100,
+        );
+        drive(
+            &mut agg,
+            &mut page,
+            sample(&[(TouchStatus::Contact, 1, x, y - 10)]),
+            110,
+        );
+        assert_eq!(page.scroll.areas()[0].offset, 10);
     }
 
     #[test]
