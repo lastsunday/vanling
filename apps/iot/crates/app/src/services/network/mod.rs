@@ -158,7 +158,7 @@ fn custom(
     match slot {
         view::HEADER => {
             let list_len = aps.filter(|list| !list.is_empty()).map(|list| list.len());
-            view::header::draw(canvas, draft, link, shown_ap, mac, list_len);
+            view::header::draw(canvas, snapshot.lang, draft, link, shown_ap, mac, list_len);
         }
         view::CONTENT => view::content::draw(canvas, draft, link, aps),
         view::STRIP => view::draw_strip(canvas, draft, link),
@@ -167,7 +167,8 @@ fn custom(
 }
 
 fn network_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.link != next.link
+    prev.lang != next.lang
+        || prev.link != next.link
         || prev.aps != next.aps
         || prev.pages != next.pages
         || prev.mac != next.mac

@@ -1,6 +1,7 @@
 //! The boot page: the product's name over the hold that opens setup mode.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, NavigationIntent};
+use crate::shared::kit::i18n::Msg;
 use crate::shared::model::DeviceState;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, InputEvent};
@@ -23,14 +24,19 @@ impl super::LocalPage for SplashPage {
         }
     }
 
-    fn view(_snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        let lang = snapshot.lang;
         ui.column(
             Style::new()
                 .size(PANEL_COLUMNS as i16, CONTENT_BOTTOM as i16)
                 .center()
                 .gap(24),
             |ui| {
-                for line in [b"VANLING".as_slice(), b"HOLD BOOT", b"SETUP"] {
+                for line in [
+                    Msg::Brand.bytes(lang),
+                    Msg::HoldBoot.bytes(lang),
+                    Msg::Setup.bytes(lang),
+                ] {
                     ui.text(line, Style::new().nowrap().text_align(TextAlign::Center));
                 }
             },

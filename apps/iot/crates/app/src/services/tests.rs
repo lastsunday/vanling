@@ -8,12 +8,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::services::{Services, descriptor, paint};
-use crate::shared::intent::{BusinessIntent, TextIntent};
+use crate::shared::intent::{BusinessIntent, TextIntent, WidgetsIntent};
+use crate::shared::kit::i18n::Lang;
 use crate::shared::kit::panel::Panel;
 use crate::shared::model::DeviceState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
-use iot_core::drivers::motion::MotionSample;
+use iot_core::drivers::board::Backed;
+use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::Rgb;
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
 use iot_core::ui::{Canvas, Screen};
@@ -22,9 +24,23 @@ const WIDTH: usize = PANEL_COLUMNS;
 const HEIGHT: usize = PANEL_ROWS;
 
 fn render(page: PageId, debug: bool) -> Vec<u8> {
+    // The menu is pinned with every capability wired: its golden is the product's grid, not the
+    // bare board's greyed one. The bare board is covered by the page's own tests.
+    let backed = if page == PageId::Menu {
+        Backed {
+            motion: Some(MotionCapabilities::EMPTY),
+            audio: true,
+            playback: true,
+            camera: true,
+            network: true,
+        }
+    } else {
+        Backed::default()
+    };
     render_snapshot(
         &FrameSnapshot {
             page,
+            backed,
             pages: Services::default().snapshot(),
             ..FrameSnapshot::default()
         },
@@ -63,7 +79,9 @@ fn fingerprint(frame: &[u8]) -> u32 {
 }
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
-const GOLDEN: [(&str, bool, u32); 18] = [
+const GOLDEN: [(&str, bool, u32); 22] = [
+    ("menu", false, 0x0dae_1365),
+    ("menu", true, 0x07fc_f115),
     ("ambient", false, 0xc18e_7dc5),
     ("ambient", true, 0xb334_d787),
     ("attitude", false, 0x8ed2_6849),
@@ -78,10 +96,12 @@ const GOLDEN: [(&str, bool, u32); 18] = [
     ("network", true, 0x2b62_f669),
     ("splash", false, 0xaa0a_a601),
     ("splash", true, 0x3f0b_3db1),
-    ("env", false, 0x97fe_6687),
-    ("env", true, 0x936c_5837),
+    ("env", false, 0xa945_08ef),
+    ("env", true, 0xe2f0_529f),
     ("text", false, 0xe59e_db9e),
     ("text", true, 0x7aae_e74e),
+    ("widgets", false, 0x308c_8dd2),
+    ("widgets", true, 0x94e0_4582),
 ];
 
 #[test]
@@ -106,6 +126,39 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
                 page.path()
             );
         }
+    }
+}
+
+#[test]
+fn a_language_switch_reaches_the_ink() {
+    // Ambient and Text print readout keys and the face's own specimen, which do not move.
+    let speaking = [
+        PageId::Splash,
+        PageId::Menu,
+        PageId::Widgets,
+        PageId::Env,
+        PageId::Attitude,
+        PageId::Audio,
+        PageId::Speaker,
+        PageId::Camera,
+        PageId::Network,
+    ];
+    for page in speaking {
+        let ink = |lang| {
+            render_snapshot(
+                &FrameSnapshot {
+                    page,
+                    lang,
+                    ..FrameSnapshot::default()
+                },
+                false,
+            )
+        };
+        assert_ne!(
+            ink(Lang::En),
+            ink(Lang::ZhHans),
+            "{page:?} reads its words from the snapshot"
+        );
     }
 }
 
@@ -157,6 +210,55 @@ fn a_text_scroll_moves_one_region_and_its_thumb() {
 
 /// Writes every page as a 24-bit BMP under `PAGE_DUMP_DIR`: the golden table proves a picture
 /// is unchanged, not that it is right.
+#[test]
+fn a_widgets_scroll_moves_the_gallery_and_only_that() {
+    let mut services = Services::default();
+    let mut state = DeviceState::default();
+    let before = services.snapshot();
+    services.apply(
+        &BusinessIntent::Widgets(WidgetsIntent::Scroll {
+            area: 0,
+            lines: 3,
+            speed: 0,
+        }),
+        &mut state,
+    );
+    let after = services.snapshot();
+    assert!(after.widgets.area.offset > 0, "the gallery moved");
+
+    let frame = |pages| {
+        render_snapshot(
+            &FrameSnapshot {
+                page: PageId::Widgets,
+                pages,
+                ..FrameSnapshot::default()
+            },
+            false,
+        )
+    };
+    assert_ne!(
+        frame(before),
+        frame(after),
+        "the offset reaches the picture"
+    );
+
+    let shift = descriptor(PageId::Widgets)
+        .scroll_shift(
+            &FrameSnapshot {
+                page: PageId::Widgets,
+                pages: before,
+                ..FrameSnapshot::default()
+            },
+            &FrameSnapshot {
+                page: PageId::Widgets,
+                pages: after,
+                ..FrameSnapshot::default()
+            },
+        )
+        .expect("a pure scroll");
+    assert_eq!(shift.shifts()[0], after.widgets.area.offset);
+}
+
 #[test]
 fn dump_every_page_when_asked() {
     let Some(dir) = std::env::var_os("PAGE_DUMP_DIR") else {

@@ -2,7 +2,7 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "7406677ca86b3e9807100f5760ac5cca7f381ae8"
+source_file_hash = "2d970233d9ff9dda9da670c588772da3444d1904"
 translated_at = "2026-11-20T00:00:00Z"
 +++
 
@@ -177,7 +177,7 @@ S3 builds go through `scripts/iot-xtensa.sh`: it tries the machine's esp toolcha
 
 ## Boot page and the bench image
 
-`IOT_BOOT_PAGE` (`.cargo/config.toml`, default `ambient`) picks the page the firmware comes up on — `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text`, with an unrecognised name falling back to `ambient`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`. `network` has no moon task of its own; the same command by hand:
+`IOT_BOOT_PAGE` (`.cargo/config.toml`, `menu` when unset, falling back to `ambient` on a board without a screen) picks the page the firmware comes up on — `menu` / `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text` / `widgets`, with an unrecognised name falling back to `ambient`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`. `network` has no moon task of its own; the same command by hand:
 
 ```sh
 cd apps/iot
@@ -187,6 +187,8 @@ IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
 ```
 
 `[measured]` That build carries **no build-time credentials**, so the device sits in `setup` and keeps scanning; `moon run iot:flash-s3` rebuilds the product image and overwrites `target/xtensa-esp32s3-none-elf/release/vanling` again. The boot log carries `[INPUT] page is now Network` (printed for every page, with the page it really landed on), so which page this image starts on is not a guess.
+
+`IOT_LANG=en|zh` uses the same `option_env!` and `const fn`, landing in `const LANG`; the boot log line `[IOT] words in En` / `[IOT] words in ZhHans` is the evidence. Both languages' literals live in the binary either way (the runtime can still switch), so only that line proves the build-time choice — grepping for Chinese text proves nothing.
 
 `[measured]` **The boot page may only be resolved at build time** — the run-time path must not touch the string at all. It once resolved at boot (`option_env!`'s `&'static str` through `trim().to_ascii_lowercase()` into a `String`, then a table lookup), and any build that *set* `IOT_BOOT_PAGE` lifted the main task's high-water from 42,392 B to 46,728 B and used 27,745 B of stack at the join (23,409 B without the variable), then crashed right after `[WIFI] … joining`: `StoreProhibited`/`LoadProhibited` inside the radio blob's own `free`/`event_post`, not a stack-check report. `boot_page()` now reads `const BOOT_PAGE` (a `const fn` comparing case- and whitespace-insensitively), so an `IOT_BOOT_PAGE=attitude` build matches the product build item for item (`main stack 65,976 B`, peak `42,392 B`) and gets an address normally. Why the overrun lands on a radio task is in `records/iot/hardware-constraints.md`; the constraint does not depend on that mechanism: **a bench image and the product image share one stack budget, and a compile-time boot page is what keeps them there.**
 

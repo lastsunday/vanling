@@ -3,7 +3,7 @@ title = "IoT Firmware"
 weight = 250
 sort_by = "weight"
 [extra]
-source_file_hash = "5a2dae6470e7c9b71d0609b2267b25c729d244df"
+source_file_hash = "b3bc7182bdf697f1944916249bc89379217e7a0e"
 translated_at = "2026-10-31T00:00:00Z"
 +++
 
@@ -20,5 +20,6 @@ Reading order: layers first (why they are cut this way), then the feature criter
 - [Audio Metering Semantics](@/development/iot/audio.en.md) — the capture semantics, screen readouts and scale, the log map's chord error, a derived release rate
 - [Motion Semantic Framework](@/development/iot/motion.en.md) — the data/semantic dual path, three-family arbitration, capability declaration, the QMI8658A register binding
 - [Playback Semantics](@/development/iot/playback.en.md) — the playback semantics, the phase of a one-shot, where the five MIDI sounds come from, the 20 ms DMA arm
+- [UI Widgets](@/development/iot/widgets.en.md) — the Widget/Cell split, states and theme, the widget list, cell drawing, i18n and budgets
 
 Common commands and bench operations live in the [Cheat Sheet](@/roadmap/cheatsheet.en.md).

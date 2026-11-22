@@ -34,7 +34,7 @@ use runtime::feature::input::{IntentBus, input_task};
 use runtime::feature::playback::{playback_tasks, share};
 use runtime::system::System;
 use runtime::workers::{FeedWake, Input, Playback, SharedDemand};
-use state::env::{boot_override, boot_page};
+use state::env::{boot_override, boot_page, lang};
 
 pub enum Feed {
     Interrupt(SendSpawner),
@@ -237,12 +237,14 @@ where
         demand_keys: backed.demand_keys(),
         surface_roles,
         boot_page: boot_page(),
+        lang: lang(),
         overrides: boot_override(),
     }));
     let boot = manager.boot_page();
     if boot != PageId::Ambient {
         log::info!("[IOT] boot page is {boot:?}");
     }
+    log::info!("[IOT] words in {:?}", manager.state_ref().lang);
 
     // One shared handle: the feed runs on the preemptible executor, and the codec's I2C calls must not.
     let shared = speaker.map(|speaker| share(speaker as Box<dyn Speaker>));

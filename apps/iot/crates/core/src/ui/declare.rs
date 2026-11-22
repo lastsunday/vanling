@@ -102,6 +102,11 @@ impl<'a, 's> Ui<'a, 's> {
         self.tree.push(style, NodeKind::Box, self.current)
     }
 
+    /// Declares `widget` and returns its root.
+    pub fn add<W: super::widget::Widget>(&mut self, widget: W) -> NodeId {
+        widget.build(self)
+    }
+
     pub fn open(&mut self, style: Style) -> NodeId {
         let id = self.node(style);
         self.current = id;
@@ -233,6 +238,11 @@ impl<'a, 's> Ui<'a, 's> {
     /// Every node's rectangle, in declaration order.
     pub fn rects(&self) -> impl Iterator<Item = Rect> + '_ {
         self.tree.rects()
+    }
+
+    /// Every tagged node's tag and rectangle, in declaration order.
+    pub fn tags(&self) -> impl Iterator<Item = (u16, Rect)> + '_ {
+        self.tree.tags()
     }
 
     /// The rectangles of the declared runs, in declaration order.

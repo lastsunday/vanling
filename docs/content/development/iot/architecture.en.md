@@ -2,7 +2,7 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "42aecd73b27c6172a74bfdd331e5bb9b76c593e4"
+source_file_hash = "9cd747f0696c6cc0ad088d40e1f61cb314bdbbd7"
 translated_at = "2026-11-22T00:00:00Z"
 +++
 
@@ -97,7 +97,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `shared/kit/` | the page shell `Panel` (declaration → layout → ink), the shared chrome `chrome` (margins, line rhythm, the label slot), the text vocabulary `text` and the scroll state `scroll` (offset, glide, bounce, two switches); it knows pixels and a snapshot, not pages |
 | `state/manager/mod.rs` | the read side: ownership and construction of `DeviceState` (`Boot`, `DeviceManager::boot`), the owned `Services`, the per-page `DemandPolicy`, and the getters the coordinator and the render loop read |
 | `state/manager/write.rs` | the write side: every write from the bus, a worker report or the clock's tick; records move only here |
-| `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE` and overrides) |
+| `state/env.rs` | build-time configuration (`IOT_BOOT_PAGE`, `IOT_LANG` and overrides) |
 | `render/engine/` | surface-agnostic: `Differ` decides *what* to show (`differ.rs`), state→appearance lives in `projection.rs`, `appearance.rs` defines `Topic`/`Appearance`, `color.rs` steps the colour, and `set.rs` hands the appearance to the renderers that claimed it |
 | `render/screen/` | the screen (`SurfaceRole::Screen`): `ScreenRenderer` (`mod.rs`), `painter.rs` calls `services::paint`, `repaint.rs` (frame drift and the repaint step) |
 | `render/lamp/` | the light (`SurfaceRole::Lamp`): `LampRenderer`, one colour and nothing a screen would add |

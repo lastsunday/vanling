@@ -11,6 +11,7 @@ pub mod layout;
 pub mod panel;
 pub mod text;
 pub mod typeset;
+pub mod widget;
 
 mod declare;
 mod geometry;
@@ -27,3 +28,4 @@ pub use layout::{
     TextAlign,
 };
 pub use screen::Screen;
+pub use widget::Widget;

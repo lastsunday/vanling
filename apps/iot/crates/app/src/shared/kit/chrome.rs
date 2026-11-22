@@ -2,7 +2,10 @@
 //! label and its reading take.
 
 use iot_core::ui::panel;
-use iot_core::ui::{Style, Ui};
+use iot_core::ui::{ScrollId, Style, Ui};
+
+use crate::shared::kit::scroll::{BAR, MIN_THUMB, thumb};
+use crate::shared::snapshot::ScrollAreaView;
 
 pub const MARGIN: i16 = panel::MARGIN as i16;
 pub const LINE: i16 = panel::LINE as i16;
@@ -41,6 +44,40 @@ pub fn page(ui: &mut Ui<'_, '_>, body: impl FnOnce(&mut Ui<'_, '_>)) {
 
 pub fn title(ui: &mut Ui<'_, '_>, run: &[u8]) {
     ui.text(run, Style::new().nowrap());
+}
+
+/// A scrolling body beside its thumb: the box grows into the rows the page left it.
+pub fn scroller(
+    ui: &mut Ui<'_, '_>,
+    id: ScrollId,
+    view: ScrollAreaView,
+    body: impl FnOnce(&mut Ui<'_, '_>),
+) {
+    ui.row(Style::new().grow(1).basis(0).stretch().gap(BAR), |ui| {
+        ui.scroll(
+            Style::new()
+                .grow(1)
+                .basis(0)
+                .gap(2)
+                .scroll_area(id)
+                .scroll_offset(view.offset),
+            body,
+        );
+        ui.stack(Style::new().width(BAR), |ui| {
+            if view.bar
+                && let Some((top, height)) = thumb(view.rect.h, view.offset, view.max, MIN_THUMB)
+            {
+                ui.node(
+                    Style::new()
+                        .absolute()
+                        .top(top)
+                        .width(BAR)
+                        .height(height)
+                        .bordered(),
+                );
+            }
+        });
+    });
 }
 
 pub fn reading(ui: &mut Ui<'_, '_>, label: &[u8], value: &[u8]) {

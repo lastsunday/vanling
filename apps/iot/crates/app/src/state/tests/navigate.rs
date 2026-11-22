@@ -27,6 +27,10 @@ fn the_page_switch_reaches_the_audio_page_and_back() {
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Text);
     feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Widgets);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Menu);
+    feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Ambient);
 }
 
@@ -47,6 +51,10 @@ fn the_camera_page_cycles_from_the_board_and_back() {
     assert_eq!(manager.state().page(), PageId::Env);
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Text);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Widgets);
+    feed_input(&mut manager, triple_click());
+    assert_eq!(manager.state().page(), PageId::Menu);
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Ambient);
 }
@@ -82,9 +90,46 @@ fn a_full_lap_walks_every_page_and_returns_home() {
         PageId::Speaker,
         PageId::Env,
         PageId::Text,
+        PageId::Widgets,
+        PageId::Menu,
         PageId::Ambient,
     ] {
         feed_input(&mut manager, triple_click());
         assert_eq!(manager.state().page(), expected);
     }
+}
+
+#[test]
+fn a_menu_button_opens_its_page_from_a_tap() {
+    let mut manager = landed(DeviceManager::boot(Boot {
+        backed: Backed {
+            motion: Some(MotionCapabilities::EMPTY),
+            audio: true,
+            playback: true,
+            camera: true,
+            network: true,
+        },
+        surface_roles: [SurfaceRole::Screen, SurfaceRole::Absent],
+        boot_page: PageId::Menu,
+        ..Default::default()
+    }));
+    assert_eq!(manager.state().page(), PageId::Menu);
+
+    // `Text` is the eighth listed page: row 2, column 1 of the three-wide grid.
+    let (x, y) = (163, 143);
+    feed_input(
+        &mut manager,
+        op(InputEvent::Gesture(GestureEvent::Press { id: 0, x, y })),
+    );
+    feed_input(
+        &mut manager,
+        op(InputEvent::Gesture(GestureEvent::Tap {
+            id: 0,
+            x,
+            y,
+            held_ms: 40,
+            at_ms: 40,
+        })),
+    );
+    assert_eq!(manager.state().page(), PageId::Text);
 }

@@ -31,6 +31,12 @@ impl super::Service for NavService {
                 state.nav.advance(state.backed);
                 (None, Effects::default())
             }
+            NavigationIntent::Go(code) => {
+                if let Some(page) = PageId::from_code(*code) {
+                    state.nav.go(page, state.backed);
+                }
+                (None, Effects::default())
+            }
             NavigationIntent::RequestSetup => {
                 if state.page() == PageId::Splash {
                     state.setup_requested = true;

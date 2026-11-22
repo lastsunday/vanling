@@ -250,6 +250,82 @@ impl<const N: usize> ScrollState<N> {
     }
 }
 
+/// The thumb's width, and the shortest thumb a long list keeps.
+pub const BAR: i16 = 2;
+pub const MIN_THUMB: i32 = 8;
+
+/// How long after the last drag sample a lift may still read as a flick. Three touch scans:
+/// past that the finger stopped moving without a new sample, so the tail velocity is stale.
+pub const STILL_GAP_MS: u32 = 30;
+
+/// One finger's claim on a region: where it pressed, how fast it has moved, and whether it did.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Drag {
+    pub id: u8,
+    pub area: u8,
+    pub y: i16,
+    pub at_ms: u32,
+    /// Offset pixels per second, positive when the content moves up.
+    pub velocity: i16,
+    pub moved: bool,
+}
+
+impl Drag {
+    pub const fn new(id: u8, area: u8, y: i16, at_ms: u32) -> Self {
+        Self {
+            id,
+            area,
+            y,
+            at_ms,
+            velocity: 0,
+            moved: false,
+        }
+    }
+
+    /// Takes the next sample and answers how far the content moved.
+    pub fn step(&mut self, y: i16, at_ms: u32) -> i16 {
+        let delta = i32::from(self.y) - i32::from(y);
+        if self.at_ms != 0 {
+            let dt = at_ms.saturating_sub(self.at_ms).max(1);
+            let instant = (delta * 1000 / dt as i32)
+                .clamp(-i32::from(FLING_MAX_PX_S), i32::from(FLING_MAX_PX_S))
+                as i16;
+            self.velocity = if self.velocity == 0 {
+                instant
+            } else {
+                (self.velocity + instant) / 2
+            };
+        }
+        self.y = y;
+        self.at_ms = at_ms;
+        self.moved = true;
+        delta.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16
+    }
+
+    /// The speed a lift carries, when the drag tail is recent enough to be a flick.
+    pub fn release(&self, at_ms: Option<u32>) -> i16 {
+        match at_ms {
+            Some(at_ms) if self.moved && at_ms.saturating_sub(self.at_ms) <= STILL_GAP_MS => {
+                self.velocity
+            }
+            _ => 0,
+        }
+    }
+}
+
+/// The thumb's top and height inside a viewport, or `None` when the content fits.
+pub fn thumb(viewport: i32, offset: i16, max: i16, min: i32) -> Option<(i16, i16)> {
+    let max = i32::from(max);
+    if viewport <= 0 || max <= 0 {
+        return None;
+    }
+    let floor = min.min(viewport);
+    let height = (viewport * viewport / (viewport + max)).clamp(floor, viewport);
+    let travel = viewport - height;
+    let top = travel * i32::from(offset).clamp(0, max) / max;
+    Some((top as i16, height as i16))
+}
+
 /// The speed a swipe was released at, in px/s: its average over the whole gesture.
 pub fn fling_speed(distance_px: u16, held_ms: u16) -> u16 {
     if held_ms == 0 {

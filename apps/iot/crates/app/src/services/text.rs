@@ -4,7 +4,7 @@
 
 use crate::shared::intent::{BusinessIntent, InputIntent, TextIntent};
 use crate::shared::kit::scroll::{
-    FLING_MAX_PX_S, STEP_LINES, ScrollConfig, ScrollState, fling_speed,
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, thumb as scroll_thumb,
 };
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
@@ -37,34 +37,15 @@ const SCROLL: ScrollConfig = ScrollConfig {
     bar: true,
 };
 
-/// The thumb's width, and the air between it and the scroll box.
-const BAR: i16 = 2;
 /// The region header above a box: one 12 px line and the row gap under it.
 const HEADER_PX: i32 = 13;
 /// The gutter beside a box: the air and the thumb.
 const GUTTER_PX: i32 = 2 * BAR as i32;
-const MIN_THUMB: i32 = 8;
-
-/// How long after the last drag sample a lift may still read as a flick. Three touch scans:
-/// past that the finger stopped moving without a new sample, so the tail velocity is stale.
-/// The loop parks while a finger rests, so counting frames cannot answer this.
-const STILL_GAP_MS: u32 = 30;
 
 /// This page's repaint step. A scroll frame blits the pixels already in the buffer and ships
 /// only the exposed strips, so it fits the frame loop's 20 ms cadence; the shared 40 ms floor
 /// made a drag update once every two frames, which read as a stutter.
 const REPAINT_MS: u64 = 20;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct Drag {
-    id: u8,
-    area: u8,
-    y: i16,
-    at_ms: u32,
-    /// Offset pixels per second, positive when the content moves up.
-    velocity: i16,
-    moved: bool,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextPage {
@@ -109,14 +90,7 @@ impl TextPage {
             return false;
         }
         self.scroll.drag(area, 0);
-        self.drag[slot] = Some(Drag {
-            id,
-            area,
-            y,
-            at_ms,
-            velocity: 0,
-            moved: false,
-        });
+        self.drag[slot] = Some(Drag::new(id, area, y, at_ms));
         true
     }
 }
@@ -144,25 +118,8 @@ impl super::Service for TextPage {
                     }
                     return (None, Effects::default());
                 };
-                let delta = i32::from(drag.y) - i32::from(y);
-                if drag.at_ms != 0 {
-                    let dt = at_ms.saturating_sub(drag.at_ms).max(1);
-                    let instant = (delta * 1000 / dt as i32)
-                        .clamp(-i32::from(FLING_MAX_PX_S), i32::from(FLING_MAX_PX_S))
-                        as i16;
-                    drag.velocity = if drag.velocity == 0 {
-                        instant
-                    } else {
-                        (drag.velocity + instant) / 2
-                    };
-                }
-                self.scroll.drag(
-                    drag.area,
-                    delta.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
-                );
-                drag.y = y;
-                drag.at_ms = at_ms;
-                drag.moved = true;
+                let delta = drag.step(y, at_ms);
+                self.scroll.drag(drag.area, delta);
             }
             TextIntent::Release {
                 id,
@@ -177,14 +134,7 @@ impl super::Service for TextPage {
                     .position(|drag| drag.as_ref().is_some_and(|drag| drag.id == id));
                 if let Some(slot) = slot {
                     let drag = self.drag[slot].take().expect("the slot was found");
-                    let speed = match at_ms {
-                        Some(at_ms)
-                            if drag.moved && at_ms.saturating_sub(drag.at_ms) <= STILL_GAP_MS =>
-                        {
-                            drag.velocity
-                        }
-                        _ => 0,
-                    };
+                    let speed = drag.release(at_ms);
                     self.scroll.fling(drag.area, speed);
                     return (None, Effects::default());
                 }
@@ -508,23 +458,21 @@ fn header(ui: &mut Ui<'_, '_>, label: &[u8], view: ScrollAreaView) {
 /// A thumb beside the scroll box: its length is the viewport's share of the content, and its
 /// position is the offset's share of the travel. A bordered 2 px box reads solid.
 fn thumb(ui: &mut Ui<'_, '_>, view: ScrollAreaView) {
-    let viewport = view.rect.h;
-    let max = i32::from(view.max);
-    if viewport <= 0 || max <= 0 {
-        return;
+    if let Some((top, height)) = scroll_thumb(
+        view.rect.h,
+        view.offset,
+        view.max,
+        crate::shared::kit::scroll::MIN_THUMB,
+    ) {
+        ui.node(
+            Style::new()
+                .absolute()
+                .top(top)
+                .width(BAR)
+                .height(height)
+                .bordered(),
+        );
     }
-    let floor = MIN_THUMB.min(viewport);
-    let height = (viewport * viewport / (viewport + max)).clamp(floor, viewport);
-    let travel = viewport - height;
-    let top = travel * i32::from(view.offset).clamp(0, max) / max;
-    ui.node(
-        Style::new()
-            .absolute()
-            .top(i16::try_from(top).unwrap_or(0))
-            .width(BAR)
-            .height(i16::try_from(height).unwrap_or(0))
-            .bordered(),
-    );
 }
 
 fn append(buf: &mut [u8], n: usize, part: &[u8]) -> usize {

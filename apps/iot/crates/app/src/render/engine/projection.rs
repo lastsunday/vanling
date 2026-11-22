@@ -102,6 +102,8 @@ pub(super) fn frame_snapshot(
         },
         lights: state.lights.map(light_snapshot),
         page: state.page(),
+        backed: state.backed,
+        lang: state.lang,
         steady: state.page().steady(),
         link: state.network.link,
         mac: state.network.mac,
@@ -211,6 +213,7 @@ mod tests {
                 network: _,
                 touch: _,
                 dropped_intents: _,
+                lang: _,
             } = state;
         }
         project_every_field(DeviceState::default());

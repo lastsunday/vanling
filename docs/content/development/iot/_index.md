@@ -17,5 +17,6 @@ Vanling 自有 ESP32 固件（`apps/iot`）的分层、组合与 Cargo feature �
 - [音频计量语义](@/development/iot/audio.md) — 采集语义、屏幕读数与刻度、对数映射的弦误差、释放斜率反推
 - [运动语义框架](@/development/iot/motion.md) — 数据面/语义面双路径、三 family 仲裁、能力声明、QMI8658A 寄存器绑定
 - [放音语义](@/development/iot/playback.md) — 放音语义、一次性声音的相位、五个 MIDI 声音从哪来、一臂 20 ms 的 DMA 环
+- [UI 组件](@/development/iot/widgets.md) — Widget/Cell 两种形态、状态与主题、组件清单、Cell 绘制、多语言与预算
 
 常用命令与台架操作在 [速查](@/roadmap/cheatsheet.md)。

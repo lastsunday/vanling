@@ -1,8 +1,9 @@
 //! The frame snapshot: everything one frame of pages draws from, extracted together so the
 //! render layer never borrows the state it paints.
 
+use crate::shared::kit::i18n::Lang;
 use crate::shared::model::DeviceState;
-use crate::shared::model::{AudioPhase, Health, NetworkView};
+use crate::shared::model::{AudioPhase, Backed, Health, NetworkView};
 use crate::shared::route::PageId;
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
@@ -189,11 +190,42 @@ pub struct TextSnapshot {
     pub moving: bool,
 }
 
+/// What the Menu publishes: its one scroll view and whether a glide is in flight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct MenuSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+}
+
+/// What the Widgets page publishes: its scroll view, the controls' values, and the phase of the
+/// spinner the page owns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct WidgetsSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub spinning: bool,
+    /// Bits for the buttons and chips the page keeps selected: filled, outlined, bare, chip A,
+    /// chip B.
+    pub selected: u8,
+    pub switch: bool,
+    pub check: bool,
+    pub radio: u8,
+    pub slider: u8,
+    pub focus: bool,
+    pub choice: u8,
+    pub tile: bool,
+    /// The control under the finger, by tag; zero when none.
+    pub pressed: u16,
+    pub spinner: u8,
+}
+
 /// What each page publishes beyond the state it read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PageSnapshot {
     pub network: NetworkView,
     pub text: TextSnapshot,
+    pub menu: MenuSnapshot,
+    pub widgets: WidgetsSnapshot,
 }
 
 /// One frame's drawing data, extracted from the state so a renderer holds no reference into
@@ -204,6 +236,10 @@ pub struct FrameSnapshot {
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
     pub page: PageId,
+    /// What the board wired, for pages that list or gate on it.
+    pub backed: Backed,
+    /// The words the page prints.
+    pub lang: Lang,
     /// The page wants the light and the backlight held still for as long as it is up.
     pub steady: bool,
     pub link: LinkStatus,
@@ -223,6 +259,8 @@ impl FrameSnapshot {
     pub fn animating(&self) -> bool {
         match self.page {
             PageId::Text => self.pages.text.moving,
+            PageId::Menu => self.pages.menu.moving,
+            PageId::Widgets => self.pages.widgets.moving || self.pages.widgets.spinning,
             _ => false,
         }
     }

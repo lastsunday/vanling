@@ -165,6 +165,14 @@ impl Tree {
             .map(|node| node.rect)
     }
 
+    /// Every tagged node's tag and rectangle, in declaration order.
+    pub(crate) fn tags(&self) -> impl Iterator<Item = (u16, Rect)> + '_ {
+        self.nodes[..usize::from(self.len)]
+            .iter()
+            .filter(|node| node.style.tag != 0)
+            .map(|node| (node.style.tag, node.rect))
+    }
+
     pub(crate) fn paint_rect(&self, slot: u8) -> Option<Rect> {
         self.nodes[..usize::from(self.len)]
             .iter()

@@ -6,8 +6,16 @@
 //! The bench flag lives here rather than in `bench` so the network worker never names the
 //! harness that suppresses its build credential.
 
+use crate::shared::kit::i18n::Lang;
 use crate::state::PageId;
 use iot_core::demand::{Override, parse_override};
+
+pub(crate) fn lang() -> Lang {
+    if let Some(name) = UNKNOWN_LANG {
+        log::warn!("[IOT] IOT_LANG={name:?} is not a language, printing English");
+    }
+    LANG
+}
 
 pub(crate) fn boot_page() -> PageId {
     if let Some(name) = UNKNOWN_BOOT_PAGE {
@@ -49,11 +57,36 @@ pub(crate) fn build_credentials() -> Option<(&'static str, &'static str)> {
 
 const BOOT_PAGE: PageId = boot_page_from_env(option_env!("IOT_BOOT_PAGE"));
 
+const LANG: Lang = lang_from_env(option_env!("IOT_LANG"));
+
+const UNKNOWN_LANG: Option<&str> = unknown_lang(option_env!("IOT_LANG"));
+
+const fn lang_from_env(name: Option<&str>) -> Lang {
+    let Some(name) = name else {
+        return Lang::En;
+    };
+    match Lang::from_name(name) {
+        Some(lang) => lang,
+        None => Lang::En,
+    }
+}
+
+const fn unknown_lang(name: Option<&str>) -> Option<&str> {
+    let Some(name) = name else {
+        return None;
+    };
+    let trimmed = name.trim_ascii();
+    if trimmed.is_empty() || Lang::from_name(trimmed).is_some() {
+        return None;
+    }
+    Some(name)
+}
+
 const UNKNOWN_BOOT_PAGE: Option<&str> = unknown_page(option_env!("IOT_BOOT_PAGE"));
 
 const fn boot_page_from_env(name: Option<&str>) -> PageId {
     let Some(name) = name else {
-        return PageId::Ambient;
+        return PageId::Menu;
     };
     match bootable_page(name) {
         Some(page) => page,
@@ -83,7 +116,8 @@ const fn unknown_page(name: Option<&str>) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{boot_page_from_env, unknown_page};
+    use super::{boot_page_from_env, lang_from_env, unknown_lang, unknown_page};
+    use crate::shared::kit::i18n::Lang;
     use crate::shared::route::SPLASH_MS;
     use crate::state::PageId;
 
@@ -109,8 +143,12 @@ mod tests {
     }
 
     #[test]
+    fn an_unnamed_build_comes_up_on_the_menu() {
+        assert_eq!(boot_page_from_env(None), PageId::Menu, "unset");
+    }
+
+    #[test]
     fn anything_unusable_lands_on_ambient() {
-        assert_eq!(boot_page_from_env(None), PageId::Ambient, "unset");
         assert_eq!(boot_page_from_env(Some("")), PageId::Ambient, "empty");
         assert_eq!(boot_page_from_env(Some("   ")), PageId::Ambient, "blank");
         assert_eq!(
@@ -140,5 +178,20 @@ mod tests {
         assert_eq!(PageId::Splash.timeout_ms(), Some(SPLASH_MS));
         assert_eq!(boot_page_from_env(Some("splash")), PageId::Ambient);
         assert_eq!(unknown_page(Some("splash")), Some("splash"));
+    }
+
+    #[test]
+    fn a_language_name_survives_case_and_space() {
+        assert_eq!(lang_from_env(None), Lang::En, "unset prints English");
+        assert_eq!(lang_from_env(Some(" zh ")), Lang::ZhHans);
+        assert_eq!(lang_from_env(Some("EN-us")), Lang::En);
+        assert_eq!(
+            lang_from_env(Some("fr")),
+            Lang::En,
+            "unknown prints English"
+        );
+        assert_eq!(unknown_lang(Some("fr")), Some("fr"));
+        assert_eq!(unknown_lang(Some("  ")), None);
+        assert_eq!(unknown_lang(Some("zh")), None);
     }
 }

@@ -4,6 +4,7 @@ use crate::services::network::view::text::{
     NAME_BYTES, format_address, format_bars, format_network_name, format_phase, format_psk,
     format_setup_name, format_window,
 };
+use crate::shared::kit::i18n::{Lang, Msg};
 use crate::shared::model::NetworkView;
 use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus};
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};
@@ -14,6 +15,7 @@ pub(super) const ROW0: usize = 8;
 const ROW1: usize = ROW0 + ROW_PITCH;
 const ROW2: usize = ROW1 + ROW_PITCH;
 
+/// The widest title keeps the list's window at one place in every language.
 const TITLE_GLYPHS: usize = b"NETWORK".len();
 
 /// Where the list's window starts, one blank cell after the title.
@@ -43,13 +45,14 @@ const _: () = assert!(
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw(
     canvas: &mut Canvas<'_>,
+    lang: Lang,
     draft: NetworkView,
     link: LinkStatus,
     shown_ap: Option<AccessPoint>,
     mac: Option<[u8; 6]>,
     list_len: Option<usize>,
 ) {
-    canvas.draw_text(b"NETWORK", MARGIN, ROW0);
+    canvas.draw_text(Msg::PageNetwork.bytes(lang), MARGIN, ROW0);
     if let Some(rows) = list_len {
         canvas.draw_text(
             format_window(draft.list_top, rows, &mut [0u8; 12]),
@@ -75,11 +78,12 @@ pub(crate) fn draw(
             ROW1,
         );
     }
-    let mut text = [0u8; 3 + 5];
+    // `3 + 8`: `ST ` plus room for the widest language's word.
+    let mut text = [0u8; 3 + 8];
     text[..3].copy_from_slice(b"ST ");
     let mut phase_buf = [0u8; 4];
     let word: &[u8] = if link.mode.is_setup() {
-        b"SETUP"
+        Msg::Setup.bytes(lang)
     } else {
         format_phase(draft.phase(link.phase), &mut phase_buf)
     };
@@ -157,6 +161,7 @@ mod tests {
             let mut canvas = Canvas::new(&mut frame, PANEL_COLUMNS, CONTENT_BOTTOM, None);
             draw(
                 &mut canvas,
+                Lang::En,
                 draft,
                 link,
                 shown_ap,

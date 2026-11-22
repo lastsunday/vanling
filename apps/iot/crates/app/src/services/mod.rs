@@ -9,11 +9,13 @@ pub mod audio;
 pub mod camera;
 pub mod env;
 pub mod light;
+pub mod menu;
 pub mod nav;
 pub mod network;
 pub mod speaker;
 pub mod splash;
 pub mod text;
+pub mod widgets;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
 use crate::shared::kit::panel::{Custom, Panel, View, no_custom};
@@ -32,11 +34,13 @@ use self::audio::AudioPage;
 use self::camera::CameraPage;
 use self::env::EnvPage;
 use self::light::LightService;
+use self::menu::MenuPage;
 use self::nav::NavService;
 use self::network::NetworkPage;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 use self::text::TextPage;
+use self::widgets::WidgetsPage;
 
 /// One intent's owner: its own record settles first, then the answer says what the rest of the
 /// device owes.
@@ -86,6 +90,7 @@ pub trait LocalPage: Service {
 pub struct Services {
     nav: NavService,
     light: LightService,
+    menu: MenuPage,
     ambient: AmbientPage,
     attitude: AttitudePage,
     audio: AudioPage,
@@ -95,6 +100,7 @@ pub struct Services {
     splash: SplashPage,
     env: EnvPage,
     text: TextPage,
+    widgets: WidgetsPage,
 }
 
 /// The dispatch key: a page the panel can stop on, or one of the device's own services.
@@ -109,6 +115,7 @@ impl Services {
     /// The page a route names, for the local gesture table.
     pub fn get(&self, page: PageId) -> &dyn LocalPage {
         match page {
+            PageId::Menu => &self.menu,
             PageId::Ambient => &self.ambient,
             PageId::Attitude => &self.attitude,
             PageId::Audio => &self.audio,
@@ -118,6 +125,7 @@ impl Services {
             PageId::Splash => &self.splash,
             PageId::Env => &self.env,
             PageId::Text => &self.text,
+            PageId::Widgets => &self.widgets,
         }
     }
 
@@ -160,12 +168,19 @@ impl Services {
             BusinessIntent::Text(_) => self
                 .service_mut(ServiceId::Page(PageId::Text))
                 .apply(intent, state),
+            BusinessIntent::Menu(_) => self
+                .service_mut(ServiceId::Page(PageId::Menu))
+                .apply(intent, state),
+            BusinessIntent::Widgets(_) => self
+                .service_mut(ServiceId::Page(PageId::Widgets))
+                .apply(intent, state),
         }
     }
 
     /// Every service has an answer here, including the two the panel never shows.
     fn service_mut(&mut self, id: ServiceId) -> &mut dyn Service {
         match id {
+            ServiceId::Page(PageId::Menu) => &mut self.menu,
             ServiceId::Page(PageId::Ambient) => &mut self.ambient,
             ServiceId::Page(PageId::Attitude) => &mut self.attitude,
             ServiceId::Page(PageId::Audio) => &mut self.audio,
@@ -175,6 +190,7 @@ impl Services {
             ServiceId::Page(PageId::Splash) => &mut self.splash,
             ServiceId::Page(PageId::Env) => &mut self.env,
             ServiceId::Page(PageId::Text) => &mut self.text,
+            ServiceId::Page(PageId::Widgets) => &mut self.widgets,
             ServiceId::Navigation => &mut self.nav,
             ServiceId::Light => &mut self.light,
         }
@@ -204,6 +220,7 @@ impl Services {
 
     fn get_mut(&mut self, page: PageId) -> &mut dyn LocalPage {
         match page {
+            PageId::Menu => &mut self.menu,
             PageId::Ambient => &mut self.ambient,
             PageId::Attitude => &mut self.attitude,
             PageId::Audio => &mut self.audio,
@@ -213,6 +230,7 @@ impl Services {
             PageId::Splash => &mut self.splash,
             PageId::Env => &mut self.env,
             PageId::Text => &mut self.text,
+            PageId::Widgets => &mut self.widgets,
         }
     }
 }
@@ -340,6 +358,7 @@ impl Descriptor {
 /// The page's descriptor. One exhaustive match: a variant with no descriptor does not compile.
 pub fn descriptor(page: PageId) -> Descriptor {
     match page {
+        PageId::Menu => MenuPage::descriptor(),
         PageId::Ambient => AmbientPage::descriptor(),
         PageId::Attitude => AttitudePage::descriptor(),
         PageId::Audio => AudioPage::descriptor(),
@@ -349,6 +368,7 @@ pub fn descriptor(page: PageId) -> Descriptor {
         PageId::Splash => SplashPage::descriptor(),
         PageId::Env => EnvPage::descriptor(),
         PageId::Text => TextPage::descriptor(),
+        PageId::Widgets => WidgetsPage::descriptor(),
     }
 }
 

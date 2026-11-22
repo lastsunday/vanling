@@ -93,7 +93,7 @@ weight = 10
 | `shared/kit/` | 页面壳 `Panel`（声明 → 布局 → 绘制的调度）、跨页版面 `chrome`（页边距、行距、标签槽）、文字词汇 `text` 与滚动状态 `scroll`（偏移、滑行、回弹、两个开关）；只认像素与快照，不认页面 |
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
-| `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE` 与覆盖项） |
+| `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE`、`IOT_LANG` 与覆盖项） |
 | `render/engine/` | 与 surface 无关：`Differ` 决定*显示什么*（`differ.rs`），状态→外观在 `projection.rs`，`appearance.rs` 定义 `Topic`/`Appearance`，`color.rs` 步进颜色，`set.rs` 把外观交给认领它的 renderer |
 | `render/screen/` | 屏幕（`SurfaceRole::Screen`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
 | `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有屏幕会叠上去的东西 |

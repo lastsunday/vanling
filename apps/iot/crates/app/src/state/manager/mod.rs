@@ -4,6 +4,7 @@
 use alloc::vec::Vec;
 
 use crate::services::Services;
+use crate::shared::kit::i18n::Lang;
 use crate::shared::model::{Backed, DeviceState, MAX_LIGHTS, PlaybackState, SurfaceRole};
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand, Override};
@@ -24,6 +25,8 @@ pub struct Boot {
     /// The page to land on after the splash; a page the board cannot back falls back to
     /// [`PageId::Ambient`].
     pub boot_page: PageId,
+    /// The words the panel prints.
+    pub lang: Lang,
     /// What the build pins beyond the page's claim.
     pub overrides: Override,
 }
@@ -46,12 +49,14 @@ impl DeviceManager {
     /// page is clamped once and pushed under the splash, with no call order to get wrong.
     pub fn boot(boot: Boot) -> Self {
         let backed = boot.backed;
-        let mut nav = Navigator::new(DeviceState::landed_on(boot.boot_page, backed));
+        let screen = boot.surface_roles.contains(&SurfaceRole::Screen);
+        let mut nav = Navigator::new(DeviceState::landed_on(boot.boot_page, backed, screen));
         nav.push(PageId::Splash, backed);
         let state = DeviceState {
             backed,
             nav,
             surface_roles: boot.surface_roles,
+            lang: boot.lang,
             ..DeviceState::default()
         };
         let mut services = Services::default();

@@ -93,7 +93,7 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
         ..Default::default()
     }));
     assert_eq!(manager.state().page(), PageId::Camera);
-    for expected in [PageId::Env, PageId::Text, PageId::Ambient, PageId::Attitude] {
+    for expected in [PageId::Env, PageId::Text, PageId::Widgets, PageId::Menu] {
         feed_input(&mut manager, triple_click());
         assert_eq!(manager.state().page(), expected);
     }
@@ -108,6 +108,23 @@ fn the_splash_is_never_where_the_device_lands() {
     .state()
     .page();
     assert_eq!(landed_on, PageId::Ambient);
+}
+
+#[test]
+fn a_board_with_no_screen_does_not_come_up_on_the_menu() {
+    let lamp_only = landed(DeviceManager::boot(Boot {
+        surface_roles: [SurfaceRole::Lamp, SurfaceRole::Absent],
+        boot_page: PageId::Menu,
+        ..Default::default()
+    }));
+    assert_eq!(lamp_only.state().page(), PageId::Ambient);
+
+    let screened = landed(DeviceManager::boot(Boot {
+        surface_roles: [SurfaceRole::Screen, SurfaceRole::Absent],
+        boot_page: PageId::Menu,
+        ..Default::default()
+    }));
+    assert_eq!(screened.state().page(), PageId::Menu);
 }
 
 #[test]

@@ -289,7 +289,7 @@ mod tests {
             let step = descriptor(page).repaint_step_ms();
             match page {
                 PageId::Audio => assert!(step > REPAINT_FLOOR_MS, "{page:?} step"),
-                PageId::Text => assert!(
+                PageId::Text | PageId::Menu | PageId::Widgets => assert!(
                     step < REPAINT_FLOOR_MS,
                     "{page:?} must keep up with a drag, not the idle floor"
                 ),

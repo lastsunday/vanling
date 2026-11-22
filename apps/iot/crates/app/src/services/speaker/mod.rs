@@ -5,6 +5,7 @@ mod tests;
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
 use crate::shared::kit::chrome;
+use crate::shared::kit::i18n::Msg;
 use crate::shared::kit::text::{format_u16, sound_label};
 use crate::shared::model::{Command, DeviceState, Effects, PlaybackPhase};
 use crate::shared::snapshot::FrameSnapshot;
@@ -49,22 +50,23 @@ impl super::LocalPage for SpeakerPage {
     }
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        let lang = snapshot.lang;
         let playback = snapshot.playback;
         let fault = playback.health.fault();
         chrome::page(ui, |ui| {
             ui.row(Style::new().between(), |ui| {
-                chrome::title(ui, b"SPKR");
+                chrome::title(ui, Msg::SpeakerTitle.bytes(lang));
                 if playback.muted {
-                    ui.text(b"MUTE", Style::new().nowrap());
+                    ui.text(Msg::Mute.bytes(lang), Style::new().nowrap());
                 }
             });
             chrome::reading(
                 ui,
                 b"ST",
                 match (fault, playback.phase) {
-                    (Some(_), _) => b"NO OUT",
-                    (None, PlaybackPhase::Idle) => b"IDLE",
-                    (None, PlaybackPhase::Playing) => b"PLAY",
+                    (Some(_), _) => Msg::NoOut.bytes(lang),
+                    (None, PlaybackPhase::Idle) => Msg::Idle.bytes(lang),
+                    (None, PlaybackPhase::Playing) => Msg::Playing.bytes(lang),
                 },
             );
             chrome::reading(ui, b"SRC", sound_label(playback.sound));
@@ -73,12 +75,12 @@ impl super::LocalPage for SpeakerPage {
             ui.text(b"", Style::new());
             match fault {
                 Some(reason) => {
-                    ui.text(b"TAP RETRY", Style::new().nowrap());
+                    ui.text(Msg::TapRetry.bytes(lang), Style::new().nowrap());
                     ui.text(reason.as_bytes(), Style::new().nowrap());
                 }
                 None => {
-                    ui.text(b"TAP PLAY", Style::new().nowrap());
-                    ui.text(b"HOLD MUTE", Style::new().nowrap());
+                    ui.text(Msg::TapPlay.bytes(lang), Style::new().nowrap());
+                    ui.text(Msg::HoldMute.bytes(lang), Style::new().nowrap());
                 }
             }
         });

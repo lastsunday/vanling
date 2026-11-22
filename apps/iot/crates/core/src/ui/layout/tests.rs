@@ -405,6 +405,10 @@ fn a_tag_finds_the_box_a_finger_landed_on() {
     finish(&mut ui, 100, 100);
     assert_eq!(ui.tag_at(20, 30), Some(7));
     assert_eq!(ui.tag_at(5, 5), None);
+    assert_eq!(
+        ui.tags().collect::<alloc::vec::Vec<_>>(),
+        alloc::vec![(7, Rect::new(10, 20, 30, 40))]
+    );
     let _ = id;
 }
 

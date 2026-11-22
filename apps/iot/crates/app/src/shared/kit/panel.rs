@@ -79,6 +79,9 @@ impl<'a> Panel<'a> {
         run[3] = b' ';
         let len = digits.len().min(run.len() - 4);
         run[4..4 + len].copy_from_slice(&digits[..len]);
+        // The page's last node may have left a colour on the canvas; the footer is the panel's
+        // own and always inks in the default.
+        self.canvas.set_color(None);
         self.canvas
             .draw_text_right(&run[..4 + len], RIGHT as isize, CONTENT_BOTTOM);
     }

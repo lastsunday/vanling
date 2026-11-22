@@ -154,7 +154,7 @@ S3 的构建走 `scripts/iot-xtensa.sh`：先试本机 esp 工具链，不全则
 
 ## 启动页与 bench 镜像
 
-`IOT_BOOT_PAGE`（`.cargo/config.toml`，默认 `ambient`）决定固件开机停在哪一页 —— `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。`network` 没有对应的 moon 任务，同一条命令手写：
+`IOT_BOOT_PAGE`（`.cargo/config.toml`，不设时 `menu`，无屏板子退回 `ambient`）决定固件开机停在哪一页 —— `menu` / `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text` / `widgets`，非法值退回 `ambient`。它是 `option_env!`，在**编译时**展开，所以要经 Docker 构建时得转发给容器（`scripts/iot-xtensa.sh` 的 `FORWARDED_ENV`）；`moon run iot:build-s3-camera` 把它设成 `camera`，对应 `moon run iot:flash-s3-camera`。`network` 没有对应的 moon 任务，同一条命令手写：
 
 ```sh
 cd apps/iot
@@ -164,6 +164,8 @@ IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
 ```
 
 `[实测]` 这一版**不带构建时凭据**，所以设备停在 `setup` 一直扫；`moon run iot:flash-s3` 会重新构建产品镜像并把 `target/xtensa-esp32s3-none-elf/release/vanling` 覆盖回去。开机日志里有一行 `[INPUT] page is now Network`（每页都打，带实际页名），所以「这一版真的停在那页」不用猜。
+
+`IOT_LANG=en|zh` 走同一套 `option_env!` 与 `const fn`，落成 `const LANG`；开机日志 `[IOT] words in En` / `[IOT] words in ZhHans` 是它生效的证据。两种语言的字面量本来都在二进制里（运行期还能切换），所以只能看这行日志，grep 中文串证明不了构建期选择。
 
 `[实测]` **启动页只能在构建期解析**，运行时连字符串都不许碰。曾经在启动时解析（`option_env!` 的 `&'static str` 经 `trim().to_ascii_lowercase()` 变成 `String` 再查表），只要构建带了 `IOT_BOOT_PAGE`，主任务的水位就从 42,392 B 涨到 46,728 B、连接那一刻的栈用掉 27,745 B（不带变量时 23,409 B），随后在 `[WIFI] … joining` 之后必崩：`StoreProhibited`/`LoadProhibited` 死在电台 blob 自己的 `free`/`event_post` 里，而不是栈检查报错。现在 `boot_page()` 读的是 `const BOOT_PAGE`（`const fn` 做大小写与去空白比较），`IOT_BOOT_PAGE=attitude` 的构建与产品构建逐项同值（`main stack 65,976 B`、峰值 `42,392 B`）并正常拿到地址。越界为什么落在电台任务上，见 `records/iot/hardware-constraints.md` 那一节；约束本身不依赖机制：**bench 镜像与产品镜像必须在同一张栈预算里，启动页在构建期落成常量就是它的前提。**
 

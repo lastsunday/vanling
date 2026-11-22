@@ -14,6 +14,7 @@ use iot_core::drivers::board::Backed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PageId {
+    Menu,
     #[default]
     Ambient,
     Attitude,
@@ -25,6 +26,7 @@ pub enum PageId {
     Splash,
     Env,
     Text,
+    Widgets,
 }
 
 impl PageId {
@@ -86,6 +88,14 @@ const fn camera_on_screen(kind: DemandKind) -> Claim {
         DemandKind::Interaction | DemandKind::Audio => Claim::off(),
     }
 }
+
+static MENU: Route = Route {
+    path: "menu",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
 
 static AMBIENT: Route = Route {
     path: "ambient",
@@ -159,10 +169,19 @@ static TEXT: Route = Route {
     timeout_ms: None,
 };
 
+static WIDGETS: Route = Route {
+    path: "widgets",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
 impl PageId {
     /// Every page, in the button's order: the wire code is its index, and [`Self::next_page`]
     /// walks it.
-    pub const ALL: [Self; 9] = [
+    pub const ALL: [Self; 11] = [
+        Self::Menu,
         Self::Ambient,
         Self::Attitude,
         Self::Audio,
@@ -172,6 +191,7 @@ impl PageId {
         Self::Splash,
         Self::Env,
         Self::Text,
+        Self::Widgets,
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
@@ -179,6 +199,7 @@ impl PageId {
     #[inline(never)]
     const fn route(&self) -> &'static Route {
         match self {
+            Self::Menu => &MENU,
             Self::Ambient => &AMBIENT,
             Self::Attitude => &ATTITUDE,
             Self::Audio => &AUDIO,
@@ -188,6 +209,7 @@ impl PageId {
             Self::Splash => &SPLASH,
             Self::Env => &ENV,
             Self::Text => &TEXT,
+            Self::Widgets => &WIDGETS,
         }
     }
 
@@ -250,6 +272,19 @@ impl PageId {
     /// A stable wire code for tasks that cannot hold the enum: the discriminant.
     pub const fn code(&self) -> u8 {
         *self as u8
+    }
+
+    /// The page a wire code names, if it names one.
+    pub const fn from_code(code: u8) -> Option<Self> {
+        let mut index = 0;
+        while index < Self::ALL.len() {
+            let page = Self::ALL[index];
+            if page.code() == code {
+                return Some(page);
+            }
+            index += 1;
+        }
+        None
     }
 
     fn claim_for(&self, key: DemandKey) -> Claim {
@@ -354,27 +389,57 @@ mod tests {
                 camera,
                 network,
             };
-        let bare = [PageId::Env, PageId::Text];
+        let bare = [PageId::Env, PageId::Text, PageId::Widgets, PageId::Menu];
         assert_eq!(lap(Backed::NONE), bare);
         assert_eq!(
             lap(board(true, false, false, false, false)),
-            [PageId::Attitude, PageId::Env, PageId::Text]
+            [
+                PageId::Attitude,
+                PageId::Env,
+                PageId::Text,
+                PageId::Widgets,
+                PageId::Menu
+            ]
         );
         assert_eq!(
             lap(board(false, true, false, false, false)),
-            [PageId::Audio, PageId::Env, PageId::Text]
+            [
+                PageId::Audio,
+                PageId::Env,
+                PageId::Text,
+                PageId::Widgets,
+                PageId::Menu
+            ]
         );
         assert_eq!(
             lap(board(false, false, true, false, false)),
-            [PageId::Speaker, PageId::Env, PageId::Text]
+            [
+                PageId::Speaker,
+                PageId::Env,
+                PageId::Text,
+                PageId::Widgets,
+                PageId::Menu
+            ]
         );
         assert_eq!(
             lap(board(false, false, false, true, false)),
-            [PageId::Camera, PageId::Env, PageId::Text]
+            [
+                PageId::Camera,
+                PageId::Env,
+                PageId::Text,
+                PageId::Widgets,
+                PageId::Menu
+            ]
         );
         assert_eq!(
             lap(board(false, false, false, false, true)),
-            [PageId::Network, PageId::Env, PageId::Text]
+            [
+                PageId::Network,
+                PageId::Env,
+                PageId::Text,
+                PageId::Widgets,
+                PageId::Menu
+            ]
         );
         assert_eq!(
             lap(board(true, true, true, true, true)),
@@ -385,7 +450,9 @@ mod tests {
                 PageId::Camera,
                 PageId::Network,
                 PageId::Env,
-                PageId::Text
+                PageId::Text,
+                PageId::Widgets,
+                PageId::Menu
             ]
         );
     }

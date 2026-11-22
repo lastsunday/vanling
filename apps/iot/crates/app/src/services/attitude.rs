@@ -6,6 +6,7 @@ use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::chrome;
+use crate::shared::kit::i18n::Msg;
 use crate::shared::kit::text::format_u16;
 use crate::shared::kit::text::{NOT_AVAILABLE, format_i32, format_tenths};
 use crate::shared::model::DeviceState;
@@ -27,13 +28,13 @@ impl super::LocalPage for AttitudePage {
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
         chrome::page(ui, |ui| {
-            chrome::title(ui, b"ATTITUDE");
+            chrome::title(ui, Msg::AttitudeTitle.bytes(snapshot.lang));
             let Some(sample) = snapshot.motion else {
-                chrome::reading(ui, b"ERR", b"WAIT");
+                chrome::reading(ui, b"ERR", Msg::Wait.bytes(snapshot.lang));
                 return;
             };
             if !sample.valid {
-                chrome::reading(ui, b"ERR", b"READ");
+                chrome::reading(ui, b"ERR", Msg::ReadFailed.bytes(snapshot.lang));
                 return;
             }
             ui.stack(Style::new().grow(1), |ui| {

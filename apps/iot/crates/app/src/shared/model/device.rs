@@ -2,6 +2,7 @@
 //! across them.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
+use crate::shared::kit::i18n::Lang;
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::input::SwipeDirection;
@@ -40,6 +41,8 @@ pub struct DeviceState {
     /// Input intents the coordinator's ring had no room for, since boot. Folded in once per
     /// frame from the handle the input worker notes into.
     pub dropped_intents: u32,
+    /// The words the panel prints; the build sets it, a settings page may change it.
+    pub lang: Lang,
 }
 
 impl DeviceState {
@@ -110,9 +113,13 @@ impl DeviceState {
         }
     }
 
-    /// The page that becomes the boot page: one the build may not come up on, or the board
-    /// cannot back, falls back to [`PageId::Ambient`].
-    pub(crate) fn landed_on(page: PageId, backed: Backed) -> PageId {
+    /// The page that becomes the boot page: one the build may not come up on, the board
+    /// cannot back, or one that needs a screen the board did not wire, falls back to
+    /// [`PageId::Ambient`].
+    pub(crate) fn landed_on(page: PageId, backed: Backed, screen: bool) -> PageId {
+        if page == PageId::Menu && !screen {
+            return PageId::Ambient;
+        }
         if page.bootable() && page.is_backed(backed) {
             page
         } else {

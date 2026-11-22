@@ -182,10 +182,12 @@ mod tests {
             "a page that needs nothing comes first"
         );
         assert_eq!(nav.advance(bare), PageId::Text, "then the other one");
+        assert_eq!(nav.advance(bare), PageId::Widgets, "then the widget bench");
+        assert_eq!(nav.advance(bare), PageId::Menu, "then home");
         assert_eq!(
             nav.advance(bare),
             PageId::Ambient,
-            "and the lap is three pages"
+            "and the lap comes round"
         );
         assert_eq!(nav.depth, 1);
 

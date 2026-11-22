@@ -11,6 +11,7 @@ use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
 use crate::shared::intent::{AudioIntent, BusinessIntent, InputIntent, LightAction};
 use crate::shared::kit::chrome;
+use crate::shared::kit::i18n::Msg;
 use crate::shared::kit::text::{format_dba, format_i32, format_u16};
 use crate::shared::model::{AudioPhase, Command, DeviceState, Effects};
 use crate::shared::snapshot::FrameSnapshot;
@@ -58,12 +59,13 @@ impl super::LocalPage for AudioPage {
     }
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        let lang = snapshot.lang;
         let audio = &snapshot.audio;
         let fault = audio.health.fault();
         let offset = ui.screen().spl_offset_db;
         chrome::page(ui, |ui| {
             ui.row(Style::new().between(), |ui| {
-                chrome::title(ui, b"AUDIO");
+                chrome::title(ui, Msg::AudioTitle.bytes(lang));
                 ui.text(
                     format_dba(spl(dbfs(audio.dba_lsb), offset), &mut [0u8; 12]),
                     Style::new().nowrap(),
@@ -76,10 +78,10 @@ impl super::LocalPage for AudioPage {
                     ui,
                     b"ST",
                     match (fault, audio.phase) {
-                        (Some(_), _) => b"NO IN",
-                        (None, AudioPhase::Idle) => b"IDLE",
-                        (None, AudioPhase::Recording) => b"REC",
-                        (None, AudioPhase::Stopped) => b"STOP",
+                        (Some(_), _) => Msg::NoIn.bytes(lang),
+                        (None, AudioPhase::Idle) => Msg::Idle.bytes(lang),
+                        (None, AudioPhase::Recording) => Msg::Recording.bytes(lang),
+                        (None, AudioPhase::Stopped) => Msg::Stopped.bytes(lang),
                     },
                 );
                 chrome::reading(
@@ -99,16 +101,16 @@ impl super::LocalPage for AudioPage {
                 );
                 chrome::reading(ui, b"RST", format_u16(audio.restarts, &mut [0u8; 6]));
                 if audio.envelope.clipped() {
-                    ui.text(b"CLIP", Style::new().nowrap());
+                    ui.text(Msg::Clip.bytes(lang), Style::new().nowrap());
                 }
             });
             if let Some(reason) = fault {
                 ui.text(reason.as_bytes(), Style::new());
-                ui.text(b"TAP RETRY", Style::new().nowrap());
+                ui.text(Msg::TapRetry.bytes(lang), Style::new().nowrap());
                 return;
             }
             if audio.phase == AudioPhase::Idle {
-                ui.text(b"TAP TO REC", Style::new().nowrap());
+                ui.text(Msg::TapToRec.bytes(lang), Style::new().nowrap());
                 return;
             }
             ui.custom(Style::new().grow(1).stretch(), 0);

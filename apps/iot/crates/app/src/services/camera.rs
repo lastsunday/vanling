@@ -6,6 +6,7 @@ use iot_core::ui::{Style, Ui};
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::chrome;
+use crate::shared::kit::i18n::Msg;
 use crate::shared::kit::text::{
     format_pair, format_u32, frame_fingerprint, light_mode_word, write_ratio,
 };
@@ -44,6 +45,7 @@ impl CameraPage {
         ui: &mut Ui<'_, '_>,
         readout: CameraSnapshot,
     ) {
+        let lang = snapshot.lang;
         let fault = readout.fault;
         let fingerprint = (!readout.starting && fault.is_none())
             .then(|| ui.canvas().map(|canvas| frame_fingerprint(canvas.frame())))
@@ -51,10 +53,10 @@ impl CameraPage {
 
         chrome::page(ui, |ui| {
             ui.row(Style::new().between(), |ui| {
-                chrome::title(ui, b"CAMERA");
+                chrome::title(ui, Msg::CameraTitle.bytes(lang));
                 match (fault, readout.starting) {
-                    (Some(_), _) => ui.text(b"NO CAM", Style::new().nowrap()),
-                    (None, true) => ui.text(b"WAIT", Style::new().nowrap()),
+                    (Some(_), _) => ui.text(Msg::NoCam.bytes(lang), Style::new().nowrap()),
+                    (None, true) => ui.text(Msg::Wait.bytes(lang), Style::new().nowrap()),
                     (None, false) => ui.text(b"", Style::new()),
                 };
             });
@@ -99,7 +101,7 @@ impl CameraPage {
                 }
             } else if let Some(reason) = fault {
                 ui.text(reason.as_bytes(), Style::new().nowrap());
-                ui.text(b"RETRYING", Style::new().nowrap());
+                ui.text(Msg::Retrying.bytes(lang), Style::new().nowrap());
             }
         });
     }

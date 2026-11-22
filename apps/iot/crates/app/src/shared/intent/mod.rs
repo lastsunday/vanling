@@ -57,6 +57,10 @@ pub enum BusinessIntent {
     Playback(PlaybackAction),
     /// What a finger asks of a page's own scroll regions.
     Text(TextIntent),
+    /// What a finger asks of the Menu's button grid.
+    Menu(MenuIntent),
+    /// What a finger asks of the Widgets page: a control, its slider, or the gallery's scroll.
+    Widgets(WidgetsIntent),
     /// One light surface and the verb it is asked for; the instance is routing, not part of the verb.
     Light {
         instance: u8,
@@ -68,6 +72,9 @@ pub enum BusinessIntent {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NavigationIntent {
     NextPage,
+    /// A destination the user picked, by the route table's wire code: this layer names what
+    /// is asked, not which page answers.
+    Go(u8),
     SplashOver,
     RequestSetup,
 }
@@ -122,6 +129,76 @@ pub enum TextIntent {
         at_ms: u32,
     },
     /// The lift. Falls back to `lines`/`speed` without a drag sample; `at_ms` is `None` for a hold.
+    Release {
+        id: u8,
+        area: u8,
+        lines: i8,
+        speed: u16,
+        at_ms: Option<u32>,
+    },
+    Scroll {
+        area: u8,
+        lines: i8,
+        speed: u16,
+    },
+}
+
+/// What the Menu's grid asks of its one scroll region.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MenuIntent {
+    /// A finger landed in the box: a glide in the region stops where it is.
+    Press {
+        area: u8,
+    },
+    Drag {
+        id: u8,
+        x: u16,
+        y: u16,
+        at_ms: u32,
+    },
+    /// The lift. Falls back to `lines`/`speed` without a drag sample; `at_ms` is `None` for a hold.
+    Release {
+        id: u8,
+        area: u8,
+        lines: i8,
+        speed: u16,
+        at_ms: Option<u32>,
+    },
+    Scroll {
+        area: u8,
+        lines: i8,
+        speed: u16,
+    },
+}
+
+/// What the Widgets page's controls and gallery ask.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WidgetsIntent {
+    /// A control was pressed; `tag` is the one the page drew there.
+    Press {
+        tag: u16,
+    },
+    /// The lift landed on the same control: toggle it.
+    Tap {
+        tag: u16,
+    },
+    /// A slider's finger moved to `x` on the panel.
+    Slide {
+        tag: u16,
+        x: u16,
+    },
+    /// A finger landed in the gallery's box rather than on a control.
+    Grab {
+        id: u8,
+        area: u8,
+        y: i16,
+    },
+    Drag {
+        id: u8,
+        x: u16,
+        y: u16,
+        at_ms: u32,
+    },
     Release {
         id: u8,
         area: u8,

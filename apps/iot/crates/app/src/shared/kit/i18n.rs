@@ -1,0 +1,300 @@
+//! The panel's words: one enum, one exhaustive match per language.
+//!
+//! Readout keys (`PK`, `RMS`, `GST`), protocol words (`SCAN`, `UP`) and data (SSIDs, MACs,
+//! addresses, logs) stay as they are; only product copy moves through here.
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Lang {
+    #[default]
+    En,
+    ZhHans,
+}
+
+impl Lang {
+    pub const ALL: &[Self] = &[Self::En, Self::ZhHans];
+
+    /// The name a build states in `IOT_LANG`; unknown names fall back to [`Self::default`].
+    pub const fn from_name(name: &str) -> Option<Self> {
+        let name = name.trim_ascii().as_bytes();
+        if eq(name, b"zh") || eq(name, b"zh-hans") || eq(name, b"zh_cn") {
+            Some(Self::ZhHans)
+        } else if eq(name, b"en") || eq(name, b"en-us") || eq(name, b"en_gb") {
+            Some(Self::En)
+        } else {
+            None
+        }
+    }
+}
+
+const fn eq(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if !left[index].eq_ignore_ascii_case(&right[index]) {
+            return false;
+        }
+        index += 1;
+    }
+    true
+}
+
+/// One piece of product copy. A new variant must answer both languages.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Msg {
+    Brand,
+    MenuTitle,
+    WidgetsTitle,
+    EnvTitle,
+    CameraTitle,
+    AttitudeTitle,
+    AudioTitle,
+    SpeakerTitle,
+    TextTitle,
+    PageMenu,
+    PageAmbient,
+    PageAttitude,
+    PageAudio,
+    PageSpeaker,
+    PageCamera,
+    PageNetwork,
+    PageEnv,
+    PageText,
+    PageWidgets,
+    HoldBoot,
+    Setup,
+    NoCam,
+    Wait,
+    Retrying,
+    NoIn,
+    Clip,
+    TapRetry,
+    TapToRec,
+    Mute,
+    NoOut,
+    TapPlay,
+    HoldMute,
+    Idle,
+    Recording,
+    Stopped,
+    Playing,
+    ReadFailed,
+    NoSample,
+    Filled,
+    Outlined,
+    Bare,
+    On,
+    Off,
+    Value,
+    Choose,
+    Row,
+    Detail,
+    SectionActions,
+    SectionSelection,
+    SectionInput,
+    SectionDisplay,
+    SectionRows,
+    TapHint,
+}
+
+impl Msg {
+    pub const ALL: &[Self] = &[
+        Self::Brand,
+        Self::MenuTitle,
+        Self::WidgetsTitle,
+        Self::EnvTitle,
+        Self::CameraTitle,
+        Self::AttitudeTitle,
+        Self::AudioTitle,
+        Self::SpeakerTitle,
+        Self::TextTitle,
+        Self::PageMenu,
+        Self::PageAmbient,
+        Self::PageAttitude,
+        Self::PageAudio,
+        Self::PageSpeaker,
+        Self::PageCamera,
+        Self::PageNetwork,
+        Self::PageEnv,
+        Self::PageText,
+        Self::PageWidgets,
+        Self::HoldBoot,
+        Self::Setup,
+        Self::NoCam,
+        Self::Wait,
+        Self::Retrying,
+        Self::NoIn,
+        Self::Clip,
+        Self::TapRetry,
+        Self::TapToRec,
+        Self::Mute,
+        Self::NoOut,
+        Self::TapPlay,
+        Self::HoldMute,
+        Self::Idle,
+        Self::Recording,
+        Self::Stopped,
+        Self::Playing,
+        Self::ReadFailed,
+        Self::NoSample,
+        Self::Filled,
+        Self::Outlined,
+        Self::Bare,
+        Self::On,
+        Self::Off,
+        Self::Value,
+        Self::Choose,
+        Self::Row,
+        Self::Detail,
+        Self::SectionActions,
+        Self::SectionSelection,
+        Self::SectionInput,
+        Self::SectionDisplay,
+        Self::SectionRows,
+        Self::TapHint,
+    ];
+
+    pub const fn text(self, lang: Lang) -> &'static str {
+        match (self, lang) {
+            (Self::Brand, Lang::En | Lang::ZhHans) => "VANLING",
+            (Self::MenuTitle, Lang::En) => "MENU",
+            (Self::MenuTitle, Lang::ZhHans) => "菜单",
+            (Self::WidgetsTitle, Lang::En) => "BASIC WIDGETS",
+            (Self::WidgetsTitle, Lang::ZhHans) => "基础组件",
+            (Self::EnvTitle, Lang::En) => "ENV",
+            (Self::EnvTitle, Lang::ZhHans) => "环境",
+            (Self::CameraTitle, Lang::En) => "CAMERA",
+            (Self::CameraTitle, Lang::ZhHans) => "相机",
+            (Self::AttitudeTitle, Lang::En) => "ATTITUDE",
+            (Self::AttitudeTitle, Lang::ZhHans) => "姿态",
+            (Self::AudioTitle, Lang::En) => "AUDIO",
+            (Self::AudioTitle, Lang::ZhHans) => "音频",
+            (Self::SpeakerTitle, Lang::En) => "SPKR",
+            (Self::SpeakerTitle, Lang::ZhHans) => "扬声器",
+            (Self::TextTitle, Lang::En) => "TEXT",
+            (Self::TextTitle, Lang::ZhHans) => "文本",
+            (Self::PageMenu, Lang::En) => "MENU",
+            (Self::PageMenu, Lang::ZhHans) => "菜单",
+            (Self::PageAmbient, Lang::En) => "AMBIENT",
+            (Self::PageAmbient, Lang::ZhHans) => "氛围",
+            (Self::PageAttitude, Lang::En) => "ATTITUDE",
+            (Self::PageAttitude, Lang::ZhHans) => "姿态",
+            (Self::PageAudio, Lang::En) => "AUDIO",
+            (Self::PageAudio, Lang::ZhHans) => "音频",
+            (Self::PageSpeaker, Lang::En) => "SPEAKER",
+            (Self::PageSpeaker, Lang::ZhHans) => "扬声器",
+            (Self::PageCamera, Lang::En) => "CAMERA",
+            (Self::PageCamera, Lang::ZhHans) => "相机",
+            (Self::PageNetwork, Lang::En) => "NETWORK",
+            (Self::PageNetwork, Lang::ZhHans) => "网络",
+            (Self::PageEnv, Lang::En) => "ENV",
+            (Self::PageEnv, Lang::ZhHans) => "环境",
+            (Self::PageText, Lang::En) => "TEXT",
+            (Self::PageText, Lang::ZhHans) => "文本",
+            (Self::PageWidgets, Lang::En) => "WIDGETS",
+            (Self::PageWidgets, Lang::ZhHans) => "组件",
+            (Self::HoldBoot, Lang::En) => "HOLD BOOT",
+            (Self::HoldBoot, Lang::ZhHans) => "长按启动键",
+            (Self::Setup, Lang::En) => "SETUP",
+            (Self::Setup, Lang::ZhHans) => "配网",
+            (Self::NoCam, Lang::En) => "NO CAM",
+            (Self::NoCam, Lang::ZhHans) => "无摄像头",
+            (Self::Wait, Lang::En) => "WAIT",
+            (Self::Wait, Lang::ZhHans) => "等待",
+            (Self::Retrying, Lang::En) => "RETRYING",
+            (Self::Retrying, Lang::ZhHans) => "重试中",
+            (Self::NoIn, Lang::En) => "NO IN",
+            (Self::NoIn, Lang::ZhHans) => "无输入",
+            (Self::Clip, Lang::En) => "CLIP",
+            (Self::Clip, Lang::ZhHans) => "削波",
+            (Self::TapRetry, Lang::En) => "TAP RETRY",
+            (Self::TapRetry, Lang::ZhHans) => "点击重试",
+            (Self::TapToRec, Lang::En) => "TAP TO REC",
+            (Self::TapToRec, Lang::ZhHans) => "点击录音",
+            (Self::Mute, Lang::En) => "MUTE",
+            (Self::Mute, Lang::ZhHans) => "静音",
+            (Self::NoOut, Lang::En) => "NO OUT",
+            (Self::NoOut, Lang::ZhHans) => "无输出",
+            (Self::TapPlay, Lang::En) => "TAP PLAY",
+            (Self::TapPlay, Lang::ZhHans) => "点击播放",
+            (Self::HoldMute, Lang::En) => "HOLD MUTE",
+            (Self::HoldMute, Lang::ZhHans) => "长按静音",
+            (Self::Idle, Lang::En) => "IDLE",
+            (Self::Idle, Lang::ZhHans) => "空闲",
+            (Self::Recording, Lang::En) => "REC",
+            (Self::Recording, Lang::ZhHans) => "录音",
+            (Self::Stopped, Lang::En) => "STOP",
+            (Self::Stopped, Lang::ZhHans) => "停止",
+            (Self::Playing, Lang::En) => "PLAY",
+            (Self::Playing, Lang::ZhHans) => "播放",
+            (Self::ReadFailed, Lang::En) => "READ",
+            (Self::ReadFailed, Lang::ZhHans) => "读取失败",
+            (Self::NoSample, Lang::En) => "WAIT",
+            (Self::NoSample, Lang::ZhHans) => "无数据",
+            (Self::Filled, Lang::En) => "FILLED",
+            (Self::Filled, Lang::ZhHans) => "实心",
+            (Self::Outlined, Lang::En) => "OUTLINED",
+            (Self::Outlined, Lang::ZhHans) => "描边",
+            (Self::Bare, Lang::En) => "TEXT",
+            (Self::Bare, Lang::ZhHans) => "文字",
+            (Self::On, Lang::En) => "ON",
+            (Self::On, Lang::ZhHans) => "开",
+            (Self::Off, Lang::En) => "OFF",
+            (Self::Off, Lang::ZhHans) => "关",
+            (Self::Value, Lang::En) => "VALUE",
+            (Self::Value, Lang::ZhHans) => "值",
+            (Self::Choose, Lang::En) => "CHOOSE",
+            (Self::Choose, Lang::ZhHans) => "选择",
+            (Self::Row, Lang::En) => "ROW",
+            (Self::Row, Lang::ZhHans) => "行",
+            (Self::Detail, Lang::En) => "DETAIL",
+            (Self::Detail, Lang::ZhHans) => "明细",
+            (Self::SectionActions, Lang::En) => "ACTIONS",
+            (Self::SectionActions, Lang::ZhHans) => "操作",
+            (Self::SectionSelection, Lang::En) => "SELECTION",
+            (Self::SectionSelection, Lang::ZhHans) => "选择",
+            (Self::SectionInput, Lang::En) => "INPUT",
+            (Self::SectionInput, Lang::ZhHans) => "输入",
+            (Self::SectionDisplay, Lang::En) => "DISPLAY",
+            (Self::SectionDisplay, Lang::ZhHans) => "显示",
+            (Self::SectionRows, Lang::En) => "ROWS",
+            (Self::SectionRows, Lang::ZhHans) => "行",
+            (Self::TapHint, Lang::En) => "TAP",
+            (Self::TapHint, Lang::ZhHans) => "点击",
+        }
+    }
+
+    pub const fn bytes(self, lang: Lang) -> &'static [u8] {
+        self.text(lang).as_bytes()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use iot_core::ui::font::Face;
+
+    #[test]
+    fn every_message_answers_every_language() {
+        for msg in Msg::ALL {
+            for lang in Lang::ALL {
+                let text = msg.text(*lang);
+                assert!(!text.is_empty(), "{msg:?} in {lang:?}");
+                let face = Face::new();
+                for ch in text.chars() {
+                    assert!(face.has(ch), "{msg:?} in {lang:?} lacks {ch:?}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_language_name_survives_case_and_space() {
+        assert_eq!(Lang::from_name(" ZH "), Some(Lang::ZhHans));
+        assert_eq!(Lang::from_name("zh-Hans"), Some(Lang::ZhHans));
+        assert_eq!(Lang::from_name("EN"), Some(Lang::En));
+        assert_eq!(Lang::from_name("fr"), None);
+        assert_eq!(Lang::from_name(""), None);
+    }
+}

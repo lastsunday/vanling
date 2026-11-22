@@ -2,6 +2,7 @@
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::chrome;
+use crate::shared::kit::i18n::Msg;
 use crate::shared::model::DeviceState;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::ui::Ui;
@@ -16,8 +17,10 @@ impl super::LocalPage for EnvPage {
         None
     }
 
-    fn view(_snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
-        chrome::page(ui, |ui| chrome::title(ui, b"Env"));
+    fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+        chrome::page(ui, |ui| {
+            chrome::title(ui, Msg::EnvTitle.bytes(snapshot.lang))
+        });
     }
 
     fn descriptor() -> super::Descriptor {
