@@ -17,9 +17,9 @@ pub enum NodeKind {
     Paint { slot: u8 },
 }
 
-/// The constraints a measurement was taken at, four fields packed into one word so a node
-/// keeps its stack budget. `u64::MAX` is a value no constraint produces, so a freshly
-/// declared node never reads as measured.
+/// The constraints a measurement was taken at. A box keys on all four; a run keys on width alone
+/// (a line breaks on width, not on the height it is offered) and keeps its natural height in the
+/// high half, so a height change re-clamps without re-wrapping. `u64::MAX` marks a node unmeasured.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct Measured(u64);
 
@@ -31,14 +31,35 @@ impl Default for Measured {
 
 impl Measured {
     pub(super) fn of(constraints: BoxConstraints) -> Self {
-        let pack = |value: Subpx| value.clamp(0, i16::MAX as Subpx) as u64;
-        Self(
-            pack(constraints.min_w)
-                | pack(constraints.max_w) << 16
-                | pack(constraints.min_h) << 32
-                | pack(constraints.max_h) << 48,
-        )
+        Self(pack(constraints))
     }
+
+    /// A run's key: the width it wrapped at, and the natural height it came out to.
+    pub(super) fn of_text(constraints: BoxConstraints, height: Subpx) -> Self {
+        Self(pack(constraints) & 0xFFFF_FFFF | u64::from(pack_height(height)) << 32)
+    }
+
+    /// Whether a run measured at `self` answers a question asked at `at`: width only.
+    pub(super) fn answers_text(self, at: Self) -> bool {
+        self.0 & 0xFFFF_FFFF == at.0 & 0xFFFF_FFFF
+    }
+
+    /// The unclamped height the run measured to.
+    pub(super) fn natural(self) -> Subpx {
+        (self.0 >> 32) as u32 as Subpx
+    }
+}
+
+fn pack(constraints: BoxConstraints) -> u64 {
+    let word = |value: Subpx| value.clamp(0, i16::MAX as Subpx) as u64;
+    word(constraints.min_w)
+        | word(constraints.max_w) << 16
+        | word(constraints.min_h) << 32
+        | word(constraints.max_h) << 48
+}
+
+fn pack_height(height: Subpx) -> u32 {
+    height.max(0) as u32
 }
 
 #[derive(Clone, Copy, Debug)]

@@ -39,7 +39,7 @@ pub(crate) struct Tree {
 }
 
 /// The named scroll boxes one declaration may report. The text page uses two.
-const MAX_SCROLL_AREAS: usize = 4;
+pub const MAX_SCROLL_AREAS: usize = 4;
 
 /// One named scroll box's last layout: the node it belongs to, and what it reported then.
 #[derive(Clone, Copy, Debug)]
@@ -244,8 +244,23 @@ impl Tree {
     fn layout_node(&mut self, id: NodeId, constraints: BoxConstraints, text: &[u8]) -> Size {
         let node = self.nodes[usize::from(id.0)];
         let constraints = constraints.enforce(&node.style);
-        let at = Measured::of(constraints);
-        if self.nodes[usize::from(id.0)].measured_at == at {
+        let run = matches!(node.kind, NodeKind::Text { .. });
+        let at = if run {
+            Measured::of_text(constraints, 0)
+        } else {
+            Measured::of(constraints)
+        };
+        let cached = self.nodes[usize::from(id.0)].measured_at;
+        if run && cached.answers_text(at) {
+            let h = cached.natural().clamp(constraints.min_h, constraints.max_h);
+            let size = Size {
+                w: self.nodes[usize::from(id.0)].measured.w,
+                h,
+            };
+            self.nodes[usize::from(id.0)].measured = size;
+            return size;
+        }
+        if !run && cached == at {
             return self.nodes[usize::from(id.0)].measured;
         }
         let size = match node.kind {
@@ -259,11 +274,14 @@ impl Tree {
             }
             NodeKind::Box | NodeKind::Paint { .. } => self.layout_box(id, &node, constraints, text),
         };
-        let size = constraints.constrain(size.w, size.h);
         let slot = &mut self.nodes[usize::from(id.0)];
-        slot.measured = size;
-        slot.measured_at = at;
-        size
+        slot.measured = constraints.constrain(size.w, size.h);
+        slot.measured_at = if run {
+            Measured::of_text(constraints, size.h)
+        } else {
+            at
+        };
+        slot.measured
     }
 
     fn layout_text(

@@ -102,6 +102,73 @@ fn a_text_node_re_measures_when_the_width_changes() {
 }
 
 #[test]
+fn a_run_keys_on_its_width_not_the_height_it_is_offered() {
+    let wide = BoxConstraints {
+        min_w: 0,
+        max_w: 60 * PX,
+        min_h: 0,
+        max_h: 40 * PX,
+    };
+    let tall = BoxConstraints {
+        max_h: 200 * PX,
+        ..wide
+    };
+    let key = Measured::of_text(wide, 24 * PX);
+    assert!(
+        key.answers_text(Measured::of_text(tall, 0)),
+        "a taller box does not rewrap the run"
+    );
+    assert!(
+        !key.answers_text(Measured::of_text(
+            BoxConstraints {
+                max_w: 30 * PX,
+                ..wide
+            },
+            0
+        )),
+        "a narrower box does"
+    );
+    assert_eq!(key.natural(), 24 * PX);
+}
+
+#[test]
+fn a_tall_run_keeps_the_height_it_wrapped_to() {
+    let wide = BoxConstraints {
+        min_w: 0,
+        max_w: 60 * PX,
+        min_h: 0,
+        max_h: INFINITY,
+    };
+    let key = Measured::of_text(wide, 48_000);
+    assert_eq!(
+        key.natural(),
+        48_000,
+        "a 32-line run at 24 px is taller than i16 can hold"
+    );
+}
+
+#[test]
+fn a_run_clamped_by_height_gets_its_lines_back() {
+    let mut tree = Tree::new();
+    let run = b"AAAAA AAAAA AAAAA";
+    let root = tree.push(Style::new().stack().width(60), NodeKind::Box, NodeId::NONE);
+    let text = tree.push(
+        Style::new().width(30),
+        NodeKind::Text {
+            start: 0,
+            len: run.len() as u16,
+        },
+        root,
+    );
+    tree.layout(BoxConstraints::tight(60 * PX, 12 * PX), run);
+    assert_eq!(tree.rect(text).h, 12, "the box cuts the run to its height");
+    tree.layout(BoxConstraints::tight(60 * PX, 40 * PX), run);
+    assert_eq!(tree.rect(text).h, 36, "and gives the lines back");
+    tree.layout(BoxConstraints::tight(60 * PX, 12 * PX), run);
+    assert_eq!(tree.rect(text).h, 12, "cutting again is not a stale answer");
+}
+
+#[test]
 fn an_absolute_child_is_placed_by_its_insets() {
     let mut ui = page(100, 100);
     let mut id = NodeId::NONE;

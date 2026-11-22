@@ -141,9 +141,9 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 每个页面是一个具体类型，分两层回答。`Service` 是各操作平台共用的一面：`apply(&mut self, &BusinessIntent, &mut DeviceState) -> (Option<Command>, Effects)`——自己那条记录先落地，返回设备还欠的事与要出核心的命令，一条意图恰好调到它的一个所有者。`LocalPage: Service` 是本地平台面：`bind` 把一个本地手势译成业务意图（`Option`，含义什么都没有时是 `None`），`publish` 把页面私有的本地 UI 状态交给帧快照（口令草稿、键位、确认框，远程平台看不到），`view` 声明整页（`&FrameSnapshot, &mut Ui`，不取 `self`），`descriptor` 描述它怎么占屏，`tick` 推进页面自己的时钟，`on_show`/`on_hide` 默认空实现。`view` 与 `descriptor` 的 `where Self: Sized` 让 `&dyn LocalPage` 仍是本地手势表要的 trait 对象。
 
-`Descriptor` 是一页的面板答案：声明函数指针、自绘槽函数指针、底色、是否相机帧、重绘步长与触发条件。构建器默认「无自绘槽、无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn), WhenOrOverlay(fn)}` 之一，而不是一段带空形参的函数。
+`Descriptor` 是一页的面板答案：声明函数指针、自绘槽函数指针、底色、是否相机帧、重绘步长、触发条件与纯滚动判据。构建器默认「无自绘槽、无底色、非相机帧、`REPAINT_FLOOR_MS`、`Never`、不认滚动」，各页只写自己那条差异。重绘判据是 `Repaint::{Never, Always, Overlay, When(fn), WhenOrOverlay(fn)}` 之一，而不是一段带空形参的函数。
 
-渲染答案分两层：`LocalPage::view` 用 `Ui` 的 `row`/`column`/`stack`/`wrap`/`scroll`/`text`/`custom` 声明整页，`services::paint` 取 `descriptor(page).view` 交给 `Panel`（布局一次、画字与盒子、再按槽调 `descriptor(page).custom`），最后盖角标；其余四个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`）。
+渲染答案分两层：`LocalPage::view` 用 `Ui` 的 `row`/`column`/`stack`/`wrap`/`scroll`/`text`/`custom` 声明整页，`services::paint` 取 `descriptor(page).view` 交给 `Panel`（布局一次、画字与盒子、再按槽调 `descriptor(page).custom`），最后盖角标；其余五个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`/`scroll_shift()`）。
 
 长内容页把滚动留在页面：`Style::scroll_area(id)` 给滚动盒命名，布局沿轴累加子节点（含 `gap`）并把矩形与可滚动距离记进 `Tree`，`Ui::scroll_info(id)` 读回；`shared::kit::scroll::ScrollState<N>` 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。`measure` 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag` 直接改偏移（越界半程阻尼），抬手用 `fling` 接手：速度带符号、阈值以下只回弹。被按住的区 `tick` 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 `Repaint::WhenOrOverlay`，`FrameSnapshot::animating()` 为真时渲染器保持 `TimeDriven`；`PageSystem` 在 `schedule.tick` 里把墙钟增量（首帧 0，夹到 `MAX_CATCH_UP_MS`）交给 `DeviceManager::tick_pages`，偏移因此与快照同帧，也不会因某帧光栅化慢而按固定步长少走。
 
@@ -173,7 +173,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 布局是纯函数，但一帧里同一节点会被问很多次：flex 先测量再摆放，`grow` 级联还会换一组约束再问。`Tree` 因此在每个节点上记 `measured_at`（`enforce` 之后的四条约束压进一个 `u64`）与对应的 `measured`，同约束第二次问直接返回，约束变了才重测（高度单独变化也算）；新声明拿 `Node::default()` 的哨兵键，上一帧的尺寸不会冒充这一帧。像素层按「一次求边界、整段写」组织：glyph 按行取位图、空字节跳过八个像素，`fill_rect` 每行只求一次裁剪交集，`Start` 且单行的 `draw_text` 不跑断行器，`Screen::fill` 一次写两个像素。这些只改路径不改画面，整页黄金哈希守着。
 
-滚动帧不重画整页：`AppPainter` 留上一帧快照，只比较两个滚动区的偏移（其余字段必须相同），把已有像素原地 `memmove` 上移或下移，然后给出两份 `FrameDamage`（各最多 7 块，含底部徽标带）。**落墨集**只含进入视口的窄条、头部读数与 thumb，`Canvas` 按它裁剪落墨；**上屏集**含整个滚动框与 header、thumb，`St7789` 用 `CASET`/`RASET` 把这些交给面板——GRAM 不会自己搬像素，只写窄条会让框里其余行停在拖动开始时的内容上。底色改变、换页与相机帧退回整帧；overlay 只把底部 320×12 徽标带加进两份集合，不再让整页重绘。`ScreenPainter::reset` 负责让画布忘掉上一帧。
+滚动帧不重画整页：页面用 `Descriptor::with_scroll` 交出纯滚动判据——只比较两个滚动区的偏移（其余字段必须相同），`AppPainter` 留上一帧快照，命中后把已有像素原地 `memmove` 上移或下移，然后给出两份 `FrameDamage`（各最多 7 块，含底部徽标带）。**落墨集**只含进入视口的窄条、头部读数与 thumb，`Canvas` 按它裁剪落墨；**上屏集**含整个滚动框与 header、thumb，`St7789` 用 `CASET`/`RASET` 把这些交给面板——GRAM 不会自己搬像素，只写窄条会让框里其余行停在拖动开始时的内容上。底色改变、换页与相机帧退回整帧；overlay 只把底部 320×12 徽标带加进两份集合，不再让整页重绘。`ScreenPainter::reset` 负责让画布忘掉上一帧。
 
 `Services` 持有九个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 

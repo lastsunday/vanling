@@ -6,10 +6,9 @@
 use core::any::Any;
 
 use crate::services::camera::CameraPage;
-use crate::services::paint;
+use crate::services::{descriptor, paint};
 use crate::shared::kit::panel::{Panel, no_custom};
-use crate::shared::route::PageId;
-use crate::shared::snapshot::{FrameSnapshot, TEXT_AREAS, TextSnapshot};
+use crate::shared::snapshot::{FrameSnapshot, ScrollShift};
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{
     DamageRect, FrameDamage, ScreenContext, ScreenPainter, ScreenTarget,
@@ -70,16 +69,12 @@ impl ScreenPainter for AppPainter {
         let shift = self
             .last
             .as_ref()
-            .and_then(|prev| scroll_shift(prev, frame));
+            .and_then(|prev| descriptor(frame.page).scroll_shift(prev, frame));
         let ink = match shift {
             Some(shift) => {
-                scroll_blit(target.frame, target.width, &frame.pages.text, shift);
-                let (mut ink, mut ship) = scroll_damage(
-                    &frame.pages.text,
-                    shift,
-                    target.width as u16,
-                    target.height as u16,
-                );
+                scroll_blit(target.frame, target.width, &shift);
+                let (mut ink, mut ship) =
+                    scroll_damage(&shift, target.width as u16, target.height as u16);
                 // The badge sits below every scroll box, so the blit leaves it intact; it is
                 // still damage so its fps reading keeps moving while the page scrolls.
                 if self.overlay {
@@ -135,7 +130,7 @@ impl ScreenPainter for AppPainter {
         };
         self.last
             .as_ref()
-            .is_some_and(|prev| scroll_shift(prev, next).is_some())
+            .is_some_and(|prev| descriptor(next.page).scroll_shift(prev, next).is_some())
     }
 
     fn reset(&mut self) {
@@ -144,47 +139,11 @@ impl ScreenPainter for AppPainter {
     }
 }
 
-/// How far the content of each text region moved since `prev`, when that is the only thing the
-/// page draws differently. `None` means the next frame has to be painted whole.
-///
-/// Positive is the content moving up, which is what an increasing offset means.
-fn scroll_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<[i16; TEXT_AREAS]> {
-    if prev.page != PageId::Text || next.page != PageId::Text {
-        return None;
-    }
-    let mut before = prev.pages.text;
-    let mut after = next.pages.text;
-    let mut shift = [0i16; TEXT_AREAS];
-    for (slot, (before, after)) in before
-        .areas
-        .iter_mut()
-        .zip(after.areas.iter_mut())
-        .enumerate()
-    {
-        shift[slot] = after.offset.wrapping_sub(before.offset);
-        before.offset = 0;
-        after.offset = 0;
-        if before.rect.w <= 0 || before.rect.h <= 0 {
-            return None;
-        }
-    }
-    let moving_ended = before.moving && !after.moving;
-    before.moving = false;
-    after.moving = false;
-    if before != after {
-        return None;
-    }
-    if shift == [0; TEXT_AREAS] && !moving_ended {
-        return None;
-    }
-    Some(shift)
-}
-
 /// Moves each region's pixels by its shift, in place. The rows that leave the box are dropped;
 /// the rows that enter it are what the page inks again.
-fn scroll_blit(frame: &mut [u8], width: usize, text: &TextSnapshot, shift: [i16; TEXT_AREAS]) {
+fn scroll_blit(frame: &mut [u8], width: usize, shift: &ScrollShift) {
     let stride = width * 2;
-    for (view, &delta) in text.areas.iter().zip(shift.iter()) {
+    for (view, &delta) in shift.views().iter().zip(shift.shifts()) {
         if delta == 0 {
             continue;
         }
@@ -212,14 +171,9 @@ fn scroll_blit(frame: &mut [u8], width: usize, text: &TextSnapshot, shift: [i16;
 /// What a scroll frame changed: rows to ink again, and rows the panel has to receive. The panel
 /// is GRAM and cannot move its own pixels, so the second set is the whole box. A shift as tall
 /// as the box reuses no row.
-fn scroll_damage(
-    text: &TextSnapshot,
-    shift: [i16; TEXT_AREAS],
-    width: u16,
-    height: u16,
-) -> (FrameDamage, FrameDamage) {
+fn scroll_damage(shift: &ScrollShift, width: u16, height: u16) -> (FrameDamage, FrameDamage) {
     let (mut ink, mut ship) = (FrameDamage::NONE, FrameDamage::NONE);
-    for (view, &delta) in text.areas.iter().zip(shift.iter()) {
+    for (view, &delta) in shift.views().iter().zip(shift.shifts()) {
         if delta == 0 {
             continue;
         }
@@ -301,7 +255,8 @@ fn clear_damage(frame: &mut [u8], width: usize, ground: Rgb, damage: FrameDamage
 mod tests {
     use super::*;
     use crate::services::{Services, descriptor};
-    use crate::shared::snapshot::{PageSnapshot, ScrollAreaView};
+    use crate::shared::route::PageId;
+    use crate::shared::snapshot::{PageSnapshot, ScrollAreaView, TEXT_AREAS, TextSnapshot};
     use alloc::vec;
     use iot_core::ui::Rect;
 
@@ -339,6 +294,10 @@ mod tests {
             view(10, 40, 100, 30, offset),
             view(170, 40, 100, 30, offset),
         ])
+    }
+
+    fn shift(deltas: [i16; TEXT_AREAS]) -> ScrollShift {
+        ScrollShift::new(&two(10).pages.text.areas, &deltas)
     }
 
     fn pixel(frame: &[u8], x: usize, y: usize) -> u16 {
@@ -383,52 +342,28 @@ mod tests {
     }
 
     #[test]
-    fn a_growing_offset_moves_content_up() {
-        let before = two(10);
-        let after = two(16);
-        assert_eq!(scroll_shift(&before, &after), Some([6, 6]));
-    }
-
-    #[test]
-    fn a_change_beyond_the_offset_is_not_a_scroll() {
-        let before = two(10);
-        let mut after = two(16);
-        after.pages.text.line_count = 3;
-        assert_eq!(scroll_shift(&before, &after), None);
-        let mut after = two(16);
-        after.page = PageId::Network;
-        assert_eq!(scroll_shift(&before, &after), None);
-        let mut after = two(10);
-        after.pages.text.moving = false;
-        assert_eq!(
-            scroll_shift(&before, &after),
-            Some([0, 0]),
-            "the frame that ends a fling moves nothing and ships nothing"
-        );
-    }
-
-    #[test]
     fn a_fling_ending_with_no_offset_change_ships_nothing() {
         let before = two(10);
         let mut after = two(10);
         after.pages.text.moving = false;
-        let shift = scroll_shift(&before, &after).expect("a no-op scroll frame");
+        let shift = descriptor(PageId::Text)
+            .scroll_shift(&before, &after)
+            .expect("a no-op scroll frame");
         assert_eq!(
-            scroll_damage(&after.pages.text, shift, WIDTH as u16, HEIGHT as u16),
+            scroll_damage(&shift, WIDTH as u16, HEIGHT as u16),
             (FrameDamage::NONE, FrameDamage::NONE)
         );
     }
 
     #[test]
     fn scroll_blit_moves_each_box_up_and_leaves_the_rest() {
-        let text = two(10).pages.text;
         let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
         for y in 40..70 {
             for x in 10..110 {
                 set_pixel(&mut frame, x, y, y as u16);
             }
         }
-        scroll_blit(&mut frame, WIDTH, &text, [6, 0]);
+        scroll_blit(&mut frame, WIDTH, &shift([6, 0]));
         for y in 40..64 {
             assert_eq!(pixel(&frame, 10, y), (y + 6) as u16);
         }
@@ -442,14 +377,13 @@ mod tests {
 
     #[test]
     fn scroll_blit_moves_content_down_too() {
-        let text = two(10).pages.text;
         let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
         for y in 40..70 {
             for x in 10..110 {
                 set_pixel(&mut frame, x, y, y as u16);
             }
         }
-        scroll_blit(&mut frame, WIDTH, &text, [-6, 0]);
+        scroll_blit(&mut frame, WIDTH, &shift([-6, 0]));
         for y in 46..70 {
             assert_eq!(pixel(&frame, 10, y), (y - 6) as u16);
         }
@@ -460,8 +394,7 @@ mod tests {
 
     #[test]
     fn both_boxes_damage_their_own_strip_header_and_thumb() {
-        let text = two(10).pages.text;
-        let (damage, _) = scroll_damage(&text, [6, -4], WIDTH as u16, HEIGHT as u16);
+        let (damage, _) = scroll_damage(&shift([6, -4]), WIDTH as u16, HEIGHT as u16);
         assert_eq!(damage.rects().len(), 6);
         let hit = |x: i32, y: i32| {
             damage
@@ -479,9 +412,8 @@ mod tests {
 
     #[test]
     fn the_panel_gets_the_whole_box_but_the_page_inks_only_the_strip() {
-        let text = two(10).pages.text;
         let (width, height) = (WIDTH as u16, HEIGHT as u16);
-        let (ink, ship) = scroll_damage(&text, [6, -4], width, height);
+        let (ink, ship) = scroll_damage(&shift([6, -4]), width, height);
         assert_eq!(boxes(ink, 10), vec![(64, 6)]);
         assert_eq!(boxes(ink, 170), vec![(40, 4)]);
         assert_eq!(boxes(ship, 10), vec![(40, 30)]);
@@ -497,18 +429,13 @@ mod tests {
     fn a_fast_flick_keeps_the_scroll_path() {
         let before = two(10);
         let after = two(40);
-        assert_eq!(
-            scroll_shift(&before, &after),
-            Some([30, 30]),
-            "a shift as tall as the box is still a scroll"
-        );
         let mut painter = AppPainter::new(true);
         painter.last = Some(before);
         assert!(
             painter.keeps_frame(&after),
             "a fast flick must not refill and repaint the whole page"
         );
-        let (ink, ship) = scroll_damage(&after.pages.text, [30, 30], WIDTH as u16, HEIGHT as u16);
+        let (ink, ship) = scroll_damage(&shift([30, 30]), WIDTH as u16, HEIGHT as u16);
         assert_eq!(boxes(ink, 10), vec![(40, 30)], "the whole box re-inks");
         assert_eq!(boxes(ship, 10), vec![(40, 30)]);
         assert_eq!(ship.rects().len(), 6);
@@ -610,7 +537,7 @@ mod tests {
     #[test]
     fn clearing_damage_lays_the_ground_back() {
         let mut frame = vec![0xFFu8; WIDTH * HEIGHT * 2];
-        let (damage, _) = scroll_damage(&two(10).pages.text, [6, 0], WIDTH as u16, HEIGHT as u16);
+        let (damage, _) = scroll_damage(&shift([6, 0]), WIDTH as u16, HEIGHT as u16);
         clear_damage(&mut frame, WIDTH, Rgb(0x12, 0x34, 0x56), damage);
         let ground = rgb565(Rgb(0x12, 0x34, 0x56));
         assert_eq!(pixel(&frame, 10, 64), ground);

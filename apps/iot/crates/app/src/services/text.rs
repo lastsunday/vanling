@@ -7,9 +7,10 @@ use crate::shared::kit::scroll::{
     FLING_MAX_PX_S, STEP_LINES, ScrollConfig, ScrollState, fling_speed,
 };
 use crate::shared::model::{Command, DeviceState, Effects};
+use crate::shared::route::PageId;
 use crate::shared::snapshot::{
-    FrameSnapshot, PageSnapshot, ScrollAreaView, TEXT_AREAS, TEXT_LINES, TEXT_ROWS, TextLine,
-    TextSnapshot,
+    FrameSnapshot, PageSnapshot, ScrollAreaView, ScrollShift, TEXT_AREAS, TEXT_LINES, TEXT_ROWS,
+    TextLine, TextSnapshot,
 };
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::font::{Face, FontFamily, Metrics as FontMetrics};
@@ -309,6 +310,7 @@ impl super::LocalPage for TextPage {
         Descriptor::new(Self::view)
             .with_repaint_ms(REPAINT_MS)
             .with_repaints(Repaint::WhenOrOverlay(text_moved))
+            .with_scroll(scroll_shift)
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -371,6 +373,41 @@ fn text_layout(width: i32) -> TextSnapshot {
 
 fn text_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
     prev.pages.text != next.pages.text
+}
+
+/// The frame that only moved this page's two boxes. A page switch, a changed reading or a
+/// thumb is a full repaint.
+fn scroll_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
+    if prev.page != PageId::Text || next.page != PageId::Text {
+        return None;
+    }
+    let areas = next.pages.text.areas;
+    let mut before = prev.pages.text;
+    let mut after = next.pages.text;
+    let mut shift = [0i16; TEXT_AREAS];
+    for (slot, (before, after)) in before
+        .areas
+        .iter_mut()
+        .zip(after.areas.iter_mut())
+        .enumerate()
+    {
+        shift[slot] = after.offset.wrapping_sub(before.offset);
+        before.offset = 0;
+        after.offset = 0;
+        if before.rect.w <= 0 || before.rect.h <= 0 {
+            return None;
+        }
+    }
+    let moving_ended = before.moving && !after.moving;
+    before.moving = false;
+    after.moving = false;
+    if before != after {
+        return None;
+    }
+    if !moving_ended && shift.iter().all(|&delta| delta == 0) {
+        return None;
+    }
+    Some(ScrollShift::new(&areas, &shift))
 }
 
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
@@ -648,46 +685,30 @@ mod tests {
     }
 
     #[test]
-    fn the_sample_text_breaks_at_both_kinds_of_newline() {
+    fn a_lone_feed_and_a_carriage_pair_both_break_at_the_same_width() {
+        const RUN: &[u8] = b"one\r\ntwo\nthree";
         let page = TextPage::default();
         let width = usize::try_from(page.scroll.areas()[0].rect.w).expect("a panel width");
         let paragraph = iot_core::ui::typeset::wrap(
-            WRAP_RUN,
+            RUN,
             width,
             iot_core::ui::typeset::MAX_LINES,
             FontMetrics::vector(u16::from(WRAP_PX)),
         );
-        let rendered: alloc::vec::Vec<&str> = paragraph.lines[..paragraph.count]
-            .iter()
-            .map(|line| {
-                core::str::from_utf8(&WRAP_RUN[line.start..line.end]).expect("the run is UTF-8")
-            })
-            .collect();
-        let feed = WRAP_RUN
-            .iter()
-            .position(|byte| *byte == b'\n')
-            .expect("a line feed");
-        let carriage = WRAP_RUN
-            .windows(2)
-            .position(|pair| pair == b"\r\n")
-            .expect("a carriage return pair");
         let lines = &paragraph.lines[..paragraph.count];
-        assert!(lines.iter().any(|line| line.end == feed), "the feed breaks");
-        assert!(
-            lines.iter().any(|line| line.end == carriage),
-            "the pair breaks at the return"
+        let starts: alloc::vec::Vec<usize> = lines.iter().map(|line| line.start).collect();
+        let ends: alloc::vec::Vec<usize> = lines.iter().map(|line| line.end).collect();
+        assert_eq!(starts, [0, 5, 9], "neither break swallows the next line");
+        assert_eq!(
+            ends,
+            [3, 8, 14],
+            "the pair breaks at the return, the feed at itself"
         );
-        assert!(
-            lines.iter().any(|line| line.start == feed + 1)
-                && lines.iter().any(|line| line.start == carriage + 2),
-            "and neither break swallows the line after it"
-        );
-        assert!(
-            !rendered
-                .iter()
-                .any(|line| line.contains('\n') || line.contains('\r')),
-            "a control character never reaches a line"
-        );
+        let rendered: alloc::vec::Vec<&str> = lines
+            .iter()
+            .map(|line| core::str::from_utf8(&RUN[line.start..line.end]).expect("UTF-8"))
+            .collect();
+        assert_eq!(rendered, ["one", "two", "three"]);
     }
 
     #[test]
@@ -1357,6 +1378,55 @@ mod tests {
             .map(|row| face.measure(&row[..row.len() - 1]))
             .collect();
         assert_eq!(ends, [120, 120, 120, 120]);
+    }
+
+    #[test]
+    fn a_pure_scroll_shifts_by_the_offset_delta() {
+        let shift = scroll_shift(&scroll_frame(10), &scroll_frame(16)).expect("a scroll");
+        assert_eq!(shift.shifts(), [6, 6]);
+    }
+
+    #[test]
+    fn a_change_beyond_the_offset_is_not_a_scroll() {
+        let before = scroll_frame(10);
+        let mut after = scroll_frame(16);
+        after.pages.text.line_count = 3;
+        assert_eq!(scroll_shift(&before, &after), None);
+        let mut after = scroll_frame(16);
+        after.page = PageId::Network;
+        assert_eq!(scroll_shift(&before, &after), None);
+    }
+
+    #[test]
+    fn the_frame_that_ends_a_fling_moves_nothing() {
+        let before = scroll_frame(10);
+        let mut after = scroll_frame(10);
+        after.pages.text.moving = false;
+        let shift = scroll_shift(&before, &after).expect("the frame that ends a fling");
+        assert_eq!(shift.shifts(), [0, 0]);
+    }
+
+    fn scroll_frame(offset: i16) -> FrameSnapshot {
+        let area = |x| ScrollAreaView {
+            rect: Rect::new(x, 40, 100, 30),
+            header: Rect::new(x, 27, 104, 13),
+            gutter: Rect::new(x + 102, 40, 2, 30),
+            offset,
+            max: 100,
+            bar: true,
+        };
+        FrameSnapshot {
+            page: PageId::Text,
+            pages: PageSnapshot {
+                text: TextSnapshot {
+                    areas: [area(10), area(170)],
+                    moving: true,
+                    ..TextSnapshot::default()
+                },
+                ..PageSnapshot::default()
+            },
+            ..FrameSnapshot::default()
+        }
     }
 
     fn expect_text(intent: BusinessIntent) -> TextIntent {

@@ -21,6 +21,7 @@ use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
+use crate::shared::snapshot::ScrollShift;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::Ui;
@@ -248,8 +249,15 @@ impl Repaint {
     }
 }
 
+/// How one page's frame moved since the last one, when that movement is a pure scroll.
+pub(super) type ScrollFn = fn(&FrameSnapshot, &FrameSnapshot) -> Option<ScrollShift>;
+
+fn no_scroll(_: &FrameSnapshot, _: &FrameSnapshot) -> Option<ScrollShift> {
+    None
+}
+
 /// How one page occupies the panel: its draw call, the fill under it, where its frames come
-/// from, and how often a snapshot drift earns a repaint.
+/// from, how often a snapshot drift earns a repaint, and what a pure scroll of it looks like.
 #[derive(Debug, Clone, Copy)]
 pub struct Descriptor {
     view: View,
@@ -258,6 +266,7 @@ pub struct Descriptor {
     camera_frames: bool,
     repaint_ms: u64,
     repaints: Repaint,
+    scroll: ScrollFn,
 }
 
 impl Descriptor {
@@ -269,6 +278,7 @@ impl Descriptor {
             camera_frames: false,
             repaint_ms: REPAINT_FLOOR_MS,
             repaints: Repaint::Never,
+            scroll: no_scroll,
         }
     }
 
@@ -298,6 +308,13 @@ impl Descriptor {
         self
     }
 
+    /// What a frame that only scrolled this page looks like. Without one, every change is a
+    /// full repaint.
+    pub(super) fn with_scroll(mut self, scroll: ScrollFn) -> Self {
+        self.scroll = scroll;
+        self
+    }
+
     pub fn ground(self) -> Option<Rgb> {
         self.ground
     }
@@ -312,6 +329,11 @@ impl Descriptor {
 
     pub fn repaints_on(self, prev: &FrameSnapshot, next: &FrameSnapshot, overlay: bool) -> bool {
         self.repaints.due(prev, next, overlay)
+    }
+
+    /// The shift when `next` is `prev` moved inside its scroll boxes and nothing else.
+    pub fn scroll_shift(self, prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
+        (self.scroll)(prev, next)
     }
 }
 

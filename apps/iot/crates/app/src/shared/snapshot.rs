@@ -10,7 +10,7 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 use iot_core::drivers::surface::MAX_LIGHTS;
-use iot_core::ui::Rect;
+use iot_core::ui::{MAX_SCROLL_AREAS, Rect};
 
 /// What the Audio page draws: the phase driving the panel plus the envelope it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -112,7 +112,7 @@ pub struct TouchSnapshot {
     pub chip_gesture_id: u8,
 }
 
-/// The scroll regions one page may publish. The text page uses two.
+/// The most scroll regions one page may publish. The text page uses two.
 pub const TEXT_AREAS: usize = 2;
 
 /// How many lines the wrapped run may be pre-broken into: the sample paragraph at 24 px.
@@ -144,6 +144,34 @@ pub struct ScrollAreaView {
     pub offset: i16,
     pub max: i16,
     pub bar: bool,
+}
+
+/// A frame that is the previous one moved inside its scroll boxes: what each box shows and how
+/// far its content went. A page answers `None` when anything else changed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ScrollShift {
+    pub areas: [ScrollAreaView; MAX_SCROLL_AREAS],
+    pub shift: [i16; MAX_SCROLL_AREAS],
+    pub count: u8,
+}
+
+impl ScrollShift {
+    pub fn new(areas: &[ScrollAreaView], shift: &[i16]) -> Self {
+        let mut moved = Self::default();
+        let count = areas.len().min(shift.len()).min(MAX_SCROLL_AREAS);
+        moved.areas[..count].copy_from_slice(&areas[..count]);
+        moved.shift[..count].copy_from_slice(&shift[..count]);
+        moved.count = count as u8;
+        moved
+    }
+
+    pub fn views(&self) -> &[ScrollAreaView] {
+        &self.areas[..usize::from(self.count)]
+    }
+
+    pub fn shifts(&self) -> &[i16] {
+        &self.shift[..usize::from(self.count)]
+    }
 }
 
 /// What the Text page publishes: one view per region, the run pre-broken into lines, the

@@ -511,6 +511,24 @@ spare. The whole `Ui` is 11,896 B, inside the panel core's 24 KiB stack, and
 `ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` pins it under 12 KiB; `Style` at
 84 B and `Length` at 4 B have pinned tests of their own.
 
+### Three refactors that look worth doing, and where each one starts (`[test]`, 2026-11-22)
+
+- **`ControlRect` does not fold into `ui::Rect`**: the former is panel space (usize, non-negative,
+  shared by drawing and hit testing), the latter layout space (i32, may be negative, rounded from
+  1/64 px). Folding them would add casts to four constructors and six arithmetic sites and drop the
+  non-negative invariant; the duplicated `holds` is two lines.
+- **`Style` is not packed yet**: seven `Length`s + `Inset` at 16 B + `Edges` at 8 B + enums/bools at
+  11 B make 84 B. Sentinel-packing `Inset`, folding the enums and bools into flags and dropping
+  `grow/shrink/max_lines` to `u8` saves about 18 B a style and 1,080 B of `Ui`; the cost is bit
+  arithmetic on the API pages write most. `Ui` is 11,896 / 12,288 today, 392 B spare, enough for
+  about three more `u16`s; **pack when a fourth word is needed**.
+- **The font tables are not cut**: 575,155 B live in flash, and the image is 1,798,704 / 6,291,456 =
+  28.59%. The wall is static RAM, not flash; only dual-slot OTA or a smaller-flash board would make
+  cutting Big5 / 12-bit row packing / codepoint deltas worthwhile.
+
+`a_tall_run_keeps_the_height_it_wrapped_to` pins that a natural height is no longer clipped at
+`i16::MAX`: a 32-line run at 24 px is 61,440 subpx.
+
 ## Numbers must not move the layout (`[test]`, 2026-11-20)
 
 The Attitude page once declared all three reading columns with `grow(1)`: flex starts each
@@ -548,11 +566,15 @@ Layout was expensive because it measured repeatedly: the host counted 2,394 `wra
 `layout_text` ran `max_content` + `wrap` from the top each time, and both binary-search glyphs in
 flash (one advance ≈ 800–900 cycles).
 
-The fix remembers which constraints a node's size came from: `Node::measured_at: Measured {
-min_w, max_w }` holds the width after `enforce`, and `layout_node` returns on a hit. `Tree::push`
-builds with `..Node::default()`, whose default is a pair no constraint produces, so a fresh
-declaration never reads as measured; a width that really changes re-measures, pinned by
-`a_text_node_re_measures_when_the_width_changes`.
+The fix remembers which constraints a node's size came from: `Node::measured_at: Measured(u64)`
+packs the four post-`enforce` constraints into one word, and a box returns on a full-key hit. A run
+keys on width alone — a line breaks on width, never on the height it is offered — with its natural
+height in the high half, so a height change re-clamps against the current `min_h`/`max_h` instead of
+re-wrapping. `Tree::push` builds with `..Node::default()`, and `u64::MAX` is a word no constraint
+produces, so a fresh declaration never reads as measured; a width that really changes re-measures,
+pinned by `a_text_node_re_measures_when_the_width_changes`,
+`a_run_keys_on_its_width_not_the_height_it_is_offered` and
+`a_run_clamped_by_height_gets_its_lines_back`.
 
 | Reading (S3, 240 MHz) | before | after |
 | --- | --- | --- |

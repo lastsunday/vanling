@@ -451,6 +451,14 @@ Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排�
 
 布局层不保留树：`Ui` 在一次 `view` 里攒下声明，布局一次、落墨一次。节点数组 `MAX_NODES = 60`，每个节点 160 B；页面自己最满的是 Text（25 行 + 18 行字模 + 两个 thumb + 页壳 = 56），落墨时再加角标，离上限还有四格。`Ui` 整体 11,896 B，落在面板核 24 KiB 栈的预算内，`ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given` 把它钉在 12 KiB 以内；`Style` 84 B、`Length` 4 B 也各有钉住的测试。
 
+### 三个「看起来该做」的重构，以及各自的触发线（`[测试]`，2026-11-22）
+
+- **`ControlRect` 不并入 `ui::Rect`**：前者是面板空间（usize、非负，绘制与命中测试共用），后者是布局空间（i32、可为负、1/64 px 取整）。合并要给 4 个构造器与 6 处算术加 cast，并丢掉非负不变量；重复的 `holds` 只有两行。
+- **`Style` 暂不打包**：7 个 `Length` + `Inset` 16 B + `Edges` 8 B + 枚举/bool 共 11 B，合计 84 B。把 `Inset` 压成哨兵、枚举与 bool 折进 flags、`grow/shrink/max_lines` 降为 `u8`，约省 18 B/Style、`Ui` 省 1,080 B；代价是页面最常写的 API 全部走位操作。当前 `Ui` 11,896 / 12,288，余 392 B，够再加约 3 个 `u16`；**需要第 4 个字时再做**。
+- **字模表不裁**：575,155 B 在 flash，当前镜像 1,798,704 / 6,291,456 = 28.59%。墙是静态 RAM，不是 flash；只有双槽 OTA 或更小 flash 的板才需要裁 Big5 / 12 bit 行打包 / 码点 delta。
+
+`a_tall_run_keeps_the_height_it_wrapped_to` 钉住自然高度不再被 i16 截断：32 行 × 24 px 的 run 是 61,440 subpx，超过 `i16::MAX`。
+
 ## 数字不能带动布局（`[测试]`，2026-11-20）
 
 Attitude 页曾把三列读数都写成 `grow(1)`：flex 的起点是每列的**内容宽**，位数一变列宽就重新分配，整块文本跟着左右跳。修法分两层：
@@ -468,7 +476,7 @@ Attitude 页曾把三列读数都写成 `grow(1)`：flex 的起点是每列的**
 
 布局贵在重复测量：host 上数出 `wrap` 每帧 2,394 次，而 Attitude 只有 45 个文本节点，约 53 次/节点。flex 的每一趟都要问子节点尺寸（测量、摆放、再测量），`grow` 级联还会换一组约束再问；`layout_text` 每次都从头跑 `max_content` + `wrap`，两者都在 flash 里二分查字形（单次 advance ≈ 800–900 cycles）。
 
-修法是在节点上记住尺寸对应的约束：`Node::measured_at: Measured { min_w, max_w }` 存 `enforce` 之后的宽度，`layout_node` 命中即返回；`Tree::push` 用 `..Node::default()` 构造，默认是一对任何约束都不会产生的哨兵，新声明因此天然未测；宽度真变会重测，`a_text_node_re_measures_when_the_width_changes` 钉住这一点。
+修法是在节点上记住尺寸对应的约束：`Node::measured_at: Measured(u64)` 把 `enforce` 之后的四个约束压进一个字，盒子全键命中即返回；文本只按宽度命中——断行只取决于宽度，自然高度存进高 32 位，高度变了按当前 `min_h`/`max_h` 重新夹紧而不重排。`Tree::push` 用 `..Node::default()` 构造，`u64::MAX` 是任何约束都不会产生的哨兵，新声明因此天然未测；宽度真变会重测，`a_text_node_re_measures_when_the_width_changes`、`a_run_keys_on_its_width_not_the_height_it_is_offered` 与 `a_run_clamped_by_height_gets_its_lines_back` 钉住这三件事。
 
 | 读数（S3，240 MHz） | 改前 | 改后 |
 | --- | --- | --- |
