@@ -37,7 +37,7 @@ const EM: f64 = 64.0;
 const TOLERANCE: f64 = 0.3;
 const MAX_DEPTH: u8 = 5;
 
-/// The paragraph the wrap region draws; the page includes the same bytes.
+/// Every glyph the UI can draw: the wrap specimen plus the i18n catalogue.
 pub fn sample_path() -> PathBuf {
     crate_dir().join("../core/assets/font/vector-sample.txt")
 }

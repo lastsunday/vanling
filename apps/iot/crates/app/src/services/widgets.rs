@@ -3,19 +3,21 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-use iot_core::ui::{BoxConstraints, Canvas, PX, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{BoxConstraints, Canvas, NodeId, PX, Rect, Screen, ScrollId, Style, Ui};
 
-use crate::shared::intent::{BusinessIntent, InputIntent, WidgetsIntent};
-use crate::shared::kit::chrome;
+use crate::shared::intent::{BusinessIntent, InputIntent, Key, WidgetsAction, WidgetsIntent};
 use crate::shared::kit::i18n::{Lang, Msg};
+use crate::shared::kit::keyboard::FIELD_BYTES;
 use crate::shared::kit::scroll::{BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed};
 use crate::shared::kit::slot::Slot;
 use crate::shared::kit::state::State;
+use crate::shared::kit::tag::TagTable;
 use crate::shared::kit::theme::{ButtonKind, Theme};
 use crate::shared::kit::widgets::{
-    Avatar, Badge, Button, Checkbox, Chip, IconButton, ListTile, ProgressBar, Radio, Select,
-    Slider, Spinner, Switch, TextField, Tone, Tooltip,
+    Avatar, Badge, Button, Checkbox, Chip, Divider, IconButton, ListTile, ProgressBar, Radio,
+    Select, Slider, Spinner, Switch, TextField, Tone, Tooltip,
 };
+use crate::shared::kit::{chrome, keyboard};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
@@ -30,28 +32,13 @@ const AREA: ScrollId = ScrollId::new(1);
 const CONTENT_W: i16 = PANEL_COLUMNS as i16 - chrome::MARGIN - 2 * BAR;
 const GAP: i16 = 6;
 const BUTTON: i16 = (CONTENT_W - 2 * GAP) / 3;
-const CHIP: i16 = 60;
+/// Wide enough for `OUTLINED` at 14 px and fixed, so the row holds its shape in either language.
+const CHIP: i16 = 76;
 const TILE_H: i16 = 2 * iot_core::ui::panel::ROW_PITCH as i16;
 
-/// The one custom slot: the list tile, drawn as a cell.
+/// The two custom cells: the list tile, and the keyboard the field raises.
 const TILE_SLOT: u8 = 0;
-
-const TAG_FILLED: u16 = 1;
-const TAG_OUTLINED: u16 = 2;
-const TAG_BARE: u16 = 3;
-const TAG_CHIP_A: u16 = 4;
-const TAG_CHIP_B: u16 = 5;
-const TAG_SWITCH: u16 = 6;
-const TAG_CHECK: u16 = 7;
-const TAG_RADIO0: u16 = 8;
-const TAG_RADIO1: u16 = 9;
-const TAG_RADIO2: u16 = 10;
-const TAG_SLIDER: u16 = 11;
-const TAG_FIELD: u16 = 12;
-const TAG_SELECT: u16 = 13;
-const TAG_ICON: u16 = 14;
-const TAG_TILE: u16 = 15;
-const TAGS: usize = 15;
+const KEY_SLOT: u8 = 1;
 
 const SEL_FILLED: u8 = 1 << 0;
 const SEL_OUTLINED: u8 = 1 << 1;
@@ -72,7 +59,8 @@ const SPIN_MS: u16 = 100;
 pub struct WidgetsPage {
     scroll: ScrollState<1>,
     drag: Option<Drag>,
-    tags: [(u16, Rect); TAGS],
+    tags: TagTable<{ WidgetsAction::ALL.len() }>,
+    keyboard: Rect,
     values: WidgetsSnapshot,
     spin_ms: u16,
 }
@@ -84,16 +72,17 @@ impl Default for WidgetsPage {
         finish(&mut ui);
         let mut scroll = ScrollState::default();
         scroll.measure(&ui, [AREA], SCROLL);
-        let mut tags = [(0, Rect::default()); TAGS];
-        for (tag, rect) in ui.tags() {
-            if let Some(slot) = tags.get_mut(usize::from(tag).saturating_sub(1)) {
-                *slot = (tag, rect);
-            }
-        }
+        let tags = TagTable::measure(&ui);
+        let mut focused = FrameSnapshot::default();
+        focused.pages.widgets.focus = true;
+        let mut ui = headless();
+        let id = declare(&focused, &mut ui).expect("a focused field raises the keyboard");
+        finish(&mut ui);
         Self {
             scroll,
             drag: None,
             tags,
+            keyboard: ui.rect(id),
             values: WidgetsSnapshot {
                 slider: 60,
                 ..WidgetsSnapshot::default()
@@ -140,42 +129,32 @@ impl WidgetsPage {
         if !area.rect.contains(x, y) {
             return 0;
         }
-        let content_y = y + i32::from(area.offset);
-        self.tags
-            .iter()
-            .find(|(tag, rect)| *tag != 0 && rect.contains(x, content_y))
-            .map_or(0, |(tag, _)| *tag)
+        self.tags.at(x, y, area.offset)
     }
 
-    fn tag_rect(&self, tag: u16) -> Option<Rect> {
-        self.tags
-            .iter()
-            .find(|(candidate, _)| *candidate == tag)
-            .map(|(_, rect)| *rect)
-    }
-
-    fn toggle(&mut self, tag: u16) {
-        match tag {
-            TAG_FILLED => self.values.selected ^= SEL_FILLED,
-            TAG_OUTLINED => self.values.selected ^= SEL_OUTLINED,
-            TAG_BARE => self.values.selected ^= SEL_BARE,
-            TAG_CHIP_A => self.values.selected ^= SEL_CHIP_A,
-            TAG_CHIP_B => self.values.selected ^= SEL_CHIP_B,
-            TAG_SWITCH => self.values.switch = !self.values.switch,
-            TAG_CHECK => self.values.check = !self.values.check,
-            TAG_RADIO0 => self.values.radio = 0,
-            TAG_RADIO1 => self.values.radio = 1,
-            TAG_RADIO2 => self.values.radio = 2,
-            TAG_FIELD => self.values.focus = !self.values.focus,
-            TAG_SELECT => self.values.choice = (self.values.choice + 1) % 3,
-            TAG_ICON => self.values.spinning = !self.values.spinning,
-            TAG_TILE => self.values.tile = !self.values.tile,
-            _ => {}
+    fn toggle(&mut self, action: WidgetsAction) {
+        match action {
+            WidgetsAction::Filled => self.values.selected ^= SEL_FILLED,
+            WidgetsAction::Outlined => self.values.selected ^= SEL_OUTLINED,
+            WidgetsAction::Bare => self.values.selected ^= SEL_BARE,
+            WidgetsAction::ChipA => self.values.selected ^= SEL_CHIP_A,
+            WidgetsAction::ChipB => self.values.selected ^= SEL_CHIP_B,
+            WidgetsAction::Switch => self.values.switch = !self.values.switch,
+            WidgetsAction::Check => self.values.check = !self.values.check,
+            WidgetsAction::Radio0 => self.values.radio = 0,
+            WidgetsAction::Radio1 => self.values.radio = 1,
+            WidgetsAction::Radio2 => self.values.radio = 2,
+            WidgetsAction::Field => self.values.focus = !self.values.focus,
+            WidgetsAction::Select => self.values.choice = (self.values.choice + 1) % 3,
+            WidgetsAction::Icon => self.values.spinning = !self.values.spinning,
+            WidgetsAction::Tile => self.values.tile = !self.values.tile,
+            // A slider's value comes from `Slide`, not from a tap on its box.
+            WidgetsAction::Slider => {}
         }
     }
 
     fn slide(&mut self, x: u16) {
-        let Some(rect) = self.tag_rect(TAG_SLIDER) else {
+        let Some(rect) = self.tags.rect(WidgetsAction::Slider.tag()) else {
             return;
         };
         let width = rect.w.max(1);
@@ -194,16 +173,23 @@ impl super::Service for WidgetsPage {
             return (None, Effects::default());
         };
         match *intent {
-            WidgetsIntent::Press { tag } => {
-                self.values.pressed = tag;
+            WidgetsIntent::Press { action } => {
+                self.values.pressed = action.tag();
             }
-            WidgetsIntent::Tap { tag } => {
+            WidgetsIntent::Tap { action } => {
                 self.values.pressed = 0;
-                self.toggle(tag);
+                self.toggle(action);
             }
-            WidgetsIntent::Slide { tag, x } => {
-                if tag == TAG_SLIDER {
+            WidgetsIntent::Slide { action, x } => {
+                if action == WidgetsAction::Slider {
                     self.slide(x);
+                }
+            }
+            WidgetsIntent::Key { key, at_ms } => {
+                if key == Key::Cancel {
+                    self.values.focus = false;
+                } else {
+                    self.values.text.edit(key, at_ms);
                 }
             }
             WidgetsIntent::Grab { id, area, y } => {
@@ -228,6 +214,9 @@ impl super::Service for WidgetsPage {
                 speed,
                 at_ms,
             } => {
+                // The finger is off the glass: whatever it last pressed is no longer held,
+                // and a slider left latched would turn the next drag anywhere into a slide.
+                self.values.pressed = 0;
                 if self.drag.as_ref().is_some_and(|drag| drag.id == id) {
                     let drag = self.drag.take().expect("the slot was found");
                     let speed = drag.release(at_ms);
@@ -246,6 +235,20 @@ impl super::Service for WidgetsPage {
 
 impl super::LocalPage for WidgetsPage {
     fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+        // Focused, the keyboard owns the panel: the gallery behind it is not drawn, so a swipe
+        // must not scroll it and a drag must not start.
+        if self.values.focus {
+            let InputEvent::Gesture(GestureEvent::Tap { x, y, at_ms, .. }) = op.event else {
+                return None;
+            };
+            let key = keyboard::key_at(
+                self.keyboard,
+                i32::from(x),
+                i32::from(y),
+                self.values.text.layer(),
+            )?;
+            return Some(BusinessIntent::Widgets(WidgetsIntent::Key { key, at_ms }));
+        }
         let tracked = self.drag.as_ref().map(|drag| drag.area);
         let area = |x: u16, y: u16| self.scroll.area_at(i32::from(x), i32::from(y));
         match op.event {
@@ -261,13 +264,13 @@ impl super::LocalPage for WidgetsPage {
                         at_ms: Some(at_ms),
                     }));
                 }
-                let tag = self.tag_at(i32::from(x), i32::from(y));
-                (tag != 0).then_some(BusinessIntent::Widgets(WidgetsIntent::Tap { tag }))
+                let action = WidgetsAction::from_tag(self.tag_at(i32::from(x), i32::from(y)))?;
+                Some(BusinessIntent::Widgets(WidgetsIntent::Tap { action }))
             }
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let tag = self.tag_at(i32::from(x), i32::from(y));
-                if tag != 0 {
-                    return Some(BusinessIntent::Widgets(WidgetsIntent::Press { tag }));
+                let action = WidgetsAction::from_tag(self.tag_at(i32::from(x), i32::from(y)));
+                if let Some(action) = action {
+                    return Some(BusinessIntent::Widgets(WidgetsIntent::Press { action }));
                 }
                 let area = area(x, y)?;
                 Some(BusinessIntent::Widgets(WidgetsIntent::Grab {
@@ -285,9 +288,11 @@ impl super::LocalPage for WidgetsPage {
                         at_ms,
                     }));
                 }
-                let tag = self.values.pressed;
-                if tag == TAG_SLIDER {
-                    return Some(BusinessIntent::Widgets(WidgetsIntent::Slide { tag, x }));
+                if self.values.pressed == WidgetsAction::Slider.tag() {
+                    return Some(BusinessIntent::Widgets(WidgetsIntent::Slide {
+                        action: WidgetsAction::Slider,
+                        x,
+                    }));
                 }
                 let area = area(x, y)?;
                 Some(BusinessIntent::Widgets(WidgetsIntent::Grab {
@@ -320,8 +325,16 @@ impl super::LocalPage for WidgetsPage {
                     at_ms: Some(at_ms),
                 }))
             }
-            InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-                Some(BusinessIntent::Widgets(WidgetsIntent::Tap { tag: 0 }))
+            InputEvent::Gesture(GestureEvent::LongPress { id, x, y, .. }) => {
+                // A hold that never became a swipe still ends the press it started.
+                let area = tracked.or_else(|| area(x, y))?;
+                Some(BusinessIntent::Widgets(WidgetsIntent::Release {
+                    id,
+                    area,
+                    lines: 0,
+                    speed: 0,
+                    at_ms: None,
+                }))
             }
             _ => None,
         }
@@ -332,7 +345,7 @@ impl super::LocalPage for WidgetsPage {
     }
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
-        declare(snapshot, ui);
+        let _ = declare(snapshot, ui);
     }
 
     fn descriptor() -> Descriptor {
@@ -360,6 +373,7 @@ impl super::LocalPage for WidgetsPage {
         self.scroll.reset();
         self.drag = None;
         self.values.pressed = 0;
+        self.values.focus = false;
     }
 }
 
@@ -374,33 +388,43 @@ fn finish(ui: &mut Ui<'_, '_>) {
     ));
 }
 
-fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
     let lang = snapshot.lang;
     let w = snapshot.pages.widgets;
     let theme = Theme::PANEL;
+    let mut keyboard = None;
     chrome::page(ui, |ui| {
         chrome::title(ui, Msg::WidgetsTitle.bytes(lang));
+        if w.focus {
+            ui.add(
+                TextField::new(w.text.as_bytes())
+                    .width(CONTENT_W)
+                    .focused(true),
+            );
+            keyboard = Some(ui.custom(Style::new().width(CONTENT_W).height(keyboard::H), KEY_SLOT));
+            return;
+        }
         chrome::scroller(ui, AREA, w.area, |ui| {
             section(ui, Msg::SectionActions.bytes(lang), &theme);
             ui.row(Style::new().gap(GAP).middle(), |ui| {
                 ui.add(
                     Button::new(Msg::Filled.bytes(lang))
                         .width(BUTTON)
-                        .tag(TAG_FILLED)
+                        .tag(WidgetsAction::Filled.tag())
                         .state(selected(w.selected & SEL_FILLED != 0)),
                 );
                 ui.add(
                     Button::new(Msg::Outlined.bytes(lang))
                         .kind(ButtonKind::Outlined)
                         .width(BUTTON)
-                        .tag(TAG_OUTLINED)
+                        .tag(WidgetsAction::Outlined.tag())
                         .state(selected(w.selected & SEL_OUTLINED != 0)),
                 );
                 ui.add(
                     Button::new(Msg::Bare.bytes(lang))
                         .kind(ButtonKind::Text)
                         .width(BUTTON)
-                        .tag(TAG_BARE)
+                        .tag(WidgetsAction::Bare.tag())
                         .state(selected(w.selected & SEL_BARE != 0)),
                 );
             });
@@ -410,37 +434,41 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 ui.add(
                     Chip::new(Msg::Filled.bytes(lang))
                         .width(CHIP)
-                        .tag(TAG_CHIP_A)
+                        .tag(WidgetsAction::ChipA.tag())
                         .selected(w.selected & SEL_CHIP_A != 0),
                 );
                 ui.add(
                     Chip::new(Msg::Outlined.bytes(lang))
                         .width(CHIP)
-                        .tag(TAG_CHIP_B)
+                        .tag(WidgetsAction::ChipB.tag())
                         .selected(w.selected & SEL_CHIP_B != 0),
                 );
-                ui.add(Switch::new(w.switch).tag(TAG_SWITCH));
-                ui.add(Checkbox::new(w.check).tag(TAG_CHECK));
+                ui.add(Switch::new(w.switch).tag(WidgetsAction::Switch.tag()));
+                ui.add(Checkbox::new(w.check).tag(WidgetsAction::Check.tag()));
             });
             ui.row(Style::new().gap(GAP).middle(), |ui| {
-                ui.add(Radio::new(w.radio == 0).tag(TAG_RADIO0));
-                ui.add(Radio::new(w.radio == 1).tag(TAG_RADIO1));
-                ui.add(Radio::new(w.radio == 2).tag(TAG_RADIO2));
+                ui.add(Radio::new(w.radio == 0).tag(WidgetsAction::Radio0.tag()));
+                ui.add(Radio::new(w.radio == 1).tag(WidgetsAction::Radio1.tag()));
+                ui.add(Radio::new(w.radio == 2).tag(WidgetsAction::Radio2.tag()));
             });
 
             section(ui, Msg::SectionInput.bytes(lang), &theme);
-            ui.add(Slider::new(w.slider).width(CONTENT_W).tag(TAG_SLIDER));
+            ui.add(
+                Slider::new(w.slider)
+                    .width(CONTENT_W)
+                    .tag(WidgetsAction::Slider.tag()),
+            );
             ui.add(ProgressBar::new(w.slider).width(CONTENT_W));
             ui.add(
-                TextField::new(Msg::Value.bytes(lang))
+                TextField::new(field_text(&w.text, lang))
                     .width(CONTENT_W)
                     .focused(w.focus)
-                    .tag(TAG_FIELD),
+                    .tag(WidgetsAction::Field.tag()),
             );
             ui.add(
                 Select::new(choice(lang, w.choice))
                     .width(CONTENT_W)
-                    .tag(TAG_SELECT),
+                    .tag(WidgetsAction::Select.tag()),
             );
 
             section(ui, Msg::SectionDisplay.bytes(lang), &theme);
@@ -449,7 +477,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 ui.add(Avatar::new(b"V"));
                 ui.add(
                     IconButton::new(if w.spinning { '-' } else { '+' })
-                        .tag(TAG_ICON)
+                        .tag(WidgetsAction::Icon.tag())
                         .state(selected(w.spinning)),
                 );
                 let (text, tone) = if w.switch {
@@ -459,15 +487,20 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 };
                 ui.add(Badge::new(text).tone(tone));
             });
+            caption(ui, Msg::DisplayNames.bytes(lang), &theme);
 
             section(ui, Msg::SectionRows.bytes(lang), &theme);
+            ui.add(Tooltip::new(Msg::TapHint.bytes(lang)));
             ui.custom(
-                Style::new().width(CONTENT_W).height(TILE_H).tag(TAG_TILE),
+                Style::new()
+                    .width(CONTENT_W)
+                    .height(TILE_H)
+                    .tag(WidgetsAction::Tile.tag()),
                 TILE_SLOT,
             );
-            ui.add(Tooltip::new(Msg::TapHint.bytes(lang)));
         });
     });
+    keyboard
 }
 
 fn selected(on: bool) -> State {
@@ -475,8 +508,22 @@ fn selected(on: bool) -> State {
 }
 
 fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
+    ui.add(Divider::new().width(CONTENT_W));
+    caption(ui, run, theme);
+}
+
+fn caption(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
     let ink = ui.color(theme.muted);
     ui.text(run, Style::new().nowrap().color(ink));
+}
+
+/// The field prints the draft, and falls back to its own name only while empty.
+fn field_text(text: &keyboard::Text<FIELD_BYTES>, lang: Lang) -> &[u8] {
+    if text.is_empty() {
+        Msg::Value.bytes(lang)
+    } else {
+        text.as_bytes()
+    }
 }
 
 fn choice(lang: Lang, index: u8) -> &'static [u8] {
@@ -519,23 +566,29 @@ fn widgets_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShi
 fn custom(
     snapshot: &FrameSnapshot,
     _screen: Screen,
-    _slot: u8,
+    slot: u8,
     canvas: &mut Canvas<'_>,
     rect: Rect,
 ) {
     let w = snapshot.pages.widgets;
     let lang = snapshot.lang;
-    let trailing = if w.switch {
-        Msg::On.bytes(lang)
-    } else {
-        Msg::Off.bytes(lang)
-    };
-    ListTile::new(Msg::Row.bytes(lang))
-        .subtitle(Msg::Detail.bytes(lang))
-        .leading(Slot::Glyph('#'))
-        .trailing(Slot::Badge(trailing))
-        .state(State::NONE.then(State::SELECTED, w.tile))
-        .draw(canvas, rect, &Theme::PANEL);
+    match slot {
+        TILE_SLOT => {
+            let trailing = if w.tile {
+                Msg::On.bytes(lang)
+            } else {
+                Msg::Off.bytes(lang)
+            };
+            ListTile::new(Msg::Row.bytes(lang))
+                .subtitle(Msg::Detail.bytes(lang))
+                .leading(Slot::Glyph('#'))
+                .trailing(Slot::Badge(trailing))
+                .state(State::NONE.then(State::SELECTED, w.tile))
+                .draw(canvas, rect, &Theme::PANEL);
+        }
+        KEY_SLOT => keyboard::draw(canvas, rect, w.text, &Theme::PANEL),
+        _ => {}
+    }
 }
 
 /// The gallery never draws wider than the panel.
@@ -547,6 +600,7 @@ mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use alloc::vec::Vec;
+    use iot_core::drivers::input::{RawPoint, TouchContinuity, TouchGestures};
 
     fn op(event: GestureEvent) -> InputIntent {
         InputIntent {
@@ -570,9 +624,15 @@ mod tests {
         page.apply(&intent, &mut state);
     }
 
+    fn key_intent(page: &WidgetsPage, cell: usize) -> BusinessIntent {
+        let (x, y) = keyboard::key_centre(page.keyboard, cell);
+        page.bind(&tap(x, y), &DeviceState::default())
+            .expect("the key is inside the keyboard")
+    }
+
     /// Brings a control into the viewport, then taps it where the gallery now draws it.
     fn tap_tag(page: &mut WidgetsPage, tag: u16) {
-        let rect = page.tag_rect(tag).expect("the control was laid out");
+        let rect = page.tags.rect(tag).expect("the control was laid out");
         let area = page.scroll.areas()[0];
         let middle = rect.y + rect.h / 2;
         let target = middle - (area.rect.y + area.rect.bottom()) / 2;
@@ -587,6 +647,89 @@ mod tests {
             .bind(&tap(x, y), &DeviceState::default())
             .expect("the tap lands");
         apply(page, intent);
+    }
+
+    /// One raw panel sample through the driver's continuity tracker and the gesture
+    /// classifier, into the page: the chain a finger actually runs.
+    fn drive_raw(
+        continuity: &mut TouchContinuity,
+        gestures: &mut TouchGestures,
+        page: &mut WidgetsPage,
+        raw: &[RawPoint],
+        now_ms: u64,
+    ) {
+        use iot_core::drivers::input::EventAggregator;
+        let Some(sample) = continuity.update(raw) else {
+            return;
+        };
+        let mut next = gestures.feed(InputEvent::Touch(sample), now_ms);
+        while let Some(event) = next {
+            if let Some(intent) =
+                page.bind(&InputIntent { source: 0, event }, &DeviceState::default())
+            {
+                apply(page, intent);
+            }
+            next = gestures.tick(now_ms);
+        }
+    }
+
+    /// A finger that lands again right after a slide must be a new contact. Merged into the
+    /// slide's tracker it arrives as a contact, no press is reported for it, and the tap it
+    /// becomes carries the slider's own coordinates — the control the finger chose never hears.
+    #[test]
+    fn a_tap_right_after_a_slide_reaches_the_control_it_lands_on() {
+        let mut page = WidgetsPage::default();
+        let mut continuity = TouchContinuity::new();
+        let mut gestures = TouchGestures::new();
+        let slider = page.tags.rect(WidgetsAction::Slider.tag()).unwrap();
+        let chip = page.tags.rect(WidgetsAction::ChipB.tag()).unwrap();
+        let point = |x: u16, y: u16| RawPoint::new(x, y, RawPoint::NO_ID);
+        let y = (slider.y + slider.h / 2) as u16;
+        let start = (slider.x + 20) as u16;
+
+        drive_raw(
+            &mut continuity,
+            &mut gestures,
+            &mut page,
+            &[point(start, y)],
+            0,
+        );
+        for step in 1..=5u16 {
+            let x = start + step * 20;
+            drive_raw(
+                &mut continuity,
+                &mut gestures,
+                &mut page,
+                &[point(x, y)],
+                u64::from(step) * 10,
+            );
+        }
+        assert!(page.values.slider > 0, "the finger slid the slider");
+
+        // Lift, then land on the chip inside the window a release is still confirmed in.
+        drive_raw(&mut continuity, &mut gestures, &mut page, &[], 60);
+        let (x, y) = ((chip.x + chip.w / 2) as u16, (chip.y + chip.h / 2) as u16);
+        drive_raw(
+            &mut continuity,
+            &mut gestures,
+            &mut page,
+            &[point(x, y)],
+            70,
+        );
+        for step in 1..=3u64 {
+            drive_raw(
+                &mut continuity,
+                &mut gestures,
+                &mut page,
+                &[],
+                70 + step * 10,
+            );
+        }
+        assert!(
+            page.values.selected & SEL_CHIP_B != 0,
+            "the tap after a slide reached the chip"
+        );
+        assert_eq!(page.values.pressed, 0, "and the slide let go");
     }
 
     #[test]
@@ -620,17 +763,64 @@ mod tests {
     }
 
     #[test]
-    fn every_control_is_tagged_once() {
+    fn every_action_is_drawn_once() {
         let page = WidgetsPage::default();
-        for tag in 1..=TAG_TILE {
-            assert!(page.tag_rect(tag).is_some(), "tag {tag} was not laid out");
-        }
+        let drawn: Vec<u16> = page.tags.iter().map(|(tag, _)| tag).collect();
+        let expected: Vec<u16> = WidgetsAction::ALL
+            .iter()
+            .map(|action| action.tag())
+            .collect();
+        assert_eq!(drawn, expected);
+    }
+
+    #[test]
+    fn a_focused_field_takes_keys_and_ok_leaves() {
+        let mut page = WidgetsPage::default();
+        tap_tag(&mut page, WidgetsAction::Field.tag());
+        assert!(page.values.focus);
+        let intent = key_intent(&page, 1);
+        assert_eq!(
+            intent,
+            BusinessIntent::Widgets(WidgetsIntent::Key {
+                key: Key::Char(b'2'),
+                at_ms: 0
+            })
+        );
+        apply(&mut page, intent);
+        assert_eq!(page.values.text.as_bytes(), b"a");
+        let ok = key_intent(&page, 14);
+        apply(&mut page, ok);
+        assert!(!page.values.focus, "OK puts the gallery back");
+    }
+
+    #[test]
+    fn the_gallery_field_prints_what_was_typed() {
+        let mut page = WidgetsPage::default();
+        assert_eq!(field_text(&page.values.text, Lang::En), b"VALUE");
+        page.values
+            .text
+            .edit(Key::Char(crate::shared::intent::Layer::Abc.face(1)), 0);
+        assert_eq!(field_text(&page.values.text, Lang::En), b"a");
+    }
+
+    #[test]
+    fn the_keyboard_is_drawn_only_while_the_field_is_focused() {
+        let mut ui = headless();
+        WidgetsPage::view(&FrameSnapshot::default(), &mut ui);
+        assert!(ui.tags().next().is_some(), "the gallery is up");
+        let mut focused = FrameSnapshot::default();
+        focused.pages.widgets.focus = true;
+        let mut ui = headless();
+        let id = declare(&focused, &mut ui).expect("a focused field raises the keyboard");
+        finish(&mut ui);
+        assert_eq!(ui.rect(id).h, i32::from(keyboard::H));
+        assert_eq!(ui.tags().count(), 0, "the gallery is gone while typing");
     }
 
     #[test]
     fn the_tags_stay_put_across_languages_and_values() {
         let page = WidgetsPage::default();
-        let expected: Vec<_> = page.tags.to_vec();
+        let expected: Vec<_> = page.tags.iter().collect();
         let states = [
             WidgetsSnapshot::default(),
             WidgetsSnapshot {
@@ -639,7 +829,6 @@ mod tests {
                 check: true,
                 radio: 2,
                 slider: 5,
-                focus: true,
                 choice: 2,
                 tile: true,
                 spinner: 3,
@@ -669,37 +858,37 @@ mod tests {
     #[test]
     fn a_tap_toggles_the_control_it_lands_on() {
         let mut page = WidgetsPage::default();
-        tap_tag(&mut page, TAG_SWITCH);
+        tap_tag(&mut page, WidgetsAction::Switch.tag());
         assert!(page.values.switch);
-        tap_tag(&mut page, TAG_CHECK);
+        tap_tag(&mut page, WidgetsAction::Check.tag());
         assert!(page.values.check);
-        tap_tag(&mut page, TAG_CHIP_A);
+        tap_tag(&mut page, WidgetsAction::ChipA.tag());
         assert!(page.values.selected & SEL_CHIP_A != 0);
-        tap_tag(&mut page, TAG_FIELD);
-        assert!(page.values.focus);
-        tap_tag(&mut page, TAG_TILE);
+        tap_tag(&mut page, WidgetsAction::Tile.tag());
         assert!(page.values.tile);
-        tap_tag(&mut page, TAG_ICON);
+        tap_tag(&mut page, WidgetsAction::Icon.tag());
         assert!(page.values.spinning);
-        tap_tag(&mut page, TAG_SELECT);
+        tap_tag(&mut page, WidgetsAction::Select.tag());
         assert_eq!(page.values.choice, 1);
+        tap_tag(&mut page, WidgetsAction::Field.tag());
+        assert!(page.values.focus);
     }
 
     #[test]
     fn a_radio_stays_chosen_until_another_is_tapped() {
         let mut page = WidgetsPage::default();
-        tap_tag(&mut page, TAG_RADIO2);
+        tap_tag(&mut page, WidgetsAction::Radio2.tag());
         assert_eq!(page.values.radio, 2);
-        tap_tag(&mut page, TAG_RADIO2);
+        tap_tag(&mut page, WidgetsAction::Radio2.tag());
         assert_eq!(page.values.radio, 2);
-        tap_tag(&mut page, TAG_RADIO1);
+        tap_tag(&mut page, WidgetsAction::Radio1.tag());
         assert_eq!(page.values.radio, 1);
     }
 
     #[test]
     fn a_slider_follows_the_finger() {
         let mut page = WidgetsPage::default();
-        let rect = page.tag_rect(TAG_SLIDER).unwrap();
+        let rect = page.tags.rect(WidgetsAction::Slider.tag()).unwrap();
         let press = page
             .bind(
                 &op(GestureEvent::Press {
@@ -727,6 +916,119 @@ mod tests {
             .unwrap();
         apply(&mut page, right);
         assert_eq!(page.values.slider, 99);
+    }
+
+    #[test]
+    fn a_slider_lets_go_of_the_finger_when_it_lifts() {
+        let mut page = WidgetsPage::default();
+        let rect = page.tags.rect(WidgetsAction::Slider.tag()).unwrap();
+        let y = (rect.y + rect.h / 2) as u16;
+        let press = page
+            .bind(
+                &op(GestureEvent::Press {
+                    id: 0,
+                    x: (rect.x + 20) as u16,
+                    y,
+                }),
+                &DeviceState::default(),
+            )
+            .unwrap();
+        apply(&mut page, press);
+        let drag = page
+            .bind(
+                &op(GestureEvent::Drag {
+                    id: 0,
+                    x: (rect.x + 120) as u16,
+                    y,
+                    at_ms: 40,
+                }),
+                &DeviceState::default(),
+            )
+            .unwrap();
+        apply(&mut page, drag);
+        assert_eq!(page.values.pressed, WidgetsAction::Slider.tag());
+
+        let lift = page
+            .bind(
+                &op(GestureEvent::Swipe {
+                    id: 0,
+                    direction: SwipeDirection::Right,
+                    x: (rect.x + 20) as u16,
+                    y,
+                    end_x: (rect.x + 150) as u16,
+                    end_y: y,
+                    held_ms: 100,
+                    distance_px: 130,
+                    at_ms: 100,
+                }),
+                &DeviceState::default(),
+            )
+            .unwrap();
+        apply(&mut page, lift);
+        assert_eq!(
+            page.values.pressed, 0,
+            "a slider the finger has left must not stay held"
+        );
+
+        // The next drag across the gallery is a scroll, not another slide.
+        let slid = page.values.slider;
+        let area = page.scroll.areas()[0].rect;
+        let grab = page
+            .bind(
+                &op(GestureEvent::Press {
+                    id: 1,
+                    x: area.x as u16 + 40,
+                    y: (area.y + 4) as u16,
+                }),
+                &DeviceState::default(),
+            )
+            .unwrap();
+        apply(&mut page, grab);
+        let scroll = page
+            .bind(
+                &op(GestureEvent::Drag {
+                    id: 1,
+                    x: area.x as u16 + 40,
+                    y: (area.y - 16) as u16,
+                    at_ms: 300,
+                }),
+                &DeviceState::default(),
+            )
+            .unwrap();
+        apply(&mut page, scroll);
+        assert_eq!(page.values.slider, slid, "the slider stayed where it was");
+        assert!(
+            page.scroll.areas()[0].offset > 0,
+            "the gallery took the drag instead"
+        );
+    }
+
+    #[test]
+    fn a_hold_that_never_became_a_swipe_also_lets_go() {
+        let mut page = WidgetsPage::default();
+        let rect = page.tags.rect(WidgetsAction::Switch.tag()).unwrap();
+        let (x, y) = ((rect.x + rect.w / 2) as u16, (rect.y + rect.h / 2) as u16);
+        let press = page
+            .bind(
+                &op(GestureEvent::Press { id: 0, x, y }),
+                &DeviceState::default(),
+            )
+            .unwrap();
+        apply(&mut page, press);
+        assert_eq!(page.values.pressed, WidgetsAction::Switch.tag());
+        let hold = page
+            .bind(
+                &op(GestureEvent::LongPress {
+                    id: 0,
+                    x,
+                    y,
+                    held_ms: 600,
+                }),
+                &DeviceState::default(),
+            )
+            .expect("a hold ends the press it started");
+        apply(&mut page, hold);
+        assert_eq!(page.values.pressed, 0);
     }
 
     #[test]
@@ -781,11 +1083,11 @@ mod tests {
             page.values.spinner, phase,
             "a stopped spinner holds its frame"
         );
-        tap_tag(&mut page, TAG_ICON);
+        tap_tag(&mut page, WidgetsAction::Icon.tag());
         assert!(page.values.spinning);
         page.tick(SPIN_MS);
         assert_eq!(page.values.spinner, (phase + 1) % 4);
-        tap_tag(&mut page, TAG_ICON);
+        tap_tag(&mut page, WidgetsAction::Icon.tag());
         assert!(!page.values.spinning);
         let stopped = page.values.spinner;
         page.tick(SPIN_MS);

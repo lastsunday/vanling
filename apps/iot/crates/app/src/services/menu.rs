@@ -1,15 +1,16 @@
 //! The Menu page: every page the board can back, one button away, three to a row.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
+use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, TOUCH_MIN};
 use iot_core::ui::{BoxConstraints, PX, Rect, Screen, ScrollId, Style, Ui};
 
-use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, NavigationIntent};
+use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsIntent};
 use crate::shared::kit::chrome;
-use crate::shared::kit::i18n::Msg;
+use crate::shared::kit::i18n::{Lang, Msg};
 use crate::shared::kit::scroll::{BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed};
 use crate::shared::kit::state::State;
-use crate::shared::kit::widgets::Button;
+use crate::shared::kit::tag::TagTable;
+use crate::shared::kit::widgets::{Button, Chip};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
@@ -21,10 +22,14 @@ use super::{Descriptor, Repaint};
 const AREA: ScrollId = ScrollId::new(1);
 const COLUMNS: usize = 3;
 const BUTTON_W: i16 = 98;
-const BUTTON_H: i16 = 44;
 const GAP: i16 = 6;
 const COUNT: usize = 9;
 const ROWS: usize = COUNT.div_ceil(COLUMNS);
+
+/// The language chips sit outside the grid, so their tags stay clear of the page codes.
+const TAG_LANG_EN: u16 = 100;
+const TAG_LANG_ZH: u16 = 101;
+const TAGS: usize = COUNT + 2;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -38,6 +43,7 @@ const REPAINT_MS: u64 = 20;
 pub struct MenuPage {
     scroll: ScrollState<1>,
     drag: Option<Drag>,
+    tags: TagTable<TAGS>,
 }
 
 impl Default for MenuPage {
@@ -47,7 +53,11 @@ impl Default for MenuPage {
         finish(&mut ui);
         let mut scroll = ScrollState::default();
         scroll.measure(&ui, [AREA], SCROLL);
-        Self { scroll, drag: None }
+        Self {
+            scroll,
+            drag: None,
+            tags: TagTable::measure(&ui),
+        }
     }
 }
 
@@ -59,6 +69,17 @@ impl MenuPage {
         self.scroll.drag(area, 0);
         self.drag = Some(Drag::new(id, area, y, at_ms));
         true
+    }
+
+    /// The point at the centre of a listed page's button.
+    #[cfg(test)]
+    pub(crate) fn button_centre(&self, page: PageId) -> Option<(u16, u16)> {
+        let rect = self.tags.rect(page.code() as u16 + 1)?;
+        let offset = i32::from(self.scroll.areas()[0].offset);
+        Some((
+            u16::try_from(rect.x + rect.w / 2).ok()?,
+            u16::try_from(rect.y + rect.h / 2 - offset).ok()?,
+        ))
     }
 
     fn snapshot(&self) -> MenuSnapshot {
@@ -82,30 +103,18 @@ impl MenuPage {
         }
     }
 
-    /// The button a panel point lands on, in the grid's own order.
-    fn hit(&self, x: i32, y: i32) -> Option<usize> {
+    /// The tag of the button or chip a panel point lands on; zero on a gap.
+    fn tag_at(&self, x: i32, y: i32) -> u16 {
+        for (tag, rect) in self.tags.iter().filter(|(tag, _)| *tag >= TAG_LANG_EN) {
+            if rect.contains(x, y) {
+                return tag;
+            }
+        }
         let area = self.scroll.areas()[0];
         if !area.rect.contains(x, y) {
-            return None;
+            return 0;
         }
-        let local_x = x - area.rect.x;
-        let local_y = y - area.rect.y + i32::from(area.offset);
-        if local_x < 0 || local_y < 0 {
-            return None;
-        }
-        let pitch_x = i32::from(BUTTON_W + GAP);
-        let pitch_y = i32::from(BUTTON_H + GAP);
-        let column = usize::try_from(local_x / pitch_x).ok()?;
-        let row = usize::try_from(local_y / pitch_y).ok()?;
-        if column >= COLUMNS
-            || row >= ROWS
-            || local_x % pitch_x >= i32::from(BUTTON_W)
-            || local_y % pitch_y >= i32::from(BUTTON_H)
-        {
-            return None;
-        }
-        let index = row * COLUMNS + column;
-        (index < COUNT).then_some(index)
+        self.tags.at(x, y, area.offset)
     }
 }
 
@@ -119,6 +128,8 @@ impl super::Service for MenuPage {
             return (None, Effects::default());
         };
         match *intent {
+            // The manager turns a choice into navigation; the page owns no destination.
+            MenuIntent::Choose { .. } => {}
             MenuIntent::Press { area } => {
                 // A finger stops a glide, but claims no drag: a tap that never moves has to
                 // reach the button underneath. The first drag sample claims instead.
@@ -175,9 +186,19 @@ impl super::LocalPage for MenuPage {
                         at_ms: Some(at_ms),
                     }));
                 }
-                let page = entry(self.hit(i32::from(x), i32::from(y))?)?;
+                let tag = self.tag_at(i32::from(x), i32::from(y));
+                if let Some(lang) = match tag {
+                    TAG_LANG_EN => Some(Lang::En),
+                    TAG_LANG_ZH => Some(Lang::ZhHans),
+                    _ => None,
+                } {
+                    return Some(BusinessIntent::Settings(SettingsIntent::SetLang { lang }));
+                }
+                let page = PageId::from_code(u8::try_from(tag.checked_sub(1)?).ok()?)?;
                 page.is_backed(state.backed)
-                    .then(|| BusinessIntent::Navigation(NavigationIntent::Go(page.code())))
+                    .then_some(BusinessIntent::Menu(MenuIntent::Choose {
+                        page: page.code(),
+                    }))
             }
             InputEvent::Gesture(GestureEvent::Press { x, y, .. }) => {
                 let area = area(x, y)?;
@@ -264,7 +285,31 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let lang = snapshot.lang;
     let backed = snapshot.backed;
     chrome::page(ui, |ui| {
-        chrome::title(ui, Msg::MenuTitle.bytes(lang));
+        ui.row(
+            Style::new()
+                .height(TOUCH_MIN as i16 + GAP)
+                .padding(0, 0, 0, GAP)
+                .middle()
+                .gap(GAP),
+            |ui| {
+                chrome::title(ui, Msg::MenuTitle.bytes(lang));
+                ui.node(Style::new().grow(1));
+                ui.add(
+                    Chip::new(Msg::LangEn.bytes(lang))
+                        .width(TOUCH_MIN as i16)
+                        .height(TOUCH_MIN as i16)
+                        .tag(TAG_LANG_EN)
+                        .selected(lang == Lang::En),
+                );
+                ui.add(
+                    Chip::new(Msg::LangZh.bytes(lang))
+                        .width(TOUCH_MIN as i16)
+                        .height(TOUCH_MIN as i16)
+                        .tag(TAG_LANG_ZH)
+                        .selected(lang == Lang::ZhHans),
+                );
+            },
+        );
         chrome::scroller(ui, AREA, snapshot.pages.menu.area, |ui| {
             for row in 0..ROWS {
                 ui.row(Style::new().gap(GAP), |ui| {
@@ -280,6 +325,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                         ui.add(
                             Button::new(page_name(page).bytes(lang))
                                 .width(BUTTON_W)
+                                .tag(page.code() as u16 + 1)
                                 .state(state),
                         );
                     }
@@ -353,6 +399,7 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use iot_core::drivers::board::Backed;
     use iot_core::drivers::motion::MotionCapabilities;
+    use iot_core::ui::panel::TOUCH_MIN;
 
     const ALL: Backed = Backed {
         motion: Some(MotionCapabilities::EMPTY),
@@ -379,14 +426,8 @@ mod tests {
         })
     }
 
-    fn centre(page: &MenuPage, index: usize) -> (u16, u16) {
-        let area = page.scroll.areas()[0].rect;
-        let column = index % COLUMNS;
-        let row = index / COLUMNS;
-        (
-            (area.x + column as i32 * i32::from(BUTTON_W + GAP) + i32::from(BUTTON_W) / 2) as u16,
-            (area.y + row as i32 * i32::from(BUTTON_H + GAP) + i32::from(BUTTON_H) / 2) as u16,
-        )
+    fn page_at(page: &MenuPage, x: i32, y: i32) -> Option<PageId> {
+        PageId::from_code(u8::try_from(page.tag_at(x, y).checked_sub(1)?).ok()?)
     }
 
     #[test]
@@ -399,12 +440,40 @@ mod tests {
     }
 
     #[test]
+    fn a_language_chip_asks_for_its_language() {
+        let page = MenuPage::default();
+        for (tag, lang) in [(TAG_LANG_EN, Lang::En), (TAG_LANG_ZH, Lang::ZhHans)] {
+            let rect = page.tags.rect(tag).expect("the chip is laid out");
+            assert_eq!(
+                page.bind(
+                    &tap((rect.x + 2) as u16, (rect.y + 2) as u16),
+                    &DeviceState::default()
+                ),
+                Some(BusinessIntent::Settings(SettingsIntent::SetLang { lang }))
+            );
+        }
+    }
+
+    #[test]
+    fn the_language_chips_are_touch_sized() {
+        let page = MenuPage::default();
+        for tag in [TAG_LANG_EN, TAG_LANG_ZH] {
+            let rect = page.tags.rect(tag).expect("the chip is laid out");
+            assert!(
+                rect.w >= TOUCH_MIN as i32 && rect.h >= TOUCH_MIN as i32,
+                "chip {tag} is {}x{}",
+                rect.w,
+                rect.h
+            );
+        }
+    }
+
+    #[test]
     fn a_button_centre_maps_to_the_page_drawn_there() {
         let page = MenuPage::default();
-        for (index, expected) in entries().enumerate() {
-            let (x, y) = centre(&page, index);
-            assert_eq!(page.hit(i32::from(x), i32::from(y)), Some(index));
-            assert_eq!(entry(index), Some(expected));
+        for expected in entries() {
+            let (x, y) = page.button_centre(expected).expect("the page is listed");
+            assert_eq!(page_at(&page, i32::from(x), i32::from(y)), Some(expected));
         }
     }
 
@@ -412,11 +481,14 @@ mod tests {
     fn the_gaps_between_buttons_are_not_buttons() {
         let page = MenuPage::default();
         let area = page.scroll.areas()[0].rect;
-        assert_eq!(page.hit(area.x, area.y), Some(0));
-        assert_eq!(page.hit(area.x + i32::from(BUTTON_W), area.y), None);
-        assert_eq!(page.hit(area.x, area.y + i32::from(BUTTON_H)), None);
-        assert_eq!(page.hit(area.right() - 1, area.bottom() - 1), None);
-        assert_eq!(page.hit(area.x - 1, area.y), None);
+        assert_eq!(page_at(&page, area.x, area.y), entry(0));
+        assert_eq!(page_at(&page, area.x + i32::from(BUTTON_W), area.y), None);
+        assert_eq!(
+            page_at(&page, area.x, area.y + i32::from(TOUCH_MIN as i16)),
+            None
+        );
+        assert_eq!(page_at(&page, area.right() - 1, area.bottom() - 1), None);
+        assert_eq!(page_at(&page, area.x - 1, area.y), None);
     }
 
     fn apply(page: &mut MenuPage, intent: BusinessIntent) {
@@ -431,17 +503,16 @@ mod tests {
             backed: ALL,
             ..DeviceState::default()
         };
-        let index = entries().position(|page| page == PageId::Env).unwrap();
-        let (x, y) = centre(&page, index);
+        let (x, y) = page.button_centre(PageId::Env).expect("`Env` is listed");
         let press = page
             .bind(&op(GestureEvent::Press { id: 0, x, y }), &wired)
             .expect("the press lands");
         apply(&mut page, press);
         assert_eq!(
             page.bind(&tap(x, y), &wired),
-            Some(BusinessIntent::Navigation(NavigationIntent::Go(
-                PageId::Env.code()
-            ))),
+            Some(BusinessIntent::Menu(MenuIntent::Choose {
+                page: PageId::Env.code()
+            })),
             "a tap is press then tap on the wire; the press must not swallow it"
         );
     }
@@ -449,8 +520,9 @@ mod tests {
     #[test]
     fn a_page_the_board_cannot_back_is_listed_but_does_not_navigate() {
         let page = MenuPage::default();
-        let camera = entries().position(|page| page == PageId::Camera).unwrap();
-        let (x, y) = centre(&page, camera);
+        let (x, y) = page
+            .button_centre(PageId::Camera)
+            .expect("`Camera` is listed");
         assert_eq!(page.bind(&tap(x, y), &DeviceState::default()), None);
         let wired = DeviceState {
             backed: ALL,
@@ -458,20 +530,19 @@ mod tests {
         };
         assert_eq!(
             page.bind(&tap(x, y), &wired),
-            Some(BusinessIntent::Navigation(NavigationIntent::Go(
-                PageId::Camera.code()
-            )))
+            Some(BusinessIntent::Menu(MenuIntent::Choose {
+                page: PageId::Camera.code()
+            }))
         );
     }
 
     #[test]
     fn every_name_fits_a_button() {
-        use iot_core::ui::font::Face;
-        let face = Face::new();
+        let metrics = iot_core::ui::font::Metrics::vector(16);
         for page in PageId::ALL {
             for lang in crate::shared::kit::i18n::Lang::ALL {
-                let name = page_name(page).text(*lang);
-                let width: usize = name.chars().map(|ch| face.advance(ch)).sum();
+                let name = page_name(page).bytes(*lang);
+                let width = metrics.measure(name);
                 assert!(
                     width <= usize::try_from(BUTTON_W - 12).unwrap(),
                     "{page:?} in {lang:?} is {width} px wide"

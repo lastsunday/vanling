@@ -8,8 +8,10 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::services::{Services, descriptor, paint};
-use crate::shared::intent::{BusinessIntent, TextIntent, WidgetsIntent};
-use crate::shared::kit::i18n::Lang;
+use crate::shared::intent::{
+    BusinessIntent, MenuIntent, SettingsIntent, TextIntent, WidgetsIntent,
+};
+use crate::shared::kit::i18n::{Lang, Msg};
 use crate::shared::kit::panel::Panel;
 use crate::shared::model::DeviceState;
 use crate::shared::route::PageId;
@@ -17,6 +19,7 @@ use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::board::Backed;
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::Rgb;
+use iot_core::ui::font::{FontFamily, Metrics};
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
 use iot_core::ui::{Canvas, Screen};
 
@@ -80,28 +83,28 @@ fn fingerprint(frame: &[u8]) -> u32 {
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
 const GOLDEN: [(&str, bool, u32); 22] = [
-    ("menu", false, 0x0dae_1365),
-    ("menu", true, 0x07fc_f115),
+    ("menu", false, 0xa4cf_077e),
+    ("menu", true, 0xf57a_7b2e),
     ("ambient", false, 0xc18e_7dc5),
     ("ambient", true, 0xb334_d787),
-    ("attitude", false, 0x8ed2_6849),
-    ("attitude", true, 0x5a48_e7f9),
-    ("audio", false, 0xcb10_0429),
-    ("audio", true, 0xff61_15d9),
-    ("speaker", false, 0x8197_293d),
-    ("speaker", true, 0xe667_80ed),
-    ("camera", false, 0xff33_ada9),
-    ("camera", true, 0x234e_c159),
+    ("attitude", false, 0x4404_48b2),
+    ("attitude", true, 0x559e_e262),
+    ("audio", false, 0xf348_158d),
+    ("audio", true, 0x87e5_bd3d),
+    ("speaker", false, 0x648f_5a68),
+    ("speaker", true, 0x778f_3418),
+    ("camera", false, 0xd758_de51),
+    ("camera", true, 0x695d_7601),
     ("network", false, 0x216e_b4b9),
     ("network", true, 0x2b62_f669),
     ("splash", false, 0xaa0a_a601),
     ("splash", true, 0x3f0b_3db1),
-    ("env", false, 0xa945_08ef),
-    ("env", true, 0xe2f0_529f),
+    ("env", false, 0x396a_ac83),
+    ("env", true, 0xa4a9_9433),
     ("text", false, 0xe59e_db9e),
     ("text", true, 0x7aae_e74e),
-    ("widgets", false, 0x308c_8dd2),
-    ("widgets", true, 0x94e0_4582),
+    ("widgets", false, 0x1aef_d978),
+    ("widgets", true, 0xdb2d_5d28),
 ];
 
 #[test]
@@ -159,6 +162,46 @@ fn a_language_switch_reaches_the_ink() {
             ink(Lang::ZhHans),
             "{page:?} reads its words from the snapshot"
         );
+    }
+}
+
+#[test]
+fn a_language_switch_writes_the_state() {
+    let mut services = Services::default();
+    let mut state = DeviceState::default();
+    services.apply(
+        &BusinessIntent::Settings(SettingsIntent::SetLang { lang: Lang::ZhHans }),
+        &mut state,
+    );
+    assert_eq!(state.lang, Lang::ZhHans);
+}
+
+#[test]
+fn a_menu_choice_opens_its_page_without_geometry() {
+    let mut services = Services::default();
+    let mut state = DeviceState::default();
+    services.apply(
+        &BusinessIntent::Menu(MenuIntent::Choose {
+            page: PageId::Widgets.code(),
+        }),
+        &mut state,
+    );
+    assert_eq!(state.page(), PageId::Widgets);
+}
+
+#[test]
+fn every_word_the_panel_prints_has_a_vector_glyph() {
+    for msg in Msg::ALL {
+        for lang in Lang::ALL {
+            let run = msg.bytes(*lang);
+            for size in [14, 20] {
+                assert_eq!(
+                    Metrics::vector(size).covering(run).family(),
+                    FontFamily::Vector,
+                    "{msg:?} in {lang:?} at {size} px would fall back to the bitmap face"
+                );
+            }
+        }
     }
 }
 
@@ -309,7 +352,7 @@ fn the_attitude_page_with_numbers_draws_the_recorded_picture() {
         return;
     }
     assert_eq!(
-        actual, 0xeb95_14e5,
+        actual, 0x88be_534e,
         "regenerate only for an intended pixel change"
     );
 }

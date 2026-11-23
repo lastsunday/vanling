@@ -175,6 +175,8 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 滚动帧不重画整页：页面用 `Descriptor::with_scroll` 交出纯滚动判据——只比较两个滚动区的偏移（其余字段必须相同），`AppPainter` 留上一帧快照，命中后把已有像素原地 `memmove` 上移或下移，然后给出两份 `FrameDamage`（各最多 7 块，含底部徽标带）。**落墨集**只含进入视口的窄条、头部读数与 thumb，`Canvas` 按它裁剪落墨；**上屏集**含整个滚动框与 header、thumb，`St7789` 用 `CASET`/`RASET` 把这些交给面板——GRAM 不会自己搬像素，只写窄条会让框里其余行停在拖动开始时的内容上。底色改变、换页与相机帧退回整帧；overlay 只把底部 320×12 徽标带加进两份集合，不再让整页重绘。`ScreenPainter::reset` 负责让画布忘掉上一帧。
 
+重绘地板挡住的那一帧不会再出现：`Differ` 对一次变化只报一次，所以 `ScreenRenderer` 另存「玻璃上真正有的那一帧」（`shown`），每次拿它跟最新帧比，地板到点就把欠下的那一帧补画；`owed()` 让循环保持 `TimeDriven`，不会在玻璃还欠一帧时 park。
+
 `Services` 持有九个页面，外加设备自己的两件事：`NavService`（页栈）与 `LightService`（灯）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余四组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
 生命周期由 `state/manager/write.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_screen()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。

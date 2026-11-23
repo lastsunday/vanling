@@ -115,8 +115,11 @@ fn a_menu_button_opens_its_page_from_a_tap() {
     }));
     assert_eq!(manager.state().page(), PageId::Menu);
 
-    // `Text` is the eighth listed page: row 2, column 1 of the three-wide grid.
-    let (x, y) = (163, 143);
+    // Ask the page where its button is, so a change to the head or the grid cannot strand
+    // this test on a coordinate that no longer holds a button.
+    let (x, y) = crate::services::menu::MenuPage::default()
+        .button_centre(PageId::Text)
+        .expect("`Text` is listed");
     feed_input(
         &mut manager,
         op(InputEvent::Gesture(GestureEvent::Press { id: 0, x, y })),

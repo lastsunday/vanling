@@ -423,7 +423,7 @@ impl Tree {
             return Size::default();
         }
         let gaps = gap * (count as Subpx - 1);
-        let definite = length_of(
+        let definite = content_length_of(
             &node.style,
             !horizontal,
             if horizontal { inner.max_w } else { inner.max_h },
@@ -481,7 +481,7 @@ impl Tree {
             child = next;
         }
         used = used.saturating_sub(gap);
-        let definite_cross = length_of(
+        let definite_cross = content_length_of(
             &node.style,
             horizontal,
             if horizontal { inner.max_h } else { inner.max_w },
@@ -598,7 +598,7 @@ impl Tree {
         }
         content_cross += run_cross;
         let runs = runs + 1;
-        let definite_cross = length_of(
+        let definite_cross = content_length_of(
             &node.style,
             horizontal,
             if horizontal { inner.max_h } else { inner.max_w },
@@ -705,8 +705,8 @@ impl Tree {
         inner: BoxConstraints,
         text: &[u8],
     ) -> Size {
-        let definite_w = length_of(&node.style, false, constraints.max_w);
-        let definite_h = length_of(&node.style, true, constraints.max_h);
+        let definite_w = content_length_of(&node.style, false, constraints.max_w);
+        let definite_h = content_length_of(&node.style, true, constraints.max_h);
         let mut width = 0;
         let mut height = 0;
         let mut child = self.nodes[usize::from(id.0)].first;
@@ -813,18 +813,20 @@ impl Tree {
             }
             child = next;
         }
-        let width =
-            length_of(&node.style, false, constraints.max_w).unwrap_or(if inner.max_w < INFINITY {
+        let width = content_length_of(&node.style, false, constraints.max_w).unwrap_or(
+            if inner.max_w < INFINITY {
                 inner.max_w
             } else {
                 cross
-            });
-        let height =
-            length_of(&node.style, true, constraints.max_h).unwrap_or(if inner.max_h < INFINITY {
+            },
+        );
+        let height = content_length_of(&node.style, true, constraints.max_h).unwrap_or(
+            if inner.max_h < INFINITY {
                 inner.max_h
             } else {
                 content
-            });
+            },
+        );
         let viewport = if horizontal { width } else { height };
         let shift = -(i32::from(node.style.scroll_offset) * PX);
         self.record_scroll(id, node.style.scroll_area, content, viewport);
@@ -959,6 +961,18 @@ fn length_of(style: &Style, vertical: bool, base: Subpx) -> Option<Subpx> {
     } else {
         style.width.resolve(base)
     }
+}
+
+/// An explicit extent is the border box; flex and scroll math place children in the content
+/// box, so the padding comes off here and is added back once in `absolute`.
+fn content_length_of(style: &Style, vertical: bool, base: Subpx) -> Option<Subpx> {
+    let length = length_of(style, vertical, base)?;
+    let pad = if vertical {
+        style.padding.vertical()
+    } else {
+        style.padding.horizontal()
+    };
+    Some((length - pad).max(0))
 }
 
 fn align_offset(align: Align, own: Align, size: Subpx, space: Subpx) -> Subpx {

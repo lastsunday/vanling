@@ -1,10 +1,13 @@
 //! One chain, five words: `Event` → `Intent` → `Action` → `State` (RAM) → `Hardware`. An action
 //! only writes state; hardware only reads it. The Network key grid lives in `keyboard`.
 
+mod action;
 mod keyboard;
 
+pub use self::action::WidgetsAction;
 pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WINDOW_MS};
 
+use crate::shared::kit::i18n::Lang;
 use iot_core::drivers::input::{InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 
@@ -61,6 +64,8 @@ pub enum BusinessIntent {
     Menu(MenuIntent),
     /// What a finger asks of the Widgets page: a control, its slider, or the gallery's scroll.
     Widgets(WidgetsIntent),
+    /// What a finger asks of the device's own record rather than of a page.
+    Settings(SettingsIntent),
     /// One light surface and the verb it is asked for; the instance is routing, not part of the verb.
     Light {
         instance: u8,
@@ -146,6 +151,10 @@ pub enum TextIntent {
 /// What the Menu's grid asks of its one scroll region.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MenuIntent {
+    /// The user picked a page, named by the route table's wire code.
+    Choose {
+        page: u8,
+    },
     /// A finger landed in the box: a glide in the region stops where it is.
     Press {
         area: u8,
@@ -174,18 +183,23 @@ pub enum MenuIntent {
 /// What the Widgets page's controls and gallery ask.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WidgetsIntent {
-    /// A control was pressed; `tag` is the one the page drew there.
+    /// A control was pressed; `action` is the one the page drew there.
     Press {
-        tag: u16,
+        action: WidgetsAction,
     },
     /// The lift landed on the same control: toggle it.
     Tap {
-        tag: u16,
+        action: WidgetsAction,
     },
     /// A slider's finger moved to `x` on the panel.
     Slide {
-        tag: u16,
+        action: WidgetsAction,
         x: u16,
+    },
+    /// A key of the field's keyboard.
+    Key {
+        key: Key,
+        at_ms: u32,
     },
     /// A finger landed in the gallery's box rather than on a control.
     Grab {
@@ -211,6 +225,13 @@ pub enum WidgetsIntent {
         lines: i8,
         speed: u16,
     },
+}
+
+/// What a settings control asks of the device's own record.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SettingsIntent {
+    /// The panel's words from now on; a build names the one it starts in.
+    SetLang { lang: Lang },
 }
 
 /// The lamp's verbs; `Cycle` is the only one that leaves `Off`.

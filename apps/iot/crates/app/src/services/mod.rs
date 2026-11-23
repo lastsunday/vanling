@@ -12,12 +12,15 @@ pub mod light;
 pub mod menu;
 pub mod nav;
 pub mod network;
+pub mod settings;
 pub mod speaker;
 pub mod splash;
 pub mod text;
 pub mod widgets;
 
-use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
+use crate::shared::intent::{
+    BusinessIntent, InputIntent, LightAction, MenuIntent, NavigationIntent,
+};
 use crate::shared::kit::panel::{Custom, Panel, View, no_custom};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
@@ -37,6 +40,7 @@ use self::light::LightService;
 use self::menu::MenuPage;
 use self::nav::NavService;
 use self::network::NetworkPage;
+use self::settings::SettingsService;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
 use self::text::TextPage;
@@ -90,6 +94,7 @@ pub trait LocalPage: Service {
 pub struct Services {
     nav: NavService,
     light: LightService,
+    settings: SettingsService,
     menu: MenuPage,
     ambient: AmbientPage,
     attitude: AttitudePage,
@@ -109,6 +114,7 @@ enum ServiceId {
     Page(PageId),
     Navigation,
     Light,
+    Settings,
 }
 
 impl Services {
@@ -168,12 +174,21 @@ impl Services {
             BusinessIntent::Text(_) => self
                 .service_mut(ServiceId::Page(PageId::Text))
                 .apply(intent, state),
+            BusinessIntent::Menu(MenuIntent::Choose { page }) => {
+                self.service_mut(ServiceId::Navigation).apply(
+                    &BusinessIntent::Navigation(NavigationIntent::Go(*page)),
+                    state,
+                )
+            }
             BusinessIntent::Menu(_) => self
                 .service_mut(ServiceId::Page(PageId::Menu))
                 .apply(intent, state),
             BusinessIntent::Widgets(_) => self
                 .service_mut(ServiceId::Page(PageId::Widgets))
                 .apply(intent, state),
+            BusinessIntent::Settings(_) => {
+                self.service_mut(ServiceId::Settings).apply(intent, state)
+            }
         }
     }
 
@@ -193,6 +208,7 @@ impl Services {
             ServiceId::Page(PageId::Widgets) => &mut self.widgets,
             ServiceId::Navigation => &mut self.nav,
             ServiceId::Light => &mut self.light,
+            ServiceId::Settings => &mut self.settings,
         }
     }
 

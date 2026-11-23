@@ -142,6 +142,15 @@ espflash monitor   # console 内带回车重启
 
 > `[实测，2026-11-01]` 偶尔 watchdog 复位之后 USB-Serial/JTAG 不再枚举：串口**一个字节都没有**（开机日志只剩半行 `esp_image: segment …`），网络也不通，看上去像镜像挂了。**把同一份镜像再烧一次就恢复**，不用重新构建。分辨办法就是这个：重烧同一份能出声 = 枚举问题；仍然静音 = 才去看镜像（同一轮里另一次静音是 core 1 的启动代码写坏了，重烧三次都没用）。
 
+> `[实测，2026-11-23]` 没有 tty 的 shell 里不必再包 `script` 喂 `CTRL+R`：`espflash monitor --non-interactive` 不走 TUI，直接把串口印到 stdout（所以能进文件），配合 `-a hard-reset` 一次抓完；C6 同理（它不支持 watchdog reset）。
+>
+> ```sh
+> espflash monitor --chip esp32s3 --port /dev/cu.usbmodem1442301 \
+>   --non-interactive --after hard-reset > boot.log
+> ```
+>
+> `script -q <log> <cmd>` 这条路在 **stdout 不是 tty** 时一个串口字节都不落盘：monitor 收得到（进程一直读写着串口），但只往真正的终端里画，于是日志文件里只剩 espflash 自己的几行元信息。照上面那条旧配方抓日志时若看到文件只有 10 行，先怀疑这一点，不是板子没启动。
+
 `[实测]` **C6 是反过来的**：它**不需要** `-a watchdog-reset`，普通 DTR 复位就正常启动，ROM 打 `rst:0x15 (USB_UART_HPSYS),boot:0x1c (SPI_FAST_FLASH_BOOT)`。espflash 会直接拒绝这个选项（`The esp32c6 does not support watchdog reset`），所以 `flash-probe-*-c6` 的任务里不能带它 —— 带了会在最后一步失败，前面的烧录照样写完。
 
 ## 构建失败先看 Docker，再看别的

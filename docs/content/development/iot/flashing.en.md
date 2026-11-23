@@ -2,7 +2,7 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "2d970233d9ff9dda9da670c588772da3444d1904"
+source_file_hash = "45a6053ae612b589466ee273585bc895a214d568"
 translated_at = "2026-11-20T00:00:00Z"
 +++
 
@@ -160,6 +160,21 @@ espflash monitor   # press enter in console to restart
 > the two apart: same image comes up after a reflash = enumeration; still silent = look at the
 > image (the other silent case in that round was a broken core-1 startup, and reflashing it
 > three times did not help).
+
+> `[measured, 2026-11-23]` A shell without a tty does not need the `script` + `CTRL+R`
+> dance: `espflash monitor --non-interactive` skips the TUI and prints the port straight to
+> stdout (so it lands in a file), and one `-a hard-reset` captures the boot; the C6 works the
+> same way (it does not support a watchdog reset).
+>
+> ```sh
+> espflash monitor --chip esp32s3 --port /dev/cu.usbmodem1442301 \
+>   --non-interactive --after hard-reset > boot.log
+> ```
+>
+> The `script -q <log> <cmd>` route records **no serial bytes at all** when its own stdout is
+> not a tty: the monitor keeps reading and writing the port, but draws only into a real
+> terminal, so the log file holds nothing but espflash's own few lines. When the old recipe
+> yields a ten-line file, suspect this before suspecting the board.
 
 `[measured]` **The C6 is the other way round**: it does **not** want `-a watchdog-reset` — a
 plain DTR reset boots it, and the ROM prints `rst:0x15 (USB_UART_HPSYS),boot:0x1c

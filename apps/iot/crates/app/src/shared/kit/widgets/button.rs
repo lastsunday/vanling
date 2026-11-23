@@ -1,6 +1,6 @@
 //! A tappable label: filled, outlined or bare.
 
-use iot_core::ui::{NodeId, Style, TextAlign, Ui, Widget};
+use iot_core::ui::{FontFamily, Length, NodeId, Style, TextAlign, Ui, Widget};
 
 use crate::shared::kit::state::State;
 use crate::shared::kit::theme::{ButtonKind, Theme};
@@ -64,7 +64,9 @@ impl Widget for Button<'_> {
         let label = Style::new()
             .nowrap()
             .color(ink)
-            .text_align(TextAlign::Center);
+            .text_align(TextAlign::Center)
+            .font_size(Length::Px(14))
+            .font_family(FontFamily::Vector);
         ui.column(box_style, |ui| {
             ui.text(self.label, label);
         })

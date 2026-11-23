@@ -68,6 +68,8 @@ Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧
 
 状态层用半透明覆盖：`Color::rgba(..., 0x40)` 交给 `Canvas` 做 source-over，不引入主题引擎。
 
+不做双向绑定（Slint/QML 的 `<=>`）。Flutter 的 `TextEditingController` 也是 controller 加重建，不是绑定；这里快照是 `Copy`、`view` 是纯函数，加监听器会把“重绘由快照 diff 决定”变成“谁 notify 谁重绘”。需要编辑态的地方用 controller：`kit::scroll::ScrollState`、`kit::keyboard::Text`。
+
 ## 主题与调色板
 
 `Theme` 存 `Color`（ARGB32），不存 `ColorId`。`ColorId` 是“这一次声明”的调色板索引，由 `Ui::color` 现场 intern；跨帧保存会指向另一帧的槽。
@@ -147,7 +149,7 @@ Flutter 到这里的映射：
 | `Checkbox` | W | 2~3 | 方框 + 勾 |
 | `Radio` | W | 2~3 | 圆圈 + 点 |
 | `Slider` | W | 3 | 轨道 + 滑块，值由页面给 |
-| `TextField` | W | 2 | 值 + 光标；键盘是页面的事 |
+| `TextField` | W | 2 | 值 + 光标；聚焦后整页交给 `kit::keyboard` |
 | `Select` | W | 2 | 值 + 箭头 |
 | `Tooltip` | W | 2 | 锚点 + 浮层 |
 | `Avatar` | W | 2 | 首字母或短标记 |
@@ -156,6 +158,10 @@ Flutter 到这里的映射：
 | `Image` | C | 0 | 相机帧、RGB565 资源，走 custom 槽 |
 
 `Text` / `RichText` 不需要包装：`ui.text` 与 `ui.span` 就是词汇本身。
+
+字号三档：页标题 20 px 矢量（`chrome::title`）、按钮与 chip 标签 14 px 矢量、正文与读数 12 px 点阵。点阵表只有 12 px 一档，`Metrics::at(13..=24)` 整档跳到 24 px，`ATTITUDE` 这类 8 字标签会超出 98 px 按钮，所以大字号只能走矢量。绘制按整段回退：段里缺一个字，整段退回点阵。`every_word_the_panel_prints_has_a_vector_glyph` 把 `Msg::ALL` 的每个词在 14 / 20 px 下钉死；新文案先重跑 `iot-tool outline`。
+
+文本能撑大布局，但只撑得开没写死尺寸的节点：不写 `width` 时文本节点取整段前进宽度、高度取 `line_height`（字高 + 行距），于是列跟着变高、行跟着变宽；写了 `width` 的 `nowrap` 段按给定宽度裁切，`Button` 的 98×44 不会因为标签变大而长个，换字号就得同时改布局常量。面板固定 320×240，撑出来的空间先从 `grow` 节点里扣，扣完就溢出面板，不会整体缩放。
 
 `ListTile` 的字段照 Flutter：`title`、`subtitle`、`leading`、`trailing`、`state`、`dense`。`leading` / `trailing` 是 `Slot`：
 
@@ -176,9 +182,11 @@ pub enum Slot<'a> {
 | `Menu` | 3 列按钮网格，列出全部页面；板子撑不起的页灰掉、点击无效；有屏时是默认启动页 |
 | `Widgets` | 基础组件画廊：五个分区（操作 / 选择 / 输入 / 显示 / 行）各一行标题，整页滚动；能切换的控件可点 |
 
-`Menu` 的按钮区放进 `chrome::scroller`：按钮 98×44、间距 6，三列正好占满内容宽；命中用同一组网格常量加滚动 offset，不依赖每帧布局。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Ambient`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。
+`Menu` 的按钮区放进 `chrome::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Ambient`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` 两个 44×44 chip（`the_language_chips_are_touch_sized` 钉住），点一下改 `DeviceState.lang`；按钮区因此下移一整行，仍不需要滚动。
 
-`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、text field 聚焦、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider。控件根节点带 `Style::tag`，构造期用 `Ui::tags()` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
+`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 下面那行 `SPINNER AVATAR ICON BADGE` 按顺序点出四个组件——光靠图形认不出哪个是哪个。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
+
+`TextField` 聚焦后页面换成 4×4 键盘（`kit::keyboard`，Canvas，0 节点）：`Text` 持有 24 字节、多击循环与 shift/layer 状态，`OK` 键收起键盘。键位、绘制与命中都读同一张 `CELLS` 表。
 
 ## 高级组件
 
@@ -246,9 +254,11 @@ impl Msg {
 | 层 | 入口 | 说明 |
 | --- | --- | --- |
 | 构建期 | `IOT_LANG=en\|zh` | 与 `IOT_BOOT_PAGE` 同一套 `option_env!` + 解析 |
-| 运行期 | `DeviceState.lang` | 留给设置页 |
+| 运行期 | `SettingsIntent::SetLang` | `Menu` 的 `EN` / `中文` chip；`services::settings` 写 `DeviceState.lang` |
 | 快照 | `FrameSnapshot.lang` | 页面只读快照 |
 | 组件 | 只收 `&[u8]` | 翻译在页面完成 |
+
+`lang` 变化在 `render::screen::repaint_due` 里单独触发重绘，所有说话页一起换字；不逐页补条件，新页不会漏。
 
 默认 `en`，与现有面板文案一致；`IOT_LANG=zh` 构建中文面板。
 
@@ -285,11 +295,12 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 
 ## 命中与事件
 
-- Widget：`Ui::headless` 跑同一份声明，`ui.rect(node)` 取矩形；可点的组件带 `Style::tag`，`ui.tag_at(x, y)` 直接得意图编号。
+- Widget：`Ui::headless` 跑同一份声明，`Ui::tags()` 一次量完，存进 `kit::tag::TagTable`；可点的组件带 `Style::tag`，`TagTable::at(x, y, offset)` 得意图编号。
 - Cell：页面 `shape` 常量算矩形，和绘制共用。
 - `NodeId` 只在一次声明内有效，不跨帧保存；要稳定标识用 `tag`。
 - Dialog / Toast 声明在 `stack` 覆盖层，可见性由页面决定。
 - 组件不认 `InputEvent`；`bind` 把 `InputIntent` 翻成 `BusinessIntent`。
+- 按住状态是页面自己的 latch（滑块用 `values.pressed`），每次手势收尾（`Release`、抬手、按住没变成滑动）都要清零：latch 留着时 2 px 的位移就会被判成拖拽，下一次点按永远变不成 `Tap`。
 
 ## 预算与测试
 

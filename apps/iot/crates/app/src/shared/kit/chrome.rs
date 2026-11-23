@@ -2,7 +2,7 @@
 //! label and its reading take.
 
 use iot_core::ui::panel;
-use iot_core::ui::{ScrollId, Style, Ui};
+use iot_core::ui::{FontFamily, Length, ScrollId, Style, Ui};
 
 use crate::shared::kit::scroll::{BAR, MIN_THUMB, thumb};
 use crate::shared::snapshot::ScrollAreaView;
@@ -42,8 +42,15 @@ pub fn page(ui: &mut Ui<'_, '_>, body: impl FnOnce(&mut Ui<'_, '_>)) {
     ui.column(self::body(), body);
 }
 
+/// The page's name, a step larger than body copy so the panel has a head.
 pub fn title(ui: &mut Ui<'_, '_>, run: &[u8]) {
-    ui.text(run, Style::new().nowrap());
+    ui.text(
+        run,
+        Style::new()
+            .nowrap()
+            .font_size(Length::Px(20))
+            .font_family(FontFamily::Vector),
+    );
 }
 
 /// A scrolling body beside its thumb: the box grows into the rows the page left it.

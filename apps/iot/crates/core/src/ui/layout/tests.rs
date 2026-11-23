@@ -436,6 +436,36 @@ fn align_center_puts_a_child_in_the_middle_of_the_cross_axis() {
 }
 
 #[test]
+fn a_padded_column_centres_its_child_in_the_content_box() {
+    let mut ui = page(100, 100);
+    let mut id = NodeId::NONE;
+    ui.column(Style::new().width(40).height(40).pad(6).center(), |ui| {
+        id = ui.node(Style::new().size(10, 10));
+    });
+    finish(&mut ui, 100, 100);
+    assert_eq!(ui.rect(id), crate::ui::Rect::new(15, 15, 10, 10));
+}
+
+#[test]
+fn a_padded_scroll_box_measures_its_viewport_without_padding() {
+    let mut ui = page(100, 40);
+    ui.scroll(
+        Style::new()
+            .width(40)
+            .height(40)
+            .pad(4)
+            .scroll_area(ScrollId::new(1)),
+        |ui| {
+            ui.node(Style::new().height(60));
+        },
+    );
+    finish(&mut ui, 100, 40);
+    let info = ui.scroll_info(ScrollId::new(1)).expect("the area is named");
+    assert_eq!(info.viewport, 32, "the viewport is the content height");
+    assert_eq!(info.content, 60);
+}
+
+#[test]
 fn a_box_re_measures_when_only_the_height_changes() {
     let mut tree = Tree::new();
     let root = tree.push(Style::new().stretch(), NodeKind::Box, NodeId::NONE);

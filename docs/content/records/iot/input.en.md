@@ -3,7 +3,7 @@ title = "Input and Touch Implementation Record"
 weight = 60
 sort_by = "weight"
 [extra]
-source_file_hash = "c48ca2beedbfe613fdd690c713e0077075959709"
+source_file_hash = "94e01e14d002495b4232aac8a926f4ce9d3fd224"
 translated_at = "2026-11-20T00:00:00Z"
 +++
 
@@ -109,6 +109,23 @@ The mistake survived this long because **every touch behaviour verified on hardw
 **Not verified yet**, because software cannot synthesise touch and only the FT6336 produces panel coordinates: tapping the `abc` key must type `abc`, tapping `7` must type `7`, and a physical up/down swipe on the light pages must change the brightness.
 
 `[measured]` This build is already on the S3 (bench image, `IOT_PORT=/dev/cu.usbmodem1422301`): `App/part. size: 880,112/6,291,456 bytes`, `[IOT] boot page is Network` at boot, no panic, and `[DISPLAY] Network 1 repaints in 5901 ms, held the executor 18 ms (0%)` — **so the board is running this build**, and the item above owes a finger, not a flash.
+
+---
+
+## A finger that lands right after a lift is not the same finger (`[test]`, 2026-11-23)
+
+The defect came from the user: after sliding the slider on the Widgets page, tapping any other control did nothing.
+
+Two independent causes, both of which had to be fixed:
+
+- **The classifier folded the new finger into the old contact.** `TouchContinuity` matches neighbouring samples within `MAX_REACH_PX = 80`, while a lift needs `RELEASE_CONFIRM_SAMPLES = 3` absent samples (`TOUCH_SCAN_MS = 10`, so 30 ms) before it is confirmed; the old tracker stays active through that window. A new landing within 80 px of the old position is merged into it as a `Contact`; `TouchGestures` emits `Press` only for a slot that is not already pressed, so no press was reported, and the lift emitted its `Tap` at `down_x/down_y` — the slider's own start point.
+- **The page kept the slider's hold into the next gesture.** `WidgetsPage.values.pressed` is the slider latch and `Release` never cleared it; while the latch was set, any movement of `MOVE_DEADBAND_PX = 2` or more was bound as a `Slide`, so an ordinary tap whose first contact drifted 2 px could never become a `Tap`.
+
+The fix: `TrackerPoint.gap` counts the samples a contact was missing from, and the match radius is 80 px while `gap == 0` (the distance between two samples of a full-speed flick) and `REACQUIRE_REACH_PX = 24` once it is not (a distance no finger covers inside one dropped sample). `WidgetsPage` clears the latch on `Release` — a swipe's lift, a tap, and the `LongPress` that closes a hold which never became a swipe.
+
+`[test]` `a_point_that_reappears_after_a_dropout_does_not_inherit_a_far_contact` (core): 60 px after a missed sample is a new contact, while 60 px between consecutive samples is still one id. `a_tap_right_after_a_slide_reaches_the_control_it_lands_on` (app) runs the whole chain, raw → `TouchContinuity` → `TouchGestures` → page: after sliding, lifting, missing one sample, a landing on a chip 58 px away must select it; setting `REACQUIRE_REACH_PX` back to 80 turns it red immediately. `a_slider_lets_go_of_the_finger_when_it_lifts` and `a_hold_that_never_became_a_swipe_also_lets_go` pin the latch clearing; the first also checks that the next drag scrolls the gallery instead of sliding the slider again.
+
+`[claimed]` Confirmation on the board still owes a finger: the FT6336 cannot produce injectable touch, and the host tests cover the same classification and page code.
 
 ---
 

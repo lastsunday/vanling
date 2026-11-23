@@ -893,6 +893,8 @@ struct TrackerPoint {
     x: u16,
     y: u16,
     active: bool,
+    /// Samples this contact has been missing for while its release was still confirmable.
+    gap: u8,
 }
 
 impl TouchContinuity {
@@ -900,6 +902,11 @@ impl TouchContinuity {
     /// full-cadence fast flick, far below the panel diagonal so a two-finger pinch keeps
     /// the fingers separate.
     pub const MAX_REACH_PX: u16 = 80;
+
+    /// The same reach for a point that reappears after a sample it was missing from. The
+    /// contact may have lifted and a new finger landed nearby, so only a move that no finger
+    /// could have made in the gap (a dropped sample at the far end of a flick) rejoins it.
+    pub const REACQUIRE_REACH_PX: u16 = 24;
 
     pub const fn new() -> Self {
         Self {
@@ -909,6 +916,7 @@ impl TouchContinuity {
                 x: 0,
                 y: 0,
                 active: false,
+                gap: 0,
             }; MAX_TRACKED_POINTS],
             next_id: 0,
             absent: 0,
@@ -944,6 +952,7 @@ impl TouchContinuity {
                     tracker.x = rx;
                     tracker.y = ry;
                     tracker.hw = point.hw_id;
+                    tracker.gap = 0;
                     TouchPoint {
                         id: tracker.id,
                         x: rx,
@@ -962,6 +971,7 @@ impl TouchContinuity {
                         x: rx,
                         y: ry,
                         active: true,
+                        gap: 0,
                     };
                     consumed[slot] = true;
                     changed = true;
@@ -983,6 +993,11 @@ impl TouchContinuity {
             .enumerate()
             .filter(|&(i, p)| p.active && !consumed[i])
             .count();
+        for (i, tracker) in self.points.iter_mut().enumerate() {
+            if tracker.active && !consumed[i] {
+                tracker.gap = tracker.gap.saturating_add(1);
+            }
+        }
         if pending > 0 {
             self.absent = self.absent.saturating_add(1);
         } else {
@@ -1015,7 +1030,6 @@ impl TouchContinuity {
     /// near a tracked one cannot inherit its id. The controller's slot only breaks an exact tie.
     fn assign(&self, raw: &[RawPoint], matched: &mut [Option<usize>; MAX_TRACKED_POINTS]) {
         const PAIRS: usize = MAX_TRACKED_POINTS * MAX_TRACKED_POINTS;
-        let reach_sq = u32::from(Self::MAX_REACH_PX).pow(2);
         let mut pairs = [(0u32, 0u8, 0u8); PAIRS];
         let mut len = 0;
         for (ri, &point) in raw.iter().take(MAX_TRACKED_POINTS).enumerate() {
@@ -1023,8 +1037,13 @@ impl TouchContinuity {
                 if !tracker.active {
                     continue;
                 }
+                let reach = if tracker.gap == 0 {
+                    Self::MAX_REACH_PX
+                } else {
+                    Self::REACQUIRE_REACH_PX
+                };
                 let dist = sq_dist(tracker.x, tracker.y, point.x, point.y);
-                if dist <= reach_sq {
+                if dist <= u32::from(reach).pow(2) {
                     pairs[len] = (dist, ri as u8, ti as u8);
                     len += 1;
                 }

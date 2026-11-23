@@ -131,6 +131,7 @@ tasks:
       espflash flash --chip esp32c6 \
         --flash-size 8mb \
         --partition-table partitions/esp32c6-devkitc-1.csv \
+        -a hard-reset \
         --monitor \
         ${IOT_PORT:+--port $IOT_PORT} \
         target/$CARGO_ESP_TARGET/release/vanling

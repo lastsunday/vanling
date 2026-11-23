@@ -5,10 +5,9 @@ mod repaint;
 
 pub use self::painter::AppPainter;
 
-use self::repaint::repaint_due;
+use self::repaint::{repaint_due, repaint_wanted};
 
 use alloc::boxed::Box;
-use core::any::Any;
 use core::future::Future;
 use core::pin::Pin;
 
@@ -31,7 +30,11 @@ pub struct ScreenRenderer {
     page: Option<PageId>,
     painter: Box<dyn ScreenPainter>,
     overlay: bool,
+    /// The newest frame the state published: what a paint from here would draw.
     last_snapshot: Option<FrameSnapshot>,
+    /// The frame the glass actually holds. A repaint is judged against this, not against the
+    /// newest one, or a change the floor turned away is folded into the baseline and never drawn.
+    shown: Option<FrameSnapshot>,
     /// The page asked for a still light: no breath is sampled under it.
     steady: bool,
     last_repaint_ms: u32,
@@ -57,6 +60,7 @@ impl ScreenRenderer {
             painter,
             overlay,
             last_snapshot: None,
+            shown: None,
             steady: false,
             last_repaint_ms: 0,
             camera_period_ms: 0,
@@ -87,10 +91,44 @@ impl ScreenRenderer {
         ));
     }
 
-    fn paint_last(&mut self) {
-        if let Some(snapshot) = self.last_snapshot.as_ref() {
-            self.surface.repaint(&mut *self.painter, snapshot, false);
+    fn paint_last(&mut self, now_ms: u32) {
+        if let Some(snapshot) = self.last_snapshot
+            && self.surface.repaint(&mut *self.painter, &snapshot, false)
+        {
+            self.shown = Some(snapshot);
+            self.last_repaint_ms = now_ms;
         }
+    }
+
+    /// Paints the newest frame when its turn has come. Answers whether a frame was painted.
+    fn paint_due(&mut self, now_ms: u32, force: bool) -> bool {
+        let Some(latest) = self.last_snapshot else {
+            return false;
+        };
+        let since = u64::from(now_ms.wrapping_sub(self.last_repaint_ms));
+        let due = force
+            || self
+                .shown
+                .as_ref()
+                .is_none_or(|prev| repaint_due(prev.page, prev, &latest, since, self.overlay));
+        if !due {
+            return false;
+        }
+        if !self.surface.repaint(&mut *self.painter, &latest, true) {
+            return false;
+        }
+        self.shown = Some(latest);
+        self.last_repaint_ms = now_ms;
+        true
+    }
+
+    /// Whether a frame is wanted that the glass does not hold yet: a filled repaint floor must
+    /// not park the loop, because the diff will not offer that frame again.
+    fn owed(&self) -> bool {
+        let (Some(latest), Some(shown)) = (self.last_snapshot, self.shown) else {
+            return false;
+        };
+        latest != shown && repaint_wanted(shown.page, &shown, &latest, self.overlay)
     }
 
     fn is_camera_page(&self) -> bool {
@@ -109,16 +147,7 @@ impl ScreenRenderer {
         if !camera.mode.is_collecting() {
             self.surface.release_camera();
         }
-        let previous = self.last_snapshot.replace(*frame);
-        let repaint = previous.as_ref().is_none_or(|prev| {
-            repaint_due(
-                prev.page,
-                prev,
-                frame,
-                u64::from(now_ms.wrapping_sub(self.last_repaint_ms)),
-                self.overlay,
-            )
-        });
+        self.last_snapshot = Some(*frame);
         self.page = Some(frame.page);
         self.color
             .set_demand(frame.demand.claim(DemandKey::DISPLAY).mode);
@@ -137,20 +166,14 @@ impl ScreenRenderer {
             self.color.forget_color();
             self.present(now_ms);
         }
-        if (page_changed || repaint) && self.repaint(frame, true) {
-            self.last_repaint_ms = now_ms;
-        }
-        if self.is_camera_page() || frame.animating() {
+        self.paint_due(now_ms, page_changed);
+        if self.is_camera_page() || frame.animating() || self.owed() {
             return Drive::TimeDriven;
         }
         if self.steady {
             return Drive::Idle;
         }
         self.color.drive()
-    }
-
-    fn repaint(&mut self, snapshot: &dyn Any, force: bool) -> bool {
-        self.surface.repaint(&mut *self.painter, snapshot, force)
     }
 }
 
@@ -194,7 +217,7 @@ impl Renderer for ScreenRenderer {
                 debug_assert_eq!(instance, self.instance);
                 self.declared = Some(light);
                 self.present(now_ms);
-                self.paint_last();
+                self.paint_last(now_ms);
                 self.color.drive()
             }
             Appearance::Demand(_) => {
@@ -217,12 +240,16 @@ impl Renderer for ScreenRenderer {
             );
             return Drive::TimeDriven;
         }
+        // A frame the floor turned away is owed to the glass, and no later diff will offer it.
+        self.paint_due(now_ms, false);
+        let owed = self.owed();
         if self.steady {
             // A still page still advances its own scroll; only the light is held.
-            return if self
-                .last_snapshot
-                .as_ref()
-                .is_some_and(FrameSnapshot::animating)
+            return if owed
+                || self
+                    .last_snapshot
+                    .as_ref()
+                    .is_some_and(FrameSnapshot::animating)
             {
                 Drive::TimeDriven
             } else {
@@ -237,12 +264,13 @@ impl Renderer for ScreenRenderer {
                 LightState::BACKLIGHT_FLOOR_PCT,
                 self.steady,
             ));
-            self.paint_last();
+            self.paint_last(now_ms);
         }
-        if self
-            .last_snapshot
-            .as_ref()
-            .is_some_and(FrameSnapshot::animating)
+        if owed
+            || self
+                .last_snapshot
+                .as_ref()
+                .is_some_and(FrameSnapshot::animating)
         {
             return Drive::TimeDriven;
         }
@@ -261,6 +289,7 @@ mod tests {
     use crate::shared::snapshot::FrameSnapshot;
     use crate::state::LightState;
     use alloc::rc::Rc;
+    use core::any::Any;
     use core::cell::RefCell;
     use iot_core::demand::{Claim, EffectiveDemand, Priority};
     use iot_core::drivers::camera::{
@@ -299,6 +328,8 @@ mod tests {
         camera_releases: u32,
         camera_period: u32,
         camera: bool,
+        paints: u32,
+        painted: Option<FrameSnapshot>,
     }
 
     struct FakeScreen(Rc<RefCell<ScreenState>>);
@@ -314,6 +345,8 @@ mod tests {
                 camera_releases: 0,
                 camera_period: 0,
                 camera: false,
+                paints: 0,
+                painted: None,
             })))
         }
 
@@ -349,10 +382,13 @@ mod tests {
         fn repaint(
             &mut self,
             _painter: &mut dyn ScreenPainter,
-            _snapshot: &dyn Any,
+            snapshot: &dyn Any,
             _force: bool,
         ) -> bool {
-            false
+            let mut screen = self.0.borrow_mut();
+            screen.paints += 1;
+            screen.painted = snapshot.downcast_ref::<FrameSnapshot>().copied();
+            true
         }
     }
 
@@ -485,6 +521,56 @@ mod tests {
             "the first frame after relighting is the one that matters"
         );
         assert_eq!(screen.borrow().ceiling, 100);
+    }
+
+    #[test]
+    fn a_change_the_floor_turned_away_is_painted_when_its_turn_comes() {
+        let (mut r, screen) = renderer();
+        let first = frame_on(PageId::Speaker, Mode::Continuous);
+        r.on_appearance(Appearance::Frame(&first), 0);
+        assert_eq!(screen.borrow().paints, 1, "the first frame lands");
+
+        let mut played = first;
+        played.playback.plays = 7;
+        assert_eq!(
+            r.on_appearance(Appearance::Frame(&played), 20),
+            Drive::TimeDriven,
+            "a frame held back by the floor still keeps the loop awake"
+        );
+        assert_eq!(
+            screen.borrow().paints,
+            1,
+            "the page's step has not elapsed yet"
+        );
+
+        r.step(40);
+        assert_eq!(
+            screen.borrow().paints,
+            2,
+            "the held-back frame is the one owed to the glass"
+        );
+        assert_eq!(screen.borrow().painted, Some(played));
+    }
+
+    #[test]
+    fn a_page_that_draws_nothing_new_parks_with_the_floor_filled() {
+        let screen = FakeScreen::new();
+        let state = screen.handle();
+        let mut r = ScreenRenderer::new(0, Box::new(screen), Box::new(NullPainter), false);
+        r.on_appearance(
+            Appearance::Frame(&frame_on(PageId::Env, Mode::Continuous)),
+            0,
+        );
+        let paints = state.borrow().paints;
+        let mut ticked = frame_on(PageId::Env, Mode::Continuous);
+        ticked.audio.elapsed_ms = 1_234;
+        assert_eq!(
+            r.on_appearance(Appearance::Frame(&ticked), 20),
+            Drive::Idle,
+            "a drift the Env page does not draw is not an owed frame"
+        );
+        r.step(40);
+        assert_eq!(state.borrow().paints, paints, "and it stays unpainted");
     }
 
     #[test]

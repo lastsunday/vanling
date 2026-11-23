@@ -192,6 +192,31 @@ fn multi_contact_samples_keep_releases() {
     assert_eq!(ev.len, 1);
 }
 
+/// A point that reappears after a missed sample is judged by a tighter reach than one that never
+/// left: with the full flick reach a fresh tap near the last position inherits the old contact,
+/// arrives as `Contact`, and no press is ever reported for it.
+#[test]
+fn a_point_that_reappears_after_a_dropout_does_not_inherit_a_far_contact() {
+    let mut c = TouchContinuity::new();
+    c.update(&[p(40, 40)]);
+    assert!(c.update(&[]).is_none(), "one dropout is not a lift");
+    let ev = c.update(&[p(40, 100)]).unwrap();
+    assert_eq!(
+        (ev.points[0].id, ev.points[0].status),
+        (1, TouchStatus::Down),
+        "60 px after a missed sample is a new contact, not the old one"
+    );
+
+    let mut c = TouchContinuity::new();
+    c.update(&[p(40, 40)]);
+    let ev = c.update(&[p(40, 100)]).unwrap();
+    assert_eq!(
+        (ev.points[0].id, ev.points[0].status),
+        (0, TouchStatus::Contact),
+        "60 px between consecutive samples is still one fast flick"
+    );
+}
+
 #[test]
 fn touch_map_identity_swap_and_mirror() {
     assert_eq!(TouchMap::IDENTITY.map((10, 20), 240, 320), (10, 20));

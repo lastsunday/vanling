@@ -24,6 +24,11 @@ pub(super) fn repaint_due(
         Mode::OnChange => return since_ms >= step * ON_CHANGE_STRIDE && prev != next,
         Mode::Continuous => {}
     }
+    // Every page that prints a word has to be redrawn when the words change, including the
+    // ones whose own snapshot did not move.
+    if prev.lang != next.lang {
+        return true;
+    }
     if since_ms < step {
         // The frame that ends an animation is drawn even inside the floor: the glide's last
         // offset would otherwise never reach the glass.
@@ -33,6 +38,24 @@ pub(super) fn repaint_due(
         }
     }
     descriptor(page).repaints_on(prev, next, overlay)
+}
+
+/// The same question with the floor taken out: a frame this answers `true` for is one the page
+/// wants drawn, so a screen holding it back must keep the loop awake. The diff offers each frame
+/// once, so waiting for the next one is waiting for nothing.
+pub(super) fn repaint_wanted(
+    page: PageId,
+    prev: &FrameSnapshot,
+    next: &FrameSnapshot,
+    overlay: bool,
+) -> bool {
+    match next.demand.claim(DemandKey::DISPLAY).mode {
+        Mode::Off => false,
+        Mode::OnChange => prev != next,
+        Mode::Continuous => {
+            prev.lang != next.lang || descriptor(page).repaints_on(prev, next, overlay)
+        }
+    }
 }
 
 #[cfg(test)]
@@ -55,6 +78,15 @@ mod tests {
     /// default — a page that changed its cadence without changing this would fail here.
     fn audio_step() -> u64 {
         descriptor(PageId::Audio).repaint_step_ms()
+    }
+
+    #[test]
+    fn a_language_switch_repaints_a_page_that_only_prints_words() {
+        let base = FrameSnapshot::default();
+        let mut moved = base;
+        moved.lang = crate::shared::kit::i18n::Lang::ZhHans;
+        assert!(repaint_due(PageId::Env, &base, &moved, 0, true));
+        assert!(repaint_due(PageId::Speaker, &base, &moved, 0, true));
     }
 
     #[test]

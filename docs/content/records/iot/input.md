@@ -109,6 +109,23 @@ raw(rx 0..240, ry 0..320)  →  fb(x, y) = (ry, 239 − rx)
 
 ---
 
+## 抬手后立刻落下的一指不是同一根手指（`[测试]`，2026-11-23）
+
+缺陷来自用户：Widgets 页滑动滑块之后，点其他组件没反应。
+
+两条独立的成因，都要修：
+
+- **识别层把新手指并进旧接触。** `TouchContinuity` 相邻样本的匹配半径是 `MAX_REACH_PX = 80`，而抬手要连续 `RELEASE_CONFIRM_SAMPLES = 3` 个空样本（`TOUCH_SCAN_MS = 10`，即 30 ms）才确认，这段窗口里旧 tracker 仍然 active。此时新落点若在旧位置 80 px 内就被并成 `Contact`；`TouchGestures` 只在槽位未 pressed 时发 `Press`，于是这一下没有 `Press`，抬手时按 `down_x/down_y`（滑块起点）发 `Tap`——点按被算在滑块自己身上。
+- **页面把滑块的按住状态留到了下一次手势。** `WidgetsPage.values.pressed` 是滑块的 latch，`Release` 从不清它；latch 还在时任何 ≥ `MOVE_DEADBAND_PX = 2` 的位移都被 `bind` 判成 `Slide`，与第一触点漂 2 px 的普通点按永远变不成 `Tap`。
+
+修法：`TrackerPoint.gap` 记被漏掉的样本数，`gap == 0` 用 80 px（全速甩动两个相邻样本的距离），`gap > 0` 用 `REACQUIRE_REACH_PX = 24`（一个漏拍里没有手指能走完的距离）；`WidgetsPage` 在 `Release`（Swipe 抬手、Tap、以及 `LongPress` 这条「按住没变成滑动」的收尾）清零 latch。
+
+`[测试]` `a_point_that_reappears_after_a_dropout_does_not_inherit_a_far_contact`（core）：漏一拍后 60 px 是新接触，连续样本 60 px 仍是同一个 id。`a_tap_right_after_a_slide_reaches_the_control_it_lands_on`（app）走 raw → `TouchContinuity` → `TouchGestures` → 页面全链：滑完滑块、抬手后漏一拍、落在 58 px 外的 chip 上必须选中它；把 `REACQUIRE_REACH_PX` 改回 80 立即红。`a_slider_lets_go_of_the_finger_when_it_lifts` 与 `a_hold_that_never_became_a_swipe_also_lets_go` 钉住 latch 清零，前者还验了「下一次拖拽是滚动画廊，不是又滑了一次滑块」。
+
+`[据称]` 板上确认仍欠一次手指：FT6336 产不出可注入的触摸，host 测试覆盖的是同一份识别与页面代码。
+
+---
+
 ## 节拍追赶一次除法定位；零拍不再自旋（`[测试]`，2026-10-28）
 
 `PollEntry::advance_past` 在每次轮询之后把「下一格」推到 `now` 之后的第一个格点（`app/src/input.rs:212`，输入任务的循环里）。旧写法是逐格 `+= cadence`：一个停了一小时的源恢复时（`set_active` 把下一格停在 0）要走 18 万次，而这段跑在主栈上。现在一次除法定位，落在同样的格子上——`a_source_that_resumes_after_an_hour_lands_on_the_next_slot_once` 钉住「第一格，不是晚几格」。

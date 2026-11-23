@@ -2,6 +2,7 @@
 //! render layer never borrows the state it paints.
 
 use crate::shared::kit::i18n::Lang;
+use crate::shared::kit::keyboard::{FIELD_BYTES, Text};
 use crate::shared::model::DeviceState;
 use crate::shared::model::{AudioPhase, Backed, Health, NetworkView};
 use crate::shared::route::PageId;
@@ -217,6 +218,8 @@ pub struct WidgetsSnapshot {
     /// The control under the finger, by tag; zero when none.
     pub pressed: u16,
     pub spinner: u8,
+    /// What the focused field holds, and the keys' own shift and layer state.
+    pub text: Text<FIELD_BYTES>,
 }
 
 /// What each page publishes beyond the state it read.

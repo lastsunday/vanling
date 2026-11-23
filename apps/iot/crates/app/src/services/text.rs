@@ -481,9 +481,9 @@ fn append(buf: &mut [u8], n: usize, part: &[u8]) -> usize {
     n + take
 }
 
-/// The wrap region's paragraph, shared with the vector font's cutter so the two cannot
-/// disagree about which glyphs the page needs.
-const WRAP_RUN: &[u8] = include_bytes!("../../../core/assets/font/vector-sample.txt");
+/// The wrap region's paragraph. The vector cutter reads `vector-sample.txt`, which now only
+/// lists the glyphs the UI needs.
+const WRAP_RUN: &[u8] = include_bytes!("../../../core/assets/font/text-specimen.txt");
 
 /// The page's standing rows, one per line the panel has room for. Widths are asserted below.
 const ROWS: [&[u8]; TEXT_ROWS] = [

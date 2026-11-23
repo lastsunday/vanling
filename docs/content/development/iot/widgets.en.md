@@ -2,7 +2,7 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "0459f99644bec79a24bd1ddc6bb049c5a081d366"
+source_file_hash = "afdc6f056e31a74dd4b976f25576bd0304c82f47"
 translated_at = "2026-11-22T00:00:00Z"
 +++
 
@@ -69,6 +69,8 @@ A widget takes props only: it does not read `DeviceState`, take callbacks, or em
 This mirrors Flutter's `WidgetState` without `hovered` (there is no mouse). Widgets store no state; it is passed again every frame, while persistent flags such as `SELECTED` live in the page or the snapshot.
 
 The state layer is a translucent overlay: `Color::rgba(..., 0x40)` goes through `Canvas` as source-over, with no theme engine.
+
+There is no two-way binding (Slint/QML's `<=>`). Flutter's `TextEditingController` is also a controller plus a rebuild, not a binding; here the snapshot is `Copy` and `view` is pure, so listeners would turn "repaint follows the snapshot diff" into "whoever notifies repaints". Editing state uses controllers instead: `kit::scroll::ScrollState` and `kit::keyboard::Text`.
 
 ## Theme and palette
 
@@ -149,7 +151,7 @@ Built and living in `shared/kit/widgets`:
 | `Checkbox` | W | 2–3 | Box + tick |
 | `Radio` | W | 2–3 | Circle + dot |
 | `Slider` | W | 3 | Track + knob; the page supplies the value |
-| `TextField` | W | 2 | Value + caret; the keyboard belongs to the page |
+| `TextField` | W | 2 | Value + caret; once focused the page hands over to `kit::keyboard` |
 | `Select` | W | 2 | Value + arrow |
 | `Tooltip` | W | 2 | Anchor + floating line |
 | `Avatar` | W | 2 | Initial or short mark |
@@ -158,6 +160,10 @@ Built and living in `shared/kit/widgets`:
 | `Image` | C | 0 | Camera frames and RGB565 assets through a custom slot |
 
 `Text` / `RichText` need no wrapper: `ui.text` and `ui.span` are the vocabulary.
+
+Type comes in three steps: page titles at 20 px vector (`chrome::title`), button and chip labels at 14 px vector, body copy and readings on the 12 px bitmap. The bitmap face has one size: `Metrics::at(13..=24)` jumps to 24 px, where an eight-letter label like `ATTITUDE` no longer fits a 98 px button, so larger type has to be vector. Painting falls back per run: one missing glyph drops the whole run to the bitmap face. `every_word_the_panel_prints_has_a_vector_glyph` pins every `Msg::ALL` word at 14 and 20 px; rerun `iot-tool outline` before adding copy.
+
+Text grows a layout, but only the nodes that did not fix their size: with no `width`, a text node takes the run's advance width and `line_height` (ink plus leading), so a column gets taller and a row gets wider. A `width` on a `nowrap` run clips it instead, and a `Button` stays 98×44 however large its label is; changing the type size means changing the layout constants with it. The panel is a fixed 320×240: growth comes out of the `grow` nodes and then runs off the panel, it never scales the layout down.
 
 `ListTile` follows Flutter's fields: `title`, `subtitle`, `leading`, `trailing`, `state`, `dense`. `leading` / `trailing` are `Slot`:
 
@@ -178,9 +184,11 @@ pub enum Slot<'a> {
 | `Menu` | A three-column button grid of every page; pages the board cannot back are greyed and do not navigate. The boot page whenever a screen is present. |
 | `Widgets` | The basic-widget gallery: five sections (actions / selection / input / display / rows), each under a heading, the whole page in one scroll box; controls that can hold a value are tappable. |
 
-`Menu` puts its buttons in `chrome::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Hit testing shares those constants plus the scroll offset, so it never depends on a fresh layout. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Ambient`; `DeviceState::landed_on` reads `Screen` from `surface_roles`.
+`Menu` puts its buttons in `chrome::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Ambient`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower and still needs no scrolling.
 
-The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the text field focuses, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch and `ProgressBar` follows the slider. A control's root node carries a `Style::tag`; the page measures them once with `Ui::tags()` at construction and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
+The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`), and the line under `LIVE STATE` spells out `SPINNER AVATAR ICON BADGE` in order, because the four shapes do not identify themselves. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
+
+A focused `TextField` replaces the page with a 4×4 keyboard (`kit::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table.
 
 ## Advanced widgets
 
@@ -248,9 +256,11 @@ impl Msg {
 | Layer | Entry | Notes |
 | --- | --- | --- |
 | Build | `IOT_LANG=en\|zh` | Same `option_env!` and parsing as `IOT_BOOT_PAGE` |
-| Runtime | `DeviceState.lang` | Reserved for a settings page |
+| Runtime | `SettingsIntent::SetLang` | The `EN` / `中文` chips on `Menu`; `services::settings` writes `DeviceState.lang` |
 | Snapshot | `FrameSnapshot.lang` | Pages read the snapshot only |
 | Widgets | Take `&[u8]` only | Translation happens in the page |
+
+A `lang` change repaints on its own in `render::screen::repaint_due`, so every speaking page changes words together; pages do not each carry a condition, and a new page cannot forget one.
 
 The default is `en`, matching the panel's current wording; `IOT_LANG=zh` builds a Chinese panel.
 
@@ -287,11 +297,12 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 
 ## Hit testing and events
 
-- Widgets: `Ui::headless` runs the same declaration and `ui.rect(node)` returns the rectangle. Tappable widgets carry `Style::tag`, and `ui.tag_at(x, y)` yields the intent id.
+- Widgets: `Ui::headless` runs the same declaration and `Ui::tags()` measures every tag once into `kit::tag::TagTable`. Tappable widgets carry `Style::tag`, and `TagTable::at(x, y, offset)` yields the intent id.
 - Cells: the page's `shape` constants compute rectangles shared with drawing.
 - A `NodeId` is valid only within one declaration and never crosses frames; use `tag` for a stable id.
 - Dialogs and toasts are declared in a `stack` overlay; the page decides visibility.
 - Widgets know nothing of `InputEvent`; `bind` turns `InputIntent` into `BusinessIntent`.
+- A hold latch belongs to the page (the slider's is `values.pressed`) and every gesture that ends must clear it: with the latch still set, a 2 px drift binds as a drag and the next tap never becomes a `Tap`.
 
 ## Budgets and tests
 

@@ -101,7 +101,11 @@ impl Theme {
     /// The label's colour, resolved against the same state as [`Self::button`].
     pub fn on_button(&self, ui: &mut Ui<'_, '_>, kind: ButtonKind, state: State) -> ColorId {
         if state.has(State::DISABLED) {
-            return ui.color(self.muted);
+            // A disabled filled button sits on `muted`; grey on grey loses its name.
+            return match kind {
+                ButtonKind::Filled => ui.color(self.on_accent),
+                ButtonKind::Outlined | ButtonKind::Text => ui.color(self.muted),
+            };
         }
         match kind {
             ButtonKind::Filled => ui.color(self.on_accent),

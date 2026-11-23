@@ -95,7 +95,10 @@ pub enum Msg {
     SectionInput,
     SectionDisplay,
     SectionRows,
+    DisplayNames,
     TapHint,
+    LangEn,
+    LangZh,
 }
 
 impl Msg {
@@ -152,7 +155,10 @@ impl Msg {
         Self::SectionInput,
         Self::SectionDisplay,
         Self::SectionRows,
+        Self::DisplayNames,
         Self::TapHint,
+        Self::LangEn,
+        Self::LangZh,
     ];
 
     pub const fn text(self, lang: Lang) -> &'static str {
@@ -177,7 +183,7 @@ impl Msg {
             (Self::PageMenu, Lang::En) => "MENU",
             (Self::PageMenu, Lang::ZhHans) => "菜单",
             (Self::PageAmbient, Lang::En) => "AMBIENT",
-            (Self::PageAmbient, Lang::ZhHans) => "氛围",
+            (Self::PageAmbient, Lang::ZhHans) => "氛围灯",
             (Self::PageAttitude, Lang::En) => "ATTITUDE",
             (Self::PageAttitude, Lang::ZhHans) => "姿态",
             (Self::PageAudio, Lang::En) => "AUDIO",
@@ -248,20 +254,24 @@ impl Msg {
             (Self::Choose, Lang::ZhHans) => "选择",
             (Self::Row, Lang::En) => "ROW",
             (Self::Row, Lang::ZhHans) => "行",
-            (Self::Detail, Lang::En) => "DETAIL",
-            (Self::Detail, Lang::ZhHans) => "明细",
-            (Self::SectionActions, Lang::En) => "ACTIONS",
-            (Self::SectionActions, Lang::ZhHans) => "操作",
-            (Self::SectionSelection, Lang::En) => "SELECTION",
-            (Self::SectionSelection, Lang::ZhHans) => "选择",
-            (Self::SectionInput, Lang::En) => "INPUT",
-            (Self::SectionInput, Lang::ZhHans) => "输入",
-            (Self::SectionDisplay, Lang::En) => "DISPLAY",
-            (Self::SectionDisplay, Lang::ZhHans) => "显示",
-            (Self::SectionRows, Lang::En) => "ROWS",
+            (Self::Detail, Lang::En) => "SUBTITLE",
+            (Self::Detail, Lang::ZhHans) => "副标题",
+            (Self::SectionActions, Lang::En) => "TAP TO LATCH",
+            (Self::SectionActions, Lang::ZhHans) => "点击锁定",
+            (Self::SectionSelection, Lang::En) => "PICK OR TOGGLE",
+            (Self::SectionSelection, Lang::ZhHans) => "选择或开关",
+            (Self::SectionInput, Lang::En) => "DRAG AND TYPE",
+            (Self::SectionInput, Lang::ZhHans) => "拖动与输入",
+            (Self::SectionDisplay, Lang::En) => "LIVE STATE / TAP + TO SPIN",
+            (Self::SectionDisplay, Lang::ZhHans) => "实时状态 / 点 + 转动",
+            (Self::SectionRows, Lang::En) => "ROW",
             (Self::SectionRows, Lang::ZhHans) => "行",
-            (Self::TapHint, Lang::En) => "TAP",
-            (Self::TapHint, Lang::ZhHans) => "点击",
+            (Self::DisplayNames, Lang::En) => "SPINNER  AVATAR  ICON  BADGE",
+            (Self::DisplayNames, Lang::ZhHans) => "旋转  头像  图标  徽章",
+            (Self::TapHint, Lang::En) => "TAP THE ROW TO SELECT",
+            (Self::TapHint, Lang::ZhHans) => "点击此行以选中",
+            (Self::LangEn, Lang::En | Lang::ZhHans) => "EN",
+            (Self::LangZh, Lang::En | Lang::ZhHans) => "中文",
         }
     }
 
