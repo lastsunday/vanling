@@ -313,7 +313,7 @@ IOT_PORT=<port> moon run iot:flash-s3                  # 两块板同时插入�
 
 | 变量 | 作用 | 不设时 |
 | --- | --- | --- |
-| `IOT_BOOT_PAGE` | 开机停在哪一页 | `ambient` |
+| `IOT_BOOT_PAGE` | 开机停在哪一页 | `menu` |
 | `IOT_DEMAND` | 各数据面的开关与节奏 | 固件内的默认档 |
 | `IOT_LOG_LEVEL` | 串口输出级别：`error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | 编入固件的凭据 | 不编入，设备停在配网页 |
@@ -321,7 +321,7 @@ IOT_PORT=<port> moon run iot:flash-s3                  # 两块板同时插入�
 
 `IOT_PORT` 不属于此类：它只交给 espflash 定位端口，不进入固件。
 
-`IOT_DEMAND` 按项宽松解析：无法识别的项只丢弃该项，构建仍然成功；若整串未识别出任何设备，另打印一条 `[IOT] IOT_DEMAND named nothing this firmware recognises: ignored`。`IOT_BOOT_PAGE` 取到无效页名时退回 `ambient`，并打印 `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient`。
+`IOT_DEMAND` 按项宽松解析：无法识别的项只丢弃该项，构建仍然成功；若整串未识别出任何设备，另打印一条 `[IOT] IOT_DEMAND named nothing this firmware recognises: ignored`。`IOT_BOOT_PAGE` 取到无效页名时退回 `input`，并打印 `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Input`。
 
 ### 日志 {#logging}
 

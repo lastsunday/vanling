@@ -5,6 +5,9 @@ use iot_core::ui::{Color, ColorId, Style, TextAlign, Ui};
 
 use super::state::State;
 
+/// The corner every interactive box rounds to; static marks round to their own.
+pub const CORNER: u8 = 4;
+
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum ButtonKind {
     #[default]
@@ -60,6 +63,7 @@ impl Theme {
         let style = Style::new()
             .min_width(TOUCH_MIN as i16)
             .height(TOUCH_MIN as i16)
+            .radius(CORNER)
             .pad(6)
             .center()
             .nowrap();
@@ -114,7 +118,11 @@ impl Theme {
     }
 
     pub fn field(&self, ui: &mut Ui<'_, '_>, state: State) -> Style {
-        let style = Style::new().height(TOUCH_MIN as i16).pad(3).nowrap();
+        let style = Style::new()
+            .height(TOUCH_MIN as i16)
+            .radius(CORNER)
+            .pad(3)
+            .nowrap();
         if state.has(State::ERROR) {
             style.bordered().color(ui.color(self.danger))
         } else if state.has(State::FOCUSED) {

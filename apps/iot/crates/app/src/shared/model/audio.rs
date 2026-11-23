@@ -224,12 +224,12 @@ mod tests {
         let before = manager.state().lights[0];
 
         for _ in 0..PageId::ALL.len() {
-            if manager.state().page() == PageId::Ambient {
+            if manager.state().page() == PageId::Input {
                 break;
             }
             manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
         }
-        assert_eq!(manager.state().page(), PageId::Ambient, "walked off audio");
+        assert_eq!(manager.state().page(), PageId::Input, "walked off audio");
 
         apply(&mut manager, tap());
         assert_eq!(

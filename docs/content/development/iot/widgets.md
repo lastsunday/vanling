@@ -5,7 +5,7 @@ weight = 80
 
 # UI 组件
 
-面板的组件词汇：两种形态、状态与主题、基础组件、Cell 绘制、多语言与预算。
+面板的组件词汇：两种形态、状态与主题、圆角、基础组件、Cell 绘制、多语言与预算。
 
 > 状态：基础组件、`Menu` 页与基础组件演示页已落地；高级与可选组件只是清单。
 
@@ -94,6 +94,19 @@ impl Theme {
 
 同一颜色重复 intern 是幂等的；`MAX_COLORS = 16` 是整页共享的上限。新增组件先问“能不能用现有 token”，不能才加色。
 
+## 圆角
+
+`Style::radius(u8)` 给节点自己的底与描边切角，`0` 是方角；半径按短边折半、并以 `MAX_RADIUS = 16` 封顶，所以 24×24 的 `Avatar` 直接写 `12` 就是个圆。绘制走整数判据 `(2r-2c-1)² + (2r-2k-1)² <= 4r²`，按行填格，不建表、不画弧、不分配。
+
+只切节点自己的纸：背景、描边；子节点与文字不被裁。圆角半径不跨节点继承，容器要圆就把半径写在容器上。
+
+| 组件 | 半径 |
+| --- | --- |
+| `Button` / `Chip` / `TextField` / `Select` | `theme::CORNER = 4` |
+| `Badge` | 3 |
+| `Avatar` | 12（24 px 方框，即半边长） |
+| `Indicator` 的标记 | 点 4（`DOT = 8`）/ 数字 7（`PILL = 14`） |
+
 ## API
 
 ```rust
@@ -139,10 +152,11 @@ Flutter 到这里的映射：
 | 组件 | 形态 | 节点 | 说明 |
 | --- | --- | --- | --- |
 | `Divider` | W | 1 | 一条 1 px 线 |
-| `Badge` | W | 2 | 小字块，状态与计数 |
+| `Badge` | W | 1 | 小字块；`Filled` / `Light` / `Outline` 三变体，`Tone` 另管颜色 |
 | `Chip` | W | 2 | 圆角标签，可带选中态 |
 | `Button` | W | 2 | filled / outlined / text |
 | `IconButton` | W | 2 | 暂用 12 px 字模里的符号，无图标集 |
+| `Indicator` | W | 2 | 叠在子元素右上角的角标：默认圆点，`label` 时带数字 |
 | `ProgressBar` | W | 3 | 轨道 + 进度 |
 | `Spinner` | W | 1 | `\|` `/` `-` `\` 四帧，由页面给相位 |
 | `Switch` | W | 2 | 轨道 + 滑块 |
@@ -152,7 +166,7 @@ Flutter 到这里的映射：
 | `TextField` | W | 2 | 值 + 光标；聚焦后整页交给 `kit::keyboard` |
 | `Select` | W | 2 | 值 + 箭头 |
 | `Tooltip` | W | 2 | 锚点 + 浮层 |
-| `Avatar` | W | 2 | 首字母或短标记 |
+| `Avatar` | W | 1 | 首字母或短标记，圆形底 |
 | `ListTile` | C | 0 | 列表行，四段文字 + 选中底 |
 | `Scrollbar` | C | 0 | 已有 `kit::scroll` |
 | `Image` | C | 0 | 相机帧、RGB565 资源，走 custom 槽 |
@@ -182,9 +196,9 @@ pub enum Slot<'a> {
 | `Menu` | 3 列按钮网格，列出全部页面；板子撑不起的页灰掉、点击无效；有屏时是默认启动页 |
 | `Widgets` | 基础组件画廊：五个分区（操作 / 选择 / 输入 / 显示 / 行）各一行标题，整页滚动；能切换的控件可点 |
 
-`Menu` 的按钮区放进 `chrome::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Ambient`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` 两个 44×44 chip（`the_language_chips_are_touch_sized` 钉住），点一下改 `DeviceState.lang`；按钮区因此下移一整行，仍不需要滚动。
+`Menu` 的按钮区放进 `chrome::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Input`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` 两个 44×44 chip（`the_language_chips_are_touch_sized` 钉住），点一下改 `DeviceState.lang`；按钮区因此下移一整行，仍不需要滚动。
 
-`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 下面那行 `SPINNER AVATAR ICON BADGE` 按顺序点出四个组件——光靠图形认不出哪个是哪个。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
+`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
 
 `TextField` 聚焦后页面换成 4×4 键盘（`kit::keyboard`，Canvas，0 节点）：`Text` 持有 24 字节、多击循环与 shift/layer 状态，`OK` 键收起键盘。键位、绘制与命中都读同一张 `CELLS` 表。
 

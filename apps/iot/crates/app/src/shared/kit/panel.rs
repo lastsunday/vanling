@@ -56,7 +56,7 @@ impl<'a> Panel<'a> {
     ) {
         let screen = self.screen;
         {
-            let mut ui = Ui::new_with_height(&mut self.canvas, screen, CONTENT_BOTTOM);
+            let mut ui = Ui::boxed_with_height(&mut self.canvas, screen, CONTENT_BOTTOM);
             body(snapshot, &mut ui);
             let mut paint = |slot: u8, canvas: &mut Canvas<'_>, rect: Rect| {
                 custom(snapshot, screen, slot, canvas, rect)

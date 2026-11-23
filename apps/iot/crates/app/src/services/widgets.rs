@@ -14,8 +14,8 @@ use crate::shared::kit::state::State;
 use crate::shared::kit::tag::TagTable;
 use crate::shared::kit::theme::{ButtonKind, Theme};
 use crate::shared::kit::widgets::{
-    Avatar, Badge, Button, Checkbox, Chip, Divider, IconButton, ListTile, ProgressBar, Radio,
-    Select, Slider, Spinner, Switch, TextField, Tone, Tooltip,
+    Avatar, Badge, Button, Checkbox, Chip, Divider, IconButton, Indicator, ListTile, ProgressBar,
+    Radio, Select, Slider, Spinner, Switch, TextField, Tone, Tooltip, Variant,
 };
 use crate::shared::kit::{chrome, keyboard};
 use crate::shared::model::{Command, DeviceState, Effects};
@@ -474,18 +474,25 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
             section(ui, Msg::SectionDisplay.bytes(lang), &theme);
             ui.row(Style::new().gap(GAP).middle(), |ui| {
                 ui.add(Spinner::new(w.spinner));
-                ui.add(Avatar::new(b"V"));
+                ui.add(Indicator::new(Avatar::new(b"V")).label(b"3"));
                 ui.add(
                     IconButton::new(if w.spinning { '-' } else { '+' })
                         .tag(WidgetsAction::Icon.tag())
                         .state(selected(w.spinning)),
                 );
-                let (text, tone) = if w.switch {
-                    (Msg::On.bytes(lang), Tone::Accent)
+                let word = if w.switch {
+                    Msg::On.bytes(lang)
                 } else {
-                    (Msg::Off.bytes(lang), Tone::Neutral)
+                    Msg::Off.bytes(lang)
                 };
-                ui.add(Badge::new(text).tone(tone));
+                let tone = if w.switch {
+                    Tone::Accent
+                } else {
+                    Tone::Neutral
+                };
+                for variant in [Variant::Filled, Variant::Light, Variant::Outline] {
+                    ui.add(Badge::new(word).tone(tone).variant(variant));
+                }
             });
             caption(ui, Msg::DisplayNames.bytes(lang), &theme);
 
@@ -743,7 +750,11 @@ mod tests {
                 },
                 &mut ui,
             );
-            assert!(ui.node_count() <= 60, "{lang:?}: {} nodes", ui.node_count());
+            assert!(
+                ui.node_count() <= iot_core::ui::MAX_NODES,
+                "{lang:?}: {} nodes",
+                ui.node_count()
+            );
             assert!(
                 ui.text_bytes() <= 2048,
                 "{lang:?}: {} bytes",

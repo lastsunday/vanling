@@ -2,7 +2,7 @@ use super::*;
 use iot_core::demand::{ALL_KEYS, Claim, DemandKey, DemandKind, Mode, Priority};
 
 fn fully_wired() -> DeviceManager {
-    fully_wired_on(PageId::Ambient)
+    fully_wired_on(PageId::Input)
 }
 
 fn fully_wired_on(boot_page: PageId) -> DeviceManager {

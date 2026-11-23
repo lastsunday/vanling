@@ -130,11 +130,11 @@ mod tests {
 
     #[test]
     fn go_replaces_the_top_without_growing_the_stack() {
-        let mut nav = Navigator::new(PageId::Ambient);
+        let mut nav = Navigator::new(PageId::Input);
         nav.push(PageId::Splash, ALL_BACKED);
         nav.go(PageId::Camera, ALL_BACKED);
         assert_eq!(nav.current(), PageId::Camera);
-        assert_eq!(nav.root(), PageId::Ambient);
+        assert_eq!(nav.root(), PageId::Input);
         assert_eq!(nav.depth, 2, "the page it replaced is gone");
     }
 
@@ -149,7 +149,7 @@ mod tests {
 
     #[test]
     fn a_push_past_the_capacity_replaces_the_top() {
-        let mut nav = Navigator::new(PageId::Ambient);
+        let mut nav = Navigator::new(PageId::Input);
         for page in [PageId::Camera, PageId::Audio, PageId::Network] {
             nav.push(page, ALL_BACKED);
         }
@@ -165,7 +165,7 @@ mod tests {
     #[test]
     fn a_page_the_board_cannot_back_falls_back_to_the_root_page() {
         let bare = Backed::NONE;
-        let mut nav = Navigator::new(PageId::Ambient);
+        let mut nav = Navigator::new(PageId::Input);
         nav.go(PageId::Camera, bare);
         assert_eq!(nav.current(), PageId::default());
         nav.push(PageId::Audio, bare);
@@ -175,7 +175,7 @@ mod tests {
     #[test]
     fn the_cycle_steps_in_place_and_skips_what_the_board_cannot_back() {
         let bare = Backed::NONE;
-        let mut nav = Navigator::new(PageId::Ambient);
+        let mut nav = Navigator::new(PageId::Input);
         assert_eq!(
             nav.advance(bare),
             PageId::Env,
@@ -184,14 +184,10 @@ mod tests {
         assert_eq!(nav.advance(bare), PageId::Text, "then the other one");
         assert_eq!(nav.advance(bare), PageId::Widgets, "then the widget bench");
         assert_eq!(nav.advance(bare), PageId::Menu, "then home");
-        assert_eq!(
-            nav.advance(bare),
-            PageId::Ambient,
-            "and the lap comes round"
-        );
+        assert_eq!(nav.advance(bare), PageId::Input, "and the lap comes round");
         assert_eq!(nav.depth, 1);
 
-        let mut nav = Navigator::new(PageId::Ambient);
+        let mut nav = Navigator::new(PageId::Input);
         assert_eq!(nav.advance(ALL_BACKED), PageId::Attitude);
         assert_eq!(nav.depth, 1, "the cycle is a tab, not a history");
         assert_eq!(nav.root(), PageId::Attitude, "the top is the root");
@@ -199,7 +195,7 @@ mod tests {
 
     #[test]
     fn a_transient_stays_up_through_a_button_press() {
-        let mut nav = Navigator::new(PageId::Ambient);
+        let mut nav = Navigator::new(PageId::Input);
         nav.push(PageId::Splash, ALL_BACKED);
         assert_eq!(nav.advance(ALL_BACKED), PageId::Splash);
         assert_eq!(nav.depth, 2, "and does not disturb what it covers");

@@ -23,7 +23,7 @@ fn lamp_intent(event: InputEvent, current: &DeviceState) -> Option<BusinessInten
 
 #[test]
 fn a_button_asks_for_one_verb_per_click() {
-    let ambient = state(BREATH);
+    let lamp = state(BREATH);
     for (event, action) in [
         (
             InputEvent::Button(ButtonEvent::Click),
@@ -39,7 +39,7 @@ fn a_button_asks_for_one_verb_per_click() {
         ),
     ] {
         assert_eq!(
-            lamp_intent(event, &ambient),
+            lamp_intent(event, &lamp),
             Some(BusinessIntent::Light {
                 instance: 0,
                 action,
@@ -51,16 +51,16 @@ fn a_button_asks_for_one_verb_per_click() {
 
 #[test]
 fn a_touch_asks_the_panel_surface() {
-    let ambient = state(BREATH);
+    let lamp = state(BREATH);
     assert_eq!(
-        lamp_intent(tap_gesture(0), &ambient),
+        lamp_intent(tap_gesture(0), &lamp),
         Some(BusinessIntent::Light {
             instance: 0,
             action: LightAction::NextColor { forward: true },
         })
     );
     assert_eq!(
-        translate(&long_press(), &ambient, &Services::default()),
+        translate(&long_press(), &lamp, &Services::default()),
         Some(BusinessIntent::Light {
             instance: 0,
             action: LightAction::Cycle,
@@ -79,7 +79,7 @@ fn a_touch_asks_the_panel_surface() {
         (SwipeDirection::Down, LightAction::Brightness { up: false }),
     ] {
         assert_eq!(
-            lamp_intent(swipe_event(direction), &ambient),
+            lamp_intent(swipe_event(direction), &lamp),
             Some(BusinessIntent::Light {
                 instance: 0,
                 action,

@@ -165,19 +165,19 @@ mod tests {
     }
 
     #[test]
-    fn frame_repaint_ambient_only_for_the_overlay() {
+    fn frame_repaint_input_only_for_the_overlay() {
         let base = FrameSnapshot::default();
         let mut ticked = base;
         ticked.audio.phase = AudioPhase::Recording;
         assert!(!repaint_due(
-            PageId::Ambient,
+            PageId::Input,
             &base,
             &ticked,
             REPAINT_FLOOR_MS,
             false
         ));
         assert!(repaint_due(
-            PageId::Ambient,
+            PageId::Input,
             &base,
             &ticked,
             REPAINT_FLOOR_MS,

@@ -19,7 +19,7 @@ pub(crate) fn lang() -> Lang {
 
 pub(crate) fn boot_page() -> PageId {
     if let Some(name) = UNKNOWN_BOOT_PAGE {
-        log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Ambient");
+        log::warn!("[IOT] IOT_BOOT_PAGE={name:?} is not a page, booting on Input");
     }
     BOOT_PAGE
 }
@@ -90,7 +90,7 @@ const fn boot_page_from_env(name: Option<&str>) -> PageId {
     };
     match bootable_page(name) {
         Some(page) => page,
-        None => PageId::Ambient,
+        None => PageId::Input,
     }
 }
 
@@ -148,19 +148,19 @@ mod tests {
     }
 
     #[test]
-    fn anything_unusable_lands_on_ambient() {
-        assert_eq!(boot_page_from_env(Some("")), PageId::Ambient, "empty");
-        assert_eq!(boot_page_from_env(Some("   ")), PageId::Ambient, "blank");
+    fn anything_unusable_lands_on_input() {
+        assert_eq!(boot_page_from_env(Some("")), PageId::Input, "empty");
+        assert_eq!(boot_page_from_env(Some("   ")), PageId::Input, "blank");
         assert_eq!(
             boot_page_from_env(Some("photograph")),
-            PageId::Ambient,
+            PageId::Input,
             "a name that is not a page"
         );
     }
 
     #[test]
     fn only_a_name_no_page_answers_to_is_reported() {
-        for name in ["AMBIENT", "  attitude  ", "\tnetwork\n"] {
+        for name in ["INPUT", "  attitude  ", "\tnetwork\n"] {
             assert_eq!(unknown_page(Some(name)), None, "{name:?}");
         }
         assert_eq!(unknown_page(None), None, "unset");
@@ -176,7 +176,7 @@ mod tests {
     fn the_splash_is_not_a_boot_page() {
         assert!(!PageId::Splash.bootable());
         assert_eq!(PageId::Splash.timeout_ms(), Some(SPLASH_MS));
-        assert_eq!(boot_page_from_env(Some("splash")), PageId::Ambient);
+        assert_eq!(boot_page_from_env(Some("splash")), PageId::Input);
         assert_eq!(unknown_page(Some("splash")), Some("splash"));
     }
 

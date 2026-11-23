@@ -241,7 +241,7 @@ where
         overrides: boot_override(),
     }));
     let boot = manager.boot_page();
-    if boot != PageId::Ambient {
+    if boot != PageId::Input {
         log::info!("[IOT] boot page is {boot:?}");
     }
     log::info!("[IOT] words in {:?}", manager.state_ref().lang);

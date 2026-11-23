@@ -1,4 +1,4 @@
-//! The Ambient page: the debug overlay over an empty ground, and nothing on a release build.
+//! The Input page: the debug overlay over an empty ground, and nothing on a release build.
 
 use crate::shared::intent::{BusinessIntent, InputIntent};
 use crate::shared::kit::chrome;
@@ -9,13 +9,13 @@ use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
 use iot_core::light::{MODE_BREATH, MODE_SOLID, Rgb, brightness_of, rgb_hue};
 use iot_core::ui::{Style, Ui};
 
-/// The Ambient page owns no state: the lamp is its whole answer and the overlay its whole view.
+/// The Input page owns no state: the lamp is its whole answer and the overlay its whole view.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct AmbientPage;
+pub struct InputPage;
 
-impl super::Service for AmbientPage {}
+impl super::Service for InputPage {}
 
-impl super::LocalPage for AmbientPage {
+impl super::LocalPage for InputPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         super::lamp(op, state)
     }

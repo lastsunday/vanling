@@ -4,9 +4,9 @@ use super::constraints::{BoxConstraints, Point, Size, Subpx};
 use super::style::{RunStyle, Style};
 use crate::ui::Rect;
 
-/// Boxes one declaration may hold. The fullest page is Text at 56 (one box per wrapped line),
-/// and every node is a slice of the panel core's stack, so the arena is sized to the page with
-/// a few boxes to grow into rather than to a round number.
+/// Boxes one declaration may hold. The fullest page is Text at 56 (one box per wrapped line) and
+/// the gallery at 59, and every node is a slice of the panel core's stack, so the arena is sized
+/// to the page with a box to grow into rather than to a round number.
 pub const MAX_NODES: usize = 60;
 pub const NONE: u16 = u16::MAX;
 

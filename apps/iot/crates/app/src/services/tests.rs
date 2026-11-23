@@ -21,14 +21,19 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::Rgb;
 use iot_core::ui::font::{FontFamily, Metrics};
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
-use iot_core::ui::{Canvas, Screen};
+use iot_core::ui::{Canvas, GlyphCache, Screen};
 
 const WIDTH: usize = PANEL_COLUMNS;
 const HEIGHT: usize = PANEL_ROWS;
 
 fn render(page: PageId, debug: bool) -> Vec<u8> {
-    // The menu is pinned with every capability wired: its golden is the product's grid, not the
-    // bare board's greyed one. The bare board is covered by the page's own tests.
+    render_snapshot(&page_snapshot(page), debug)
+}
+
+/// The snapshot the golden table and the cache test both draw: the menu pinned with every
+/// capability wired, so its golden is the product's grid, not the bare board's greyed one.
+/// The bare board is covered by the page's own tests.
+fn page_snapshot(page: PageId) -> FrameSnapshot {
     let backed = if page == PageId::Menu {
         Backed {
             motion: Some(MotionCapabilities::EMPTY),
@@ -40,22 +45,27 @@ fn render(page: PageId, debug: bool) -> Vec<u8> {
     } else {
         Backed::default()
     };
-    render_snapshot(
-        &FrameSnapshot {
-            page,
-            backed,
-            pages: Services::default().snapshot(),
-            ..FrameSnapshot::default()
-        },
-        debug,
-    )
+    FrameSnapshot {
+        page,
+        backed,
+        pages: Services::default().snapshot(),
+        ..FrameSnapshot::default()
+    }
 }
 
 fn render_snapshot(snapshot: &FrameSnapshot, debug: bool) -> Vec<u8> {
+    render_with(snapshot, debug, None)
+}
+
+/// Same picture, optionally through the glyph cache the panel core keeps on the heap.
+fn render_with(snapshot: &FrameSnapshot, debug: bool, glyphs: Option<&mut GlyphCache>) -> Vec<u8> {
     let page = snapshot.page;
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
     {
-        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, descriptor(page).ground());
+        let mut canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, descriptor(page).ground());
+        if let Some(glyphs) = glyphs {
+            canvas = canvas.with_glyphs(glyphs);
+        }
         let mut panel = Panel::new(
             canvas,
             Screen {
@@ -83,10 +93,10 @@ fn fingerprint(frame: &[u8]) -> u32 {
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
 const GOLDEN: [(&str, bool, u32); 22] = [
-    ("menu", false, 0xa4cf_077e),
-    ("menu", true, 0xf57a_7b2e),
-    ("ambient", false, 0xc18e_7dc5),
-    ("ambient", true, 0xb334_d787),
+    ("menu", false, 0x588e_8ac1),
+    ("menu", true, 0x3310_ba71),
+    ("input", false, 0xc18e_7dc5),
+    ("input", true, 0xb334_d787),
     ("attitude", false, 0x4404_48b2),
     ("attitude", true, 0x559e_e262),
     ("audio", false, 0xf348_158d),
@@ -103,9 +113,29 @@ const GOLDEN: [(&str, bool, u32); 22] = [
     ("env", true, 0xa4a9_9433),
     ("text", false, 0xe59e_db9e),
     ("text", true, 0x7aae_e74e),
-    ("widgets", false, 0x1aef_d978),
-    ("widgets", true, 0xdb2d_5d28),
+    ("widgets", false, 0x9246_7a40),
+    ("widgets", true, 0x8522_dff0),
 ];
+
+/// The one path the board takes that the golden table does not: every page through a real glyph
+/// cache, three frames deep, so a reused slot and a flushed cache both have to land the same ink.
+#[test]
+fn every_page_draws_the_same_ink_through_the_glyph_cache() {
+    let mut cache = GlyphCache::new();
+    for _ in 0..3 {
+        for page in PageId::ALL {
+            let snapshot = page_snapshot(page);
+            for debug in [false, true] {
+                assert_eq!(
+                    render_with(&snapshot, debug, Some(&mut cache)),
+                    render_with(&snapshot, debug, None),
+                    "{} (debug={debug}) differs once the glyph cache is in front",
+                    page.path()
+                );
+            }
+        }
+    }
+}
 
 #[test]
 fn every_page_draws_the_picture_the_golden_table_expects() {
@@ -134,7 +164,7 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
 
 #[test]
 fn a_language_switch_reaches_the_ink() {
-    // Ambient and Text print readout keys and the face's own specimen, which do not move.
+    // Input and Text print readout keys and the face's own specimen, which do not move.
     let speaking = [
         PageId::Splash,
         PageId::Menu,
@@ -321,6 +351,29 @@ fn dump_every_page_when_asked() {
         bmp(&render_snapshot(&motion(), false)),
     )
     .unwrap();
+    let mut services = Services::default();
+    let mut state = DeviceState::default();
+    services.apply(
+        &BusinessIntent::Widgets(WidgetsIntent::Scroll {
+            area: 0,
+            lines: 40,
+            speed: 0,
+        }),
+        &mut state,
+    );
+    let scrolled = services.snapshot();
+    std::fs::write(
+        dir.join("widgets-scrolled.bmp"),
+        bmp(&render_snapshot(
+            &FrameSnapshot {
+                page: PageId::Widgets,
+                pages: scrolled,
+                ..FrameSnapshot::default()
+            },
+            false,
+        )),
+    )
+    .unwrap();
 }
 
 /// A page with numbers in every reading: the state the golden table's empty snapshot cannot
@@ -344,6 +397,10 @@ fn motion() -> FrameSnapshot {
     }
 }
 
+#[test]
+#[test]
+#[test]
+#[test]
 #[test]
 fn the_attitude_page_with_numbers_draws_the_recorded_picture() {
     let actual = fingerprint(&render_snapshot(&motion(), false));

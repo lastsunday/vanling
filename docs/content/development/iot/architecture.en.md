@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "b93f27eb1b402478ee7eefad3be21240110b06cc"
-translated_at = "2026-11-22T00:00:00Z"
+source_file_hash = "b395fe66f847a042bca087e21522b57bfec8f7f4"
+translated_at = "2026-11-23T00:00:00Z"
 +++
 
 # Architecture
@@ -85,7 +85,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
 | `services/` | the product's services (pages plus the device's own `nav`/`light`), one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `shape` / `view` as needed); `mod.rs` defines the `Service` every operating platform shares (`apply`) and the local platform's `LocalPage: Service` (`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`), the `Services` holding every service and its one dispatch table (the private `ServiceId`: `Page(PageId)` or the device's own `Navigation`/`Light`), and the one `PageId → Descriptor` map; `Services::bind` is the input boundary: a transient page is asked directly, otherwise the cross-page bindings (setup hold, triple click) answer before the page; a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `services/tests.rs` |
-| `services/{ambient,attitude,camera,env,splash,text}.rs` | single-file pages with one canvas: each page type's `view` declares the whole page; `text` also owns two independent scroll regions |
+| `services/{input,attitude,camera,env,splash,text}.rs` | single-file pages with one canvas: each page type's `view` declares the whole page; `text` also owns two independent scroll regions |
 | `services/audio/{mod,tests}.rs`, `services/speaker/{mod,tests}.rs` | translation and drawing both in `mod.rs`; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `services/network/` | gestures and controls in `controller/`: `mod.rs` is the gesture translation, the strip and the hit tests; `shape.rs` is the one geometry the list, key grid, strip and confirmation box share (drawing and hit tests both read it); `view/` is split by band (`header` / `content` / `overlay`, with the words in `text.rs`) and `shape::Band` decides the order they stack in; `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
 | `shared/` | cross-page truth and vocabulary: only what more than one page reads, and the leaf of the module graph |
@@ -134,7 +134,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 ```
 
 - **pages never import each other**: a page reads `shared` (including `DeviceState`); when a page needs something from another page, that thing belongs in `shared`
-- **`services` is the only module that knows every service**: every page is a concrete type (`AmbientPage`…`NetworkPage`), and `Services::apply` is the one business dispatch table, one arm per `BusinessIntent` group; `state` asks only through `Services::bind`/`apply`/`snapshot`/`enter`/`leave`, and `render` only through `services::paint` and the reads on `services::descriptor(page)`; a page reads `shared` (including `DeviceState` and `FrameSnapshot`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
+- **`services` is the only module that knows every service**: every page is a concrete type (`InputPage`…`NetworkPage`), and `Services::apply` is the one business dispatch table, one arm per `BusinessIntent` group; `state` asks only through `Services::bind`/`apply`/`snapshot`/`enter`/`leave`, and `render` only through `services::paint` and the reads on `services::descriptor(page)`; a page reads `shared` (including `DeviceState` and `FrameSnapshot`) and does not know `state`/`render`; vocabulary such as `PageId` comes from `shared::route`
 - **`shared/kit` names no page**: `Panel` lays a page's declaration out into boxes and then inks them, and `chrome` offers only the shared margins, line rhythm and label slot; which page declares what is `services::descriptor(page).view`, and what the page paints itself is `descriptor(page).custom`
 - `shared` is a leaf: it does not depend on `state`/`services`/`render`/`runtime`. `DeviceState`, `PageSnapshot` and `NetworkView` live there so pages, the snapshot and rendering all look downward
 - `shared` is five buckets, one change reason each: `model` (records) / `route` (destinations) / `intent` (inbound messages) / `kit` (pixel primitives) / `snapshot` (the frame and page views); `every_shared_bucket_has_two_product_readers` holds "one reader is not shared" and `the_shared_buckets_are_the_five_the_taxonomy_names` holds the set
@@ -413,7 +413,7 @@ Measured (S3, 8 windows of 5 s) a single tick runs 17–25 ms. `MAX_SINGLE_HOLD_
 
 These 17–25 ms figures were measured at **80 MHz**. The product S3 now boots at 240 MHz through `chip_init_for_product()` (`chip_init_at(CpuClock::_240MHz)`); `chip_init()` remains the 80 MHz probe entry. This tick measurement has not been re-run at 240 MHz, so the numbers above are still 80 MHz figures and only get shorter there. For the 240 MHz evidence and its cost, see [Changing the CPU clock at runtime](@/records/iot/clock.en.md).
 
-The total is not the risk: Ambient spends 94.8% and behaves. A single 25 ms block is. Playback feeding runs on its own higher-priority executor, driven by DMA, so such a block cannot reach it.
+The total is not the risk: Input spends 94.8% and behaves. A single 25 ms block is. Playback feeding runs on its own higher-priority executor, driven by DMA, so such a block cannot reach it.
 
 #### Two configurations are refused by implementation
 
@@ -537,7 +537,7 @@ The capability test is one column of each route (`Route::needs`, with `is_backed
 
 This rule exists because of a defect it fixed.
 
-`next_page` was 18 hand-written jumps, and `Camera`'s leaving branch returned "a page the board can back" (`Attitude`) rather than the start, so `Ambient` was skipped for good: a full turn with every capability measured as `[Attitude, Attitude, Audio, Speaker, Camera]`, `Ambient` gone and `Attitude` twice.
+`next_page` was 18 hand-written jumps, and `Camera`'s leaving branch returned "a page the board can back" (`Attitude`) rather than the start, so `Input` was skipped for good: a full turn with every capability measured as `[Attitude, Attitude, Audio, Speaker, Camera]`, `Input` gone and `Attitude` twice.
 
 Written as pairs, a cycle drops the page that closes it; a single list walked with a wrap cannot.
 

@@ -180,7 +180,7 @@ pub(crate) fn state_on(page: PageId, light: LightState) -> DeviceState {
 }
 
 pub(crate) fn state(light: LightState) -> DeviceState {
-    state_on(PageId::Ambient, light)
+    state_on(PageId::Input, light)
 }
 
 /// The base state with one network fact changed.

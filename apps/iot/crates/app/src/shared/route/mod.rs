@@ -16,7 +16,7 @@ use iot_core::drivers::board::Backed;
 pub enum PageId {
     Menu,
     #[default]
-    Ambient,
+    Input,
     Attitude,
     Audio,
     Speaker,
@@ -97,8 +97,8 @@ static MENU: Route = Route {
     timeout_ms: None,
 };
 
-static AMBIENT: Route = Route {
-    path: "ambient",
+static INPUT: Route = Route {
+    path: "input",
     needs: |_| true,
     claim: motion_background,
     bootable: true,
@@ -182,7 +182,7 @@ impl PageId {
     /// walks it.
     pub const ALL: [Self; 11] = [
         Self::Menu,
-        Self::Ambient,
+        Self::Input,
         Self::Attitude,
         Self::Audio,
         Self::Speaker,
@@ -200,7 +200,7 @@ impl PageId {
     const fn route(&self) -> &'static Route {
         match self {
             Self::Menu => &MENU,
-            Self::Ambient => &AMBIENT,
+            Self::Input => &INPUT,
             Self::Attitude => &ATTITUDE,
             Self::Audio => &AUDIO,
             Self::Speaker => &SPEAKER,
@@ -367,10 +367,10 @@ mod tests {
     /// One tap at a time from the default page, until the lap closes back on it.
     fn lap(board: Backed) -> Vec<PageId> {
         let mut walked = Vec::new();
-        let mut page = PageId::Ambient;
+        let mut page = PageId::Input;
         for _ in 0..PageId::ALL.len() {
             page = page.next_page(board);
-            if page == PageId::Ambient {
+            if page == PageId::Input {
                 break;
             }
             walked.push(page);
@@ -489,7 +489,7 @@ mod tests {
                 .collect();
             assert!(
                 !backed.is_empty(),
-                "Ambient needs no capability, so there is always somewhere to go"
+                "Input needs no capability, so there is always somewhere to go"
             );
             for start in cycle {
                 let start_is_backed = backed.contains(&start);

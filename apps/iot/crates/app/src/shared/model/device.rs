@@ -115,15 +115,15 @@ impl DeviceState {
 
     /// The page that becomes the boot page: one the build may not come up on, the board
     /// cannot back, or one that needs a screen the board did not wire, falls back to
-    /// [`PageId::Ambient`].
+    /// [`PageId::Input`].
     pub(crate) fn landed_on(page: PageId, backed: Backed, screen: bool) -> PageId {
         if page == PageId::Menu && !screen {
-            return PageId::Ambient;
+            return PageId::Input;
         }
         if page.bootable() && page.is_backed(backed) {
             page
         } else {
-            PageId::Ambient
+            PageId::Input
         }
     }
 }

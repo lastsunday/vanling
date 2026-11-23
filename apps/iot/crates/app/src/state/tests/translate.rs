@@ -69,7 +69,7 @@ fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
     assert_eq!(
         translate(
             &op(long_press_event()),
-            &connected(state_on(PageId::Ambient, LightState::Off)),
+            &connected(state_on(PageId::Input, LightState::Off)),
             &Services::default()
         ),
         Some(BusinessIntent::Light {
@@ -84,7 +84,7 @@ fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
     assert_eq!(
         translate(
             &op(long_press_event()),
-            &in_setup(state_on(PageId::Ambient, LightState::Off)),
+            &in_setup(state_on(PageId::Input, LightState::Off)),
             &Services::default()
         ),
         Some(BusinessIntent::Network(NetworkIntent::SwitchHost))

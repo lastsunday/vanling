@@ -107,7 +107,7 @@ fn the_splash_is_never_where_the_device_lands() {
     }))
     .state()
     .page();
-    assert_eq!(landed_on, PageId::Ambient);
+    assert_eq!(landed_on, PageId::Input);
 }
 
 #[test]
@@ -117,7 +117,7 @@ fn a_board_with_no_screen_does_not_come_up_on_the_menu() {
         boot_page: PageId::Menu,
         ..Default::default()
     }));
-    assert_eq!(lamp_only.state().page(), PageId::Ambient);
+    assert_eq!(lamp_only.state().page(), PageId::Input);
 
     let screened = landed(DeviceManager::boot(Boot {
         surface_roles: [SurfaceRole::Screen, SurfaceRole::Absent],
@@ -173,7 +173,7 @@ fn the_boot_page_falls_back_for_every_capability_not_wired() {
         }))
         .state()
         .page(),
-        PageId::Ambient,
+        PageId::Input,
         "and the one it does not"
     );
 }

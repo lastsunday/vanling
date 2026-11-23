@@ -101,7 +101,7 @@ mod tests {
     #[test]
     fn a_fresh_watch_starts_on_the_manifest_default_page() {
         let watch = PageWatch::new();
-        assert!(watch.shows(PageId::Ambient), "the declared default");
+        assert!(watch.shows(PageId::Input), "the declared default");
         assert!(!watch.shows(PageId::Network));
     }
 
@@ -120,7 +120,7 @@ mod tests {
             "a return cannot be satisfied by never having left"
         );
 
-        watch.publish(PageId::Ambient);
+        watch.publish(PageId::Input);
         assert!(back.as_mut().poll(&mut cx()).is_pending());
         watch.publish(PageId::Network);
         assert!(

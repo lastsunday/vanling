@@ -124,7 +124,7 @@ fn a_board_with_no_radio_lands_on_its_page_even_after_the_hold() {
     let mut manager = DeviceManager::new();
     long_press_the_button(&mut manager);
     manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
-    assert_eq!(manager.state().page(), PageId::Ambient);
+    assert_eq!(manager.state().page(), PageId::Input);
 }
 
 #[test]

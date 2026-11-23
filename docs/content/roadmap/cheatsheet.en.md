@@ -2,8 +2,8 @@
 title = "Cheat Sheet"
 weight = 22
 [extra]
-source_file_hash = "ca4cab0ca81e46d0221a79cf7d7249c9c7994f1c"
-translated_at = "2026-11-13T00:00:00Z"
+source_file_hash = "cf2e359b1433d76db0983732c8f2322cce9805e8"
+translated_at = "2026-11-23T00:00:00Z"
 +++
 
 # Cheat Sheet
@@ -316,7 +316,7 @@ The following are read at build time; a change requires a rebuild.
 
 | Variable | Effect | When unset |
 | --- | --- | --- |
-| `IOT_BOOT_PAGE` | Which page the device comes up on | `ambient` |
+| `IOT_BOOT_PAGE` | Which page the device comes up on | `menu` |
 | `IOT_DEMAND` | Which devices, at what cadence | The firmware's defaults |
 | `IOT_LOG_LEVEL` | Serial output level: `error` / `warn` / `info` / `debug` / `trace` | `info` |
 | `IOT_WIFI_SSID` / `IOT_WIFI_PSK` | Credentials compiled in | Not compiled in; the device stays on the setup page |
@@ -324,7 +324,7 @@ The following are read at build time; a change requires a rebuild.
 
 `IOT_PORT` is not one of these: it only tells espflash which port to use and never enters the firmware.
 
-`IOT_DEMAND` is parsed per term and leniently: a term it does not recognise costs only that term, and the build still succeeds; when the whole string names no device at all, the firmware prints `[IOT] IOT_DEMAND named nothing this firmware recognises: ignored`. An `IOT_BOOT_PAGE` that is not a page name falls back to `ambient` and prints `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Ambient`.
+`IOT_DEMAND` is parsed per term and leniently: a term it does not recognise costs only that term, and the build still succeeds; when the whole string names no device at all, the firmware prints `[IOT] IOT_DEMAND named nothing this firmware recognises: ignored`. An `IOT_BOOT_PAGE` that is not a page name falls back to `input` and prints `[IOT] IOT_BOOT_PAGE=… is not a page, booting on Input`.
 
 ### Logging {#logging}
 

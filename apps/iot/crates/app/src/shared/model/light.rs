@@ -1030,7 +1030,7 @@ mod lamp {
             None,
             "the page owns the lamp again once the news is over"
         );
-        assert_eq!(manager.state().page(), PageId::Ambient);
+        assert_eq!(manager.state().page(), PageId::Input);
     }
 
     #[test]

@@ -368,7 +368,7 @@ fn menu_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift>
 fn page_name(page: PageId) -> Msg {
     match page {
         PageId::Menu => Msg::PageMenu,
-        PageId::Ambient => Msg::PageAmbient,
+        PageId::Input => Msg::PageInput,
         PageId::Attitude => Msg::PageAttitude,
         PageId::Audio => Msg::PageAudio,
         PageId::Speaker => Msg::PageSpeaker,

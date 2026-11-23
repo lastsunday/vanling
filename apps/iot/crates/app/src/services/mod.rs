@@ -3,11 +3,11 @@
 //! [`Service`] is what every platform shares — a business intent comes in, its one owner
 //! answers. [`LocalPage`] is what the panel and buttons see.
 
-pub mod ambient;
 pub mod attitude;
 pub mod audio;
 pub mod camera;
 pub mod env;
+pub mod input;
 pub mod light;
 pub mod menu;
 pub mod nav;
@@ -31,11 +31,11 @@ use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::Ui;
 
-use self::ambient::AmbientPage;
 use self::attitude::AttitudePage;
 use self::audio::AudioPage;
 use self::camera::CameraPage;
 use self::env::EnvPage;
+use self::input::InputPage;
 use self::light::LightService;
 use self::menu::MenuPage;
 use self::nav::NavService;
@@ -96,7 +96,7 @@ pub struct Services {
     light: LightService,
     settings: SettingsService,
     menu: MenuPage,
-    ambient: AmbientPage,
+    input: InputPage,
     attitude: AttitudePage,
     audio: AudioPage,
     speaker: SpeakerPage,
@@ -122,7 +122,7 @@ impl Services {
     pub fn get(&self, page: PageId) -> &dyn LocalPage {
         match page {
             PageId::Menu => &self.menu,
-            PageId::Ambient => &self.ambient,
+            PageId::Input => &self.input,
             PageId::Attitude => &self.attitude,
             PageId::Audio => &self.audio,
             PageId::Speaker => &self.speaker,
@@ -196,7 +196,7 @@ impl Services {
     fn service_mut(&mut self, id: ServiceId) -> &mut dyn Service {
         match id {
             ServiceId::Page(PageId::Menu) => &mut self.menu,
-            ServiceId::Page(PageId::Ambient) => &mut self.ambient,
+            ServiceId::Page(PageId::Input) => &mut self.input,
             ServiceId::Page(PageId::Attitude) => &mut self.attitude,
             ServiceId::Page(PageId::Audio) => &mut self.audio,
             ServiceId::Page(PageId::Speaker) => &mut self.speaker,
@@ -237,7 +237,7 @@ impl Services {
     fn get_mut(&mut self, page: PageId) -> &mut dyn LocalPage {
         match page {
             PageId::Menu => &mut self.menu,
-            PageId::Ambient => &mut self.ambient,
+            PageId::Input => &mut self.input,
             PageId::Attitude => &mut self.attitude,
             PageId::Audio => &mut self.audio,
             PageId::Speaker => &mut self.speaker,
@@ -375,7 +375,7 @@ impl Descriptor {
 pub fn descriptor(page: PageId) -> Descriptor {
     match page {
         PageId::Menu => MenuPage::descriptor(),
-        PageId::Ambient => AmbientPage::descriptor(),
+        PageId::Input => InputPage::descriptor(),
         PageId::Attitude => AttitudePage::descriptor(),
         PageId::Audio => AudioPage::descriptor(),
         PageId::Speaker => SpeakerPage::descriptor(),

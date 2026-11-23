@@ -310,6 +310,8 @@ pub struct Style {
     pub tag: u16,
     pub fill: bool,
     pub border: bool,
+    /// The corner radius in px, clamped to half the box; 0 is a square corner.
+    pub radius: u8,
     /// The text size in px; 0 is the root size.
     pub font_size: u8,
     /// Weight, family, decoration, decoration style, italic and thickness: see the `text` bits.
@@ -352,6 +354,7 @@ impl Style {
             tag: 0,
             fill: false,
             border: false,
+            radius: 0,
             font_size: 0,
             text_flags: 0,
             color: ColorId::NONE,
@@ -543,6 +546,13 @@ impl Style {
     /// Draws a one-pixel outline around the box.
     pub const fn bordered(mut self) -> Self {
         self.border = true;
+        self
+    }
+
+    /// Rounds the box's painted corners, clamped to half the shorter side and to 16 px, so a
+    /// 24 px box written as `12` is a circle. Children are not clipped to it.
+    pub const fn radius(mut self, px: u8) -> Self {
+        self.radius = px;
         self
     }
 

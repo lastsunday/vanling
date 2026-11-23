@@ -35,6 +35,7 @@ pub(crate) fn node(
     let color = palette.get(info.style.color);
     match info.kind {
         NodeKind::Text { start, len } => {
+            paper(canvas, info, palette);
             let run = &text[usize::from(start)..usize::from(start + len)];
             draw_text(canvas, start, run, content, info.style, palette, spans);
         }
@@ -43,23 +44,26 @@ pub(crate) fn node(
             paint(slot, canvas, content);
             canvas.set_color(None);
         }
-        NodeKind::Box => {
-            if let Some(background) = palette.get(info.style.background_color) {
-                canvas.set_color(Some(background));
-                canvas.fill_rect(info.rect);
-                canvas.set_color(None);
-            } else if info.style.fill {
-                canvas.fill_rect(info.rect);
-            }
-            if info.style.border {
-                canvas.set_color(color);
-                canvas.stroke_rect(info.rect);
-                canvas.set_color(None);
-            }
-        }
+        NodeKind::Box => paper(canvas, info, palette),
     }
     if info.clipped {
         canvas.pop_clip();
+    }
+}
+
+/// Lays the node's own paper down: its background, or the ground turned over, inside its outline.
+fn paper(canvas: &mut Canvas<'_>, info: NodeInfo, palette: &Palette) {
+    if let Some(background) = palette.get(info.style.background_color) {
+        canvas.set_color(Some(background));
+        canvas.fill_round_rect(info.rect, info.style.radius);
+        canvas.set_color(None);
+    } else if info.style.fill {
+        canvas.fill_round_rect(info.rect, info.style.radius);
+    }
+    if info.style.border {
+        canvas.set_color(palette.get(info.style.color));
+        canvas.stroke_round_rect(info.rect, info.style.radius);
+        canvas.set_color(None);
     }
 }
 
@@ -83,11 +87,17 @@ fn draw_text(
         // One line at its natural width; whatever leaves the box sideways is clipped, not
         // wrapped. The box's own height is not a clip: a descender reaches below it, and only
         // the ancestor (a scroll viewport, or the page) decides where the ink stops.
+        let width = metrics.measure(run) as i32;
+        let left = match style.text_align {
+            TextAlign::Center => rect.x + (rect.w - width).max(0) / 2,
+            TextAlign::End => rect.x + (rect.w - width).max(0),
+            _ => rect.x,
+        };
         let top = rect.y + (rect.h - line_height).max(0) / 2;
-        if rect.x >= 0 && top >= 0 {
+        if left >= 0 && top >= 0 {
             canvas.push_x_clip(rect);
             paint_run(
-                canvas, start, run, rect.x, top, metrics, style, palette, spans, 0,
+                canvas, start, run, left, top, metrics, style, palette, spans, 0,
             );
             canvas.pop_clip();
         }

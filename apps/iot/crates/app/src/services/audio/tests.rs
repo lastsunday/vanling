@@ -20,7 +20,7 @@ fn a_button_click_on_the_audio_page_records_and_elsewhere_moves_the_color() {
         instance: 0,
         action: LightAction::NextColor { forward: true },
     };
-    for page in [PageId::Ambient, PageId::Attitude, PageId::Camera] {
+    for page in [PageId::Input, PageId::Attitude, PageId::Camera] {
         assert_eq!(
             translate(&click, &state_on(page, BREATH), &Services::default()),
             Some(color),

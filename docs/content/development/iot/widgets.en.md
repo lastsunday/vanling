@@ -2,13 +2,13 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "afdc6f056e31a74dd4b976f25576bd0304c82f47"
-translated_at = "2026-11-22T00:00:00Z"
+source_file_hash = "911cc14a86b789443ec108975e1819826ba8d283"
+translated_at = "2026-11-23T00:00:00Z"
 +++
 
 # UI Widgets
 
-The panel's widget vocabulary: two shapes, states and theme, the basic widgets, the pages built from them, cell drawing, i18n and budgets.
+The panel's widget vocabulary: two shapes, states and theme, rounded corners, the basic widgets, the pages built from them, cell drawing, i18n and budgets.
 
 > Status: the basic widgets are in place (`core::ui::widget` + `shared::kit::widgets`); advanced and optional widgets are only a list.
 
@@ -96,6 +96,19 @@ impl Theme {
 
 Interning the same colour twice is idempotent; `MAX_COLORS = 16` is shared by the whole page. A new widget first asks whether an existing token fits; only then does it add a colour.
 
+## Rounded corners
+
+`Style::radius(u8)` cuts the node's own paper and outline; `0` is square. The radius is clamped to half the short side and to `MAX_RADIUS = 16`, so a 24×24 `Avatar` written as `12` is a circle. Drawing uses the integer test `(2r-2c-1)² + (2r-2k-1)² <= 4r²` row by row: no table, no arcs, no allocation.
+
+Only the node's own paper is cut — background and outline; children and glyphs are not clipped. A radius does not inherit across nodes: a container that should be round carries the radius itself.
+
+| Widget | Radius |
+| --- | --- |
+| `Button` / `Chip` / `TextField` / `Select` | `theme::CORNER = 4` |
+| `Badge` | 3 |
+| `Avatar` | 12 (a 24 px box, i.e. half a side) |
+| `Indicator`'s mark | dot 4 (`DOT = 8`) / number 7 (`PILL = 14`) |
+
 ## API
 
 ```rust
@@ -141,10 +154,11 @@ Built and living in `shared/kit/widgets`:
 | Widget | Shape | Nodes | Notes |
 | --- | --- | --- | --- |
 | `Divider` | W | 1 | A 1 px line |
-| `Badge` | W | 2 | Small block for state or counts |
+| `Badge` | W | 1 | Small block; `Filled` / `Light` / `Outline` variants over a separate `Tone` colour axis |
 | `Chip` | W | 2 | Rounded tag, optional selected state |
 | `Button` | W | 2 | filled / outlined / text |
 | `IconButton` | W | 2 | Uses symbols from the 12 px face; no icon set |
+| `Indicator` | W | 2 | A corner mark over another element: a dot, or a number with `label` |
 | `ProgressBar` | W | 3 | Track + progress |
 | `Spinner` | W | 1 | `\|` `/` `-` `\` frames; the page supplies the phase |
 | `Switch` | W | 2 | Track + knob |
@@ -154,7 +168,7 @@ Built and living in `shared/kit/widgets`:
 | `TextField` | W | 2 | Value + caret; once focused the page hands over to `kit::keyboard` |
 | `Select` | W | 2 | Value + arrow |
 | `Tooltip` | W | 2 | Anchor + floating line |
-| `Avatar` | W | 2 | Initial or short mark |
+| `Avatar` | W | 1 | Initial or short mark on a round fill |
 | `ListTile` | C | 0 | List row: four text runs + selected fill |
 | `Scrollbar` | C | 0 | Existing `kit::scroll` |
 | `Image` | C | 0 | Camera frames and RGB565 assets through a custom slot |
@@ -184,9 +198,9 @@ pub enum Slot<'a> {
 | `Menu` | A three-column button grid of every page; pages the board cannot back are greyed and do not navigate. The boot page whenever a screen is present. |
 | `Widgets` | The basic-widget gallery: five sections (actions / selection / input / display / rows), each under a heading, the whole page in one scroll box; controls that can hold a value are tappable. |
 
-`Menu` puts its buttons in `chrome::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Ambient`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower and still needs no scrolling.
+`Menu` puts its buttons in `chrome::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower and still needs no scrolling.
 
-The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`), and the line under `LIVE STATE` spells out `SPINNER AVATAR ICON BADGE` in order, because the four shapes do not identify themselves. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
+The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
 
 A focused `TextField` replaces the page with a 4×4 keyboard (`kit::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table.
 

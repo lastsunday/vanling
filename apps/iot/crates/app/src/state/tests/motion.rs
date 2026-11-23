@@ -56,7 +56,7 @@ fn the_page_switch_skips_pages_the_board_lacks() {
     feed_input(&mut enabled, triple_click());
     assert_eq!(enabled.state().page(), PageId::Menu);
     feed_input(&mut enabled, triple_click());
-    assert_eq!(enabled.state().page(), PageId::Ambient);
+    assert_eq!(enabled.state().page(), PageId::Input);
 }
 
 #[test]

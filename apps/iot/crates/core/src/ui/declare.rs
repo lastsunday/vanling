@@ -46,6 +46,40 @@ impl<'a, 's> Ui<'a, 's> {
         Self::with_size(Some(canvas), screen, width, height)
     }
 
+    /// [`Self::new_with_height`] on the heap: the tree is twelve kilobytes of node array that
+    /// the painter's frame cannot spare (`@/records/iot/hardware-constraints.md`).
+    pub fn boxed_with_height(
+        canvas: &'s mut Canvas<'a>,
+        screen: Screen,
+        height: usize,
+    ) -> alloc::boxed::Box<Self> {
+        use core::ptr::addr_of_mut;
+        let width = canvas.width();
+        let mut slot: alloc::boxed::Box<core::mem::MaybeUninit<Self>> =
+            alloc::boxed::Box::new_uninit();
+        let ui = slot.as_mut_ptr();
+        // SAFETY: `ui` is a fresh allocation of `Self`'s layout; every field is written once,
+        // the tree is finished in place, and nothing is read before `assume_init`.
+        unsafe {
+            addr_of_mut!((*ui).canvas).write(Some(canvas));
+            addr_of_mut!((*ui).screen).write(screen);
+            Tree::init_in_place(addr_of_mut!((*ui).tree));
+            addr_of_mut!((*ui).text).write([0; TEXT_BYTES]);
+            addr_of_mut!((*ui).used).write(0);
+            addr_of_mut!((*ui).spans).write([Span::default(); SPANS]);
+            addr_of_mut!((*ui).span_count).write(0);
+            addr_of_mut!((*ui).width).write(width);
+            addr_of_mut!((*ui).height).write(height);
+            let root = (*addr_of_mut!((*ui).tree)).push(
+                Style::new().size(width as i16, height as i16).stretch(),
+                NodeKind::Box,
+                NodeId::NONE,
+            );
+            addr_of_mut!((*ui).current).write(root);
+            slot.assume_init()
+        }
+    }
+
     /// A page laid out but not drawn: the hit test's half of the same declaration.
     pub fn headless(width: usize, height: usize, screen: Screen) -> Self {
         Self::with_size(None, screen, width, height)
@@ -325,7 +359,7 @@ impl<'a, 's> Ui<'a, 's> {
 mod tests {
     use super::*;
     use crate::ui::layout::PX;
-    use crate::ui::{DecorationStyle, FontFamily, FontWeight, Length};
+    use crate::ui::{DecorationStyle, FontFamily, FontWeight, Length, TextAlign};
 
     /// The declaration lives on the panel core's stack (24 KiB on the S3) for the length of
     /// one page, so it is budgeted separately from that stack's other work. Every page's
@@ -360,6 +394,64 @@ mod tests {
         assert!(
             !(41..H).any(|y| (0..W).any(|x| ink(x, y))),
             "below the box is empty"
+        );
+    }
+
+    #[test]
+    fn a_text_node_lays_its_own_paper() {
+        const W: usize = 40;
+        const H: usize = 20;
+        let mut frame = [0u8; W * H * 2];
+        let mut canvas = Canvas::new(&mut frame, W, H, None);
+        let mut ui = Ui::new(&mut canvas, Screen::default());
+        let paper = ui.color(super::super::color::Color::rgb(0xFF, 0xFF, 0xFF));
+        ui.text(
+            b"X",
+            Style::new()
+                .width(24)
+                .height(16)
+                .radius(4)
+                .background(paper)
+                .text_align(TextAlign::Center),
+        );
+        ui.paint(BoxConstraints::tight(40 * PX, 20 * PX), &mut |_, _, _| {});
+        let frame = ui.into_canvas().expect("a canvas was handed in").frame();
+        let pixel = |x: usize, y: usize| {
+            u16::from_be_bytes([frame[(y * W + x) * 2], frame[(y * W + x) * 2 + 1]])
+        };
+        assert_eq!(pixel(0, 0), 0, "the rounded corner is cut away");
+        assert_eq!(pixel(12, 8), 0xFFFF, "the paper covers the box");
+        assert!(
+            (0..W).any(|x| (0..H).any(|y| pixel(x, y) == 0)),
+            "the run is still inked over the paper"
+        );
+    }
+
+    #[test]
+    fn a_nowrap_run_honours_centre_and_end() {
+        const W: usize = 40;
+        const H: usize = 24;
+        let left_of = |align: TextAlign| {
+            let mut frame = [0u8; W * H * 2];
+            let mut canvas = Canvas::new(&mut frame, W, H, None);
+            let mut ui = Ui::new(&mut canvas, Screen::default());
+            ui.text(
+                b"V",
+                Style::new().width(24).height(24).nowrap().text_align(align),
+            );
+            ui.paint(BoxConstraints::tight(40 * PX, 24 * PX), &mut |_, _, _| {});
+            let frame = ui.into_canvas().expect("a canvas was handed in").frame();
+            (0..W)
+                .find(|&x| {
+                    (0..H).any(|y| frame[(y * W + x) * 2] != 0 || frame[(y * W + x) * 2 + 1] != 0)
+                })
+                .expect("the run left ink")
+        };
+        assert_eq!(left_of(TextAlign::Start), 0);
+        assert!(left_of(TextAlign::Center) > 4, "the run sits in the middle");
+        assert!(
+            left_of(TextAlign::End) > left_of(TextAlign::Center),
+            "the run ends at the box's right edge"
         );
     }
 

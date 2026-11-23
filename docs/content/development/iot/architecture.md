@@ -81,7 +81,7 @@ weight = 10
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
 | `services/` | 产品服务（页面与设备自己的 `nav`/`light`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
-| `services/{ambient,attitude,camera,env,splash,text}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区 |
+| `services/{input,attitude,camera,env,splash,text}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译、动作条与命中；`shape.rs` 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；`view/` 按带拆（`header` / `content` / `overlay`，词在 `text.rs`），带之间的层序由 `shape::Band` 决定；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
@@ -128,7 +128,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 ```
 
 - **页面之间不互相 import**：页面只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
-- **`services` 是唯一认识所有服务的模块**：每页一个具体类型（`AmbientPage`…`NetworkPage`），`Services::apply` 是唯一的业务分派表，一条 `BusinessIntent` 组一条臂；`state` 只经 `Services::bind`/`apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `services::paint` 与 `services::descriptor(page)` 上的读取取答案；页面只读 `shared`（含 `DeviceState`、`FrameSnapshot`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
+- **`services` 是唯一认识所有服务的模块**：每页一个具体类型（`InputPage`…`NetworkPage`），`Services::apply` 是唯一的业务分派表，一条 `BusinessIntent` 组一条臂；`state` 只经 `Services::bind`/`apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `services::paint` 与 `services::descriptor(page)` 上的读取取答案；页面只读 `shared`（含 `DeviceState`、`FrameSnapshot`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
 - **`shared/kit` 不认页面**：`Panel` 把页面的声明布局成盒子再落墨，`chrome` 只提供跨页共用的边距、行距与标签槽；哪个页面声明什么由 `services::descriptor(page).view` 决定，页面自己画的槽由 `descriptor(page).custom` 决定
 - `shared` 是叶子：不依赖 `state`/`services`/`render`/`runtime`。`DeviceState`、`PageSnapshot` 与 `NetworkView` 放在这里，就是为了让页面、快照和渲染都只朝下看
 - `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`snapshot`（帧与页面视图）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
@@ -396,7 +396,7 @@ Liu & Layland、CFS、RT group 的利用率界约束的都是抢占式调度器�
 
 这组 17–25 ms 是在 **80 MHz** 下测的。产品 S3 现在由 `chip_init_for_product()` 以 240 MHz 启动（`chip_init_at(CpuClock::_240MHz)`），`chip_init()` 仍是 80 MHz 的探针入口；这组 tick 没有在 240 MHz 下重跑，240 下只会更短，但上面的数字仍应按 80 MHz 的量级读。240 MHz 的验证与代价见 [运行期改 CPU 频率](@/records/iot/clock.md)。
 
-总量不是风险项：Ambient 花掉 94.8% 且一切正常。一次 25 ms 的阻塞才是。播放喂数跑在独立的高优先级 executor 上、由 DMA 驱动，碰不到这种阻塞。
+总量不是风险项：Input 花掉 94.8% 且一切正常。一次 25 ms 的阻塞才是。播放喂数跑在独立的高优先级 executor 上、由 DMA 驱动，碰不到这种阻塞。
 
 #### 两种配置拒绝实现，返回 `UnsupportedConfig` 而不是写一个像样的字节
 
@@ -512,7 +512,7 @@ audio 的 codec 那一半仍未接。`Off` 在消费端已接（`set_collecting`
 
 这条规约是修一个缺陷写下来的。
 
-`next_page` 曾是 18 个手写跳转分支，`Camera` 的离开分支返回「第一个本板能显示的页」（`Attitude`）而非起点，于是 `Ambient` 被永久跳过：实测全能力下走一圈是 `[Attitude, Attitude, Audio, Speaker, Camera]`，`Ambient` 消失、`Attitude` 出现两次。
+`next_page` 曾是 18 个手写跳转分支，`Camera` 的离开分支返回「第一个本板能显示的页」（`Attitude`）而非起点，于是 `Input` 被永久跳过：实测全能力下走一圈是 `[Attitude, Attitude, Audio, Speaker, Camera]`，`Input` 消失、`Attitude` 出现两次。
 
 跳着写会漏掉闭环的那一页，走一张表再回绕不会。
 

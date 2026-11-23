@@ -45,7 +45,7 @@ impl<'a> Slot<'a> {
             Self::Badge(run) => {
                 let rect = Rect::new(left, top, width + 4, 12);
                 canvas.set_color(Some(theme.accent));
-                canvas.fill_rect(rect);
+                canvas.fill_round_rect(rect, 3);
                 canvas.set_color(Some(theme.on_accent));
                 canvas.draw_text(run, (left + 2).max(0) as usize, top.max(0) as usize);
             }

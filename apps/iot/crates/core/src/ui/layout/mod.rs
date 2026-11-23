@@ -70,6 +70,26 @@ impl Default for Tree {
 }
 
 impl Tree {
+    /// Builds a fresh tree straight into `this`, which must be uninitialised: returning one by
+    /// value would cost a ten-kilobyte temporary on the paint path.
+    ///
+    /// # Safety
+    ///
+    /// `this` must be valid for writes of a whole [`Tree`] and must not be read until the
+    /// caller treats it as initialised.
+    pub(crate) unsafe fn init_in_place(this: *mut Self) {
+        // SAFETY: the caller guarantees room for every field; each is written once, and none
+        // of these values borrows anything.
+        unsafe {
+            core::ptr::addr_of_mut!((*this).nodes).write([Node::default(); MAX_NODES]);
+            core::ptr::addr_of_mut!((*this).len).write(0);
+            core::ptr::addr_of_mut!((*this).root).write(NONE);
+            core::ptr::addr_of_mut!((*this).scrolls)
+                .write([ScrollSlot::default(); MAX_SCROLL_AREAS]);
+            core::ptr::addr_of_mut!((*this).palette).write(Palette::default());
+        }
+    }
+
     pub(crate) fn new() -> Self {
         Self {
             nodes: [Node::default(); MAX_NODES],

@@ -2,7 +2,7 @@
 
 use iot_core::ui::{FontFamily, Length, NodeId, Style, TextAlign, Ui, Widget};
 
-use crate::shared::kit::theme::Theme;
+use crate::shared::kit::theme::{CORNER, Theme};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Chip<'a> {
@@ -61,6 +61,7 @@ impl Widget for Chip<'_> {
         };
         let edge = ui.color(edge);
         let mut box_style = Style::new()
+            .radius(CORNER)
             .pad(3)
             .center()
             .bordered()

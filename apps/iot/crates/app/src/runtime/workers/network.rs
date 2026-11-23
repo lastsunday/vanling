@@ -108,7 +108,7 @@ pub struct PageWatch {
 impl PageWatch {
     pub(crate) const fn new() -> Self {
         Self {
-            page: AtomicU8::new(PageId::Ambient.code()),
+            page: AtomicU8::new(PageId::Input.code()),
             changed: Signal::new(),
         }
     }

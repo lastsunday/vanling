@@ -33,6 +33,50 @@ const GLYPH_STRIDE: usize = (GLYPH_BOX * INK_BITS).div_ceil(8);
 const MAX_GLYPH_WIDTH: usize = 64;
 const MAX_GLYPH_ROWS: usize = 256;
 
+/// Crossings one scanline may hold. The table's widest glyph has 17 contours.
+const CROSSINGS: usize = 48;
+
+/// The scanline walk's tables: on the heap with the cache, because the deepest paint already
+/// stands near the main stack's ceiling (`@/records/iot/hardware-constraints.md`).
+struct Scratch {
+    scaled: [(i16, i16); OUTLINE_POINTS],
+    succ: [u16; OUTLINE_POINTS],
+    chain: [u16; OUTLINE_POINTS],
+    active: [u16; OUTLINE_POINTS],
+    xs: [[i32; CROSSINGS]; 4],
+}
+
+impl Scratch {
+    const fn new() -> Self {
+        Self {
+            scaled: [(0, 0); OUTLINE_POINTS],
+            succ: [0; OUTLINE_POINTS],
+            chain: [u16::MAX; OUTLINE_POINTS],
+            active: [0; OUTLINE_POINTS],
+            xs: [[0; CROSSINGS]; 4],
+        }
+    }
+
+    /// Fills freshly allocated tables in place, with no four-kilobyte temporary.
+    ///
+    /// # Safety
+    ///
+    /// `this` must be valid for writes of a whole [`Scratch`] and unread until initialised.
+    unsafe fn init_in_place(this: *mut Self) {
+        // SAFETY: the caller guarantees room for every table.
+        unsafe {
+            core::ptr::addr_of_mut!((*this).scaled).write([(0, 0); OUTLINE_POINTS]);
+            core::ptr::addr_of_mut!((*this).succ).write([0; OUTLINE_POINTS]);
+            core::ptr::addr_of_mut!((*this).chain).write([u16::MAX; OUTLINE_POINTS]);
+            core::ptr::addr_of_mut!((*this).active).write([0; OUTLINE_POINTS]);
+            core::ptr::addr_of_mut!((*this).xs).write([[0; CROSSINGS]; 4]);
+        }
+    }
+}
+
+/// The largest corner any kit widget asks for; the array of row insets is sized by it.
+const MAX_RADIUS: u8 = 16;
+
 /// Where a glyph sits and how big its ink box is, in panel pixels.
 #[derive(Clone, Copy)]
 struct Placement {
@@ -65,6 +109,7 @@ impl GlyphSlot {
 /// outline. Heap-only: the main stack has no room (`@/records/iot/hardware-constraints.md`).
 pub struct GlyphCache {
     slots: Box<[GlyphSlot]>,
+    scratch: Box<Scratch>,
     next: usize,
 }
 
@@ -72,6 +117,14 @@ impl GlyphCache {
     pub fn new() -> Self {
         Self {
             slots: vec![GlyphSlot::EMPTY; GLYPH_SLOTS].into_boxed_slice(),
+            scratch: {
+                let mut slot: Box<core::mem::MaybeUninit<Scratch>> = Box::new_uninit();
+                // SAFETY: the walk's tables are written in place, then the box is assumed set.
+                unsafe {
+                    Scratch::init_in_place(slot.as_mut_ptr());
+                    slot.assume_init()
+                }
+            },
             next: 0,
         }
     }
@@ -101,12 +154,18 @@ impl GlyphCache {
         }
         let index = self.next;
         self.next += 1;
-        let slot = &mut self.slots[index];
+        let Self { slots, scratch, .. } = self;
+        let slot = &mut slots[index];
         slot.key = key;
         slot.ink.fill(0);
-        rasterize(outline, size, at, heavy, |column, row, coverage| {
-            ink_put(&mut slot.ink, GLYPH_STRIDE, column, row, coverage)
-        });
+        rasterize(
+            outline,
+            size,
+            at,
+            heavy,
+            scratch,
+            |column, row, coverage| ink_put(&mut slot.ink, GLYPH_STRIDE, column, row, coverage),
+        );
         index
     }
 }
@@ -441,26 +500,27 @@ impl<'a> Canvas<'a> {
         if out_width > MAX_GLYPH_WIDTH || rows > MAX_GLYPH_ROWS {
             return;
         }
-        rasterize(
-            outline,
-            size,
-            Placement {
-                left,
-                baseline,
-                x: x0 as i32,
-                y: y0 as i32,
-                width: x1 - x0,
-                rows: y1 - y0,
-            },
-            heavy,
-            |column, row, coverage| {
-                let (x, y) = (x0 + column, y0 + row);
-                if !clip.contains(x as i32, y as i32) || !in_damage(damage, x, y) {
-                    return;
-                }
-                blend_pixel(frame, *frame_width, *color, x, y, coverage)
-            },
-        );
+        let at = Placement {
+            left,
+            baseline,
+            x: x0 as i32,
+            y: y0 as i32,
+            width: x1 - x0,
+            rows: y1 - y0,
+        };
+        let put = |column, row, coverage| {
+            let (x, y) = (x0 + column, y0 + row);
+            if !clip.contains(x as i32, y as i32) || !in_damage(damage, x, y) {
+                return;
+            }
+            blend_pixel(frame, *frame_width, *color, x, y, coverage)
+        };
+        match glyphs {
+            Some(cache) => rasterize(outline, size, at, heavy, &mut cache.scratch, put),
+            // No cache to borrow tables from: this canvas rasters a handful of glyphs, so its
+            // own frame may hold them.
+            None => rasterize_owning(outline, size, at, heavy, put),
+        }
     }
 
     /// The clip in force, `None` when the canvas is whole.
@@ -625,6 +685,85 @@ impl<'a> Canvas<'a> {
         self.draw_line(left, top, left, bottom);
         self.draw_line(right, top, right, bottom);
     }
+
+    /// Fills `rect` with its corners rounded by `radius` px; zero is [`Self::fill_rect`].
+    pub fn fill_round_rect(&mut self, rect: Rect, radius: u8) {
+        let Some(corners) = corner_rows(rect, radius) else {
+            self.fill_rect(rect);
+            return;
+        };
+        for y in 0..rect.h {
+            let inset = corners.inset(y) as i32;
+            self.fill_rect(Rect::new(rect.x + inset, rect.y + y, rect.w - 2 * inset, 1));
+        }
+    }
+
+    /// Draws the one-pixel outline of `rect` around the same rounded corners.
+    pub fn stroke_round_rect(&mut self, rect: Rect, radius: u8) {
+        let Some(corners) = corner_rows(rect, radius) else {
+            self.stroke_rect(rect);
+            return;
+        };
+        let (left, top) = (rect.x as isize, rect.y as isize);
+        let (right, bottom) = (rect.right() as isize - 1, rect.bottom() as isize - 1);
+        for y in 0..rect.h {
+            let inset = corners.inset(y) as isize;
+            self.plot_pixel(left + inset, top + y as isize);
+            self.plot_pixel(right - inset, top + y as isize);
+        }
+        let straight = corners.inset(0) as isize;
+        self.draw_line(left + straight, top, right - straight, top);
+        self.draw_line(left + straight, bottom, right - straight, bottom);
+    }
+}
+
+/// A box's rounded corners: the first column each of the top rows leaves inside, mirrored down
+/// the box. `None` when the radius rounds nothing, so the caller keeps the square path.
+struct Corners {
+    insets: [u8; MAX_RADIUS as usize],
+    height: i32,
+    rows: i32,
+}
+
+impl Corners {
+    fn inset(&self, row: i32) -> u8 {
+        let down = row.min(self.height - 1 - row).max(0);
+        self.insets[down.min(self.rows - 1) as usize]
+    }
+}
+
+fn corner_rows(rect: Rect, radius: u8) -> Option<Corners> {
+    if rect.w <= 0 || rect.h <= 0 {
+        return None;
+    }
+    let radius = radius
+        .min(MAX_RADIUS)
+        .min((rect.w / 2) as u8)
+        .min((rect.h / 2) as u8);
+    if radius == 0 {
+        return None;
+    }
+    let r = i32::from(radius);
+    let mut insets = [0u8; MAX_RADIUS as usize];
+    for row in 0..r {
+        // The pixel is inside the corner when its centre is: `(2r-2c-1)² + (2r-2k-1)² <= 4r²`,
+        // doubled so the half-pixel centre stays a whole number.
+        let down = 2 * r - 2 * row - 1;
+        let mut column = 0;
+        while column < r {
+            let across = 2 * r - 2 * column - 1;
+            if across * across + down * down <= 4 * r * r {
+                break;
+            }
+            column += 1;
+        }
+        insets[row as usize] = column as u8;
+    }
+    Some(Corners {
+        insets,
+        height: rect.h,
+        rows: r,
+    })
 }
 
 /// Adds the coverage a scanline span from `a` to `b` gives the pixels of `ink`, in quarter
@@ -638,6 +777,7 @@ fn rasterize(
     size: u16,
     at: Placement,
     heavy: bool,
+    scratch: &mut Scratch,
     mut put: impl FnMut(usize, usize, u8),
 ) {
     let Placement {
@@ -650,8 +790,6 @@ fn rasterize(
     } = at;
     /// Coverage of a fully inked pixel: four sub-scanlines of four quarter-columns.
     const FULL: u8 = 16;
-    /// Crossings one scanline may hold. The table's widest glyph has 17 contours.
-    const CROSSINGS: usize = 48;
     let scale = |units: i32| (units * i32::from(size) * 4 + 32) / 64;
     let (ox, oy) = (left * 4, baseline * 4);
     let first = outline.points().start;
@@ -661,13 +799,21 @@ fn rasterize(
         "a glyph with {count} points overruns the canvas scratch"
     );
     let count = count.min(OUTLINE_POINTS);
-    let mut scaled = [(0i16, 0i16); OUTLINE_POINTS];
+    let Scratch {
+        scaled,
+        succ,
+        chain,
+        active,
+        xs,
+    } = scratch;
+    scaled.fill((0, 0));
+    succ.fill(0);
+    chain.fill(u16::MAX);
     for (local, index) in (first..first + count).enumerate() {
         let (x, y) = outline.point(index);
         scaled[local] = (scale(x) as i16, -scale(y) as i16);
     }
     // Edge `local` runs to `succ[local]`; a contour closes on its own first point.
-    let mut succ = [0u16; OUTLINE_POINTS];
     let mut start = first;
     for contour in outline.contours() {
         let end = outline.contour_end(contour);
@@ -688,7 +834,6 @@ fn rasterize(
     // quarter rows, so `top - 4` is the row whose window ends at that top. `u16::MAX` ends the
     // bucket chain.
     let mut heads = [-1i16; MAX_GLYPH_ROWS];
-    let mut chain = [u16::MAX; OUTLINE_POINTS];
     for (local, next) in succ[..count].iter().enumerate() {
         let b = usize::from(*next);
         let top = i32::from(scaled[local].1).min(i32::from(scaled[b].1)) + oy;
@@ -700,7 +845,6 @@ fn rasterize(
         chain[local] = heads[file] as u16;
         heads[file] = local as i16;
     }
-    let mut active = [0u16; OUTLINE_POINTS];
     let mut active_len = 0usize;
     let mut ink = [0u8; MAX_GLYPH_WIDTH];
     let columns = (width + usize::from(heavy)).min(MAX_GLYPH_WIDTH);
@@ -709,7 +853,6 @@ fn rasterize(
         !heavy || merged,
         "a heavy {width} px glyph overruns the row buffer"
     );
-    let mut xs = [[0i32; CROSSINGS]; 4];
     for (row, head) in heads.iter().enumerate().take(rows) {
         let pixel = y0 + row as i32;
         ink[..width].fill(0);
@@ -771,6 +914,20 @@ fn rasterize(
             }
         }
     }
+}
+
+/// [`rasterize`] with its tables in the caller's frame: only a canvas without a glyph cache
+/// gets here, which means a handful of glyphs per picture.
+#[inline(never)]
+fn rasterize_owning(
+    outline: &Outline<'_>,
+    size: u16,
+    at: Placement,
+    heavy: bool,
+    put: impl FnMut(usize, usize, u8),
+) {
+    let mut scratch = Scratch::new();
+    rasterize(outline, size, at, heavy, &mut scratch, put);
 }
 
 /// Two strikes of the same mark, merged: the coverage of one pass over another, in sixteenths.
@@ -955,6 +1112,41 @@ mod tests {
         canvas.plot_pixel(0, HEIGHT as isize);
         canvas.draw_text(b"X", WIDTH - 1, 0);
         assert!(bytes.iter().any(|byte| *byte != 0));
+    }
+
+    #[test]
+    fn a_rounded_fill_leaves_its_corners_and_its_edges_still() {
+        let mut bytes = frame();
+        let rect = Rect::new(4, 4, 16, 12);
+        {
+            let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, None);
+            canvas.set_color(Some(Color::rgb(0xFF, 0xFF, 0xFF)));
+            canvas.fill_round_rect(rect, 4);
+        }
+        let lit = rgb565(Rgb(0xFF, 0xFF, 0xFF));
+        for (x, y) in [(4, 4), (19, 4), (4, 15), (19, 15)] {
+            assert_ne!(pixel(&bytes, x, y), lit, "the corner at {x},{y} was filled");
+        }
+        for (x, y) in [(12, 4), (12, 15), (4, 10), (19, 10), (12, 10)] {
+            assert_eq!(pixel(&bytes, x, y), lit, "{x},{y} left a hole in the box");
+        }
+    }
+
+    #[test]
+    fn a_rounded_outline_is_one_pixel_and_closes() {
+        let mut bytes = frame();
+        let rect = Rect::new(4, 4, 16, 12);
+        {
+            let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, None);
+            canvas.set_color(Some(Color::rgb(0xFF, 0xFF, 0xFF)));
+            canvas.stroke_round_rect(rect, 4);
+        }
+        let lit = rgb565(Rgb(0xFF, 0xFF, 0xFF));
+        for (x, y) in [(4, 9), (19, 9), (12, 4), (12, 15), (5, 5), (6, 4)] {
+            assert_eq!(pixel(&bytes, x, y), lit, "{x},{y} is on the outline");
+        }
+        assert_ne!(pixel(&bytes, 4, 4), lit, "the corner itself is cut away");
+        assert_eq!(pixel(&bytes, 12, 10), 0, "the middle stays untouched");
     }
 
     #[test]

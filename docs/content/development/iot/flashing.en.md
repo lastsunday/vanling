@@ -2,8 +2,8 @@
 title = "Firmware Installation"
 weight = 30
 [extra]
-source_file_hash = "45a6053ae612b589466ee273585bc895a214d568"
-translated_at = "2026-11-20T00:00:00Z"
+source_file_hash = "a2f373a4ae683bff9b2231970008105164523e57"
+translated_at = "2026-11-23T00:00:00Z"
 +++
 
 # Firmware Installation
@@ -192,7 +192,7 @@ S3 builds go through `scripts/iot-xtensa.sh`: it tries the machine's esp toolcha
 
 ## Boot page and the bench image
 
-`IOT_BOOT_PAGE` (`.cargo/config.toml`, `menu` when unset, falling back to `ambient` on a board without a screen) picks the page the firmware comes up on — `menu` / `ambient` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text` / `widgets`, with an unrecognised name falling back to `ambient`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`. `network` has no moon task of its own; the same command by hand:
+`IOT_BOOT_PAGE` (`.cargo/config.toml`, `menu` when unset, falling back to `input` on a board without a screen) picks the page the firmware comes up on — `menu` / `input` / `attitude` / `audio` / `speaker` / `camera` / `network` / `env` / `text` / `widgets`, with an unrecognised name falling back to `input`. It is an `option_env!`, expanded at **compile** time, so a Docker build has to forward it into the container (`FORWARDED_ENV` in `scripts/iot-xtensa.sh`); `moon run iot:build-s3-camera` sets it to `camera`, paired with `moon run iot:flash-s3-camera`. `network` has no moon task of its own; the same command by hand:
 
 ```sh
 cd apps/iot

@@ -1,8 +1,10 @@
-//! A short mark in a square: an initial or a role.
+//! A short mark in a circle: an initial or a role.
 
-use iot_core::ui::{NodeId, Style, Ui, Widget};
+use iot_core::ui::{NodeId, Style, TextAlign, Ui, Widget};
 
 use crate::shared::kit::theme::Theme;
+
+const SIZE: i16 = 24;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Avatar<'a> {
@@ -26,13 +28,17 @@ impl<'a> Avatar<'a> {
 
 impl Widget for Avatar<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let edge = ui.color(self.theme.muted);
-        let ink = ui.color(self.theme.ink);
-        ui.column(
-            Style::new().size(24, 24).center().bordered().color(edge),
-            |ui| {
-                ui.text(self.text, Style::new().nowrap().color(ink));
-            },
+        let paper = ui.color(self.theme.muted);
+        let ink = ui.color(self.theme.ground);
+        ui.text(
+            self.text,
+            Style::new()
+                .size(SIZE, SIZE)
+                .radius(SIZE as u8 / 2)
+                .text_align(TextAlign::Center)
+                .background(paper)
+                .nowrap()
+                .color(ink),
         )
     }
 }

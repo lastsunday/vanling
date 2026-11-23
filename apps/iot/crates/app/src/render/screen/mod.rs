@@ -429,7 +429,7 @@ mod tests {
     }
 
     fn frame_asked(display: Mode) -> FrameSnapshot {
-        frame_on(PageId::Ambient, display)
+        frame_on(PageId::Input, display)
     }
 
     fn frame_collecting(page: PageId, period_ms: u32) -> FrameSnapshot {
@@ -449,7 +449,7 @@ mod tests {
         }
     }
 
-    fn ambient_breath(instance: u8) -> Appearance<'static> {
+    fn input_breath(instance: u8) -> Appearance<'static> {
         Appearance::Surface {
             instance,
             light: light_appearance(LightState::boot()),
@@ -473,7 +473,7 @@ mod tests {
             Drive::Idle,
             "the first appearance only tells the screen what it is for"
         );
-        assert_eq!(r.on_appearance(ambient_breath(0), 0), Drive::TimeDriven);
+        assert_eq!(r.on_appearance(input_breath(0), 0), Drive::TimeDriven);
         r.step(1_000);
         r.step(1_100);
         assert!(screen.borrow().fills > 0, "a lit screen keeps painting");
@@ -486,7 +486,7 @@ mod tests {
         assert_eq!(screen.borrow().ceiling, 0, "and its backlight is off");
         let fills_before = screen.borrow().fills;
 
-        r.on_appearance(ambient_breath(0), 0);
+        r.on_appearance(input_breath(0), 0);
         r.step(1_000);
         r.step(1_100);
         r.on_appearance(
@@ -509,7 +509,7 @@ mod tests {
     fn a_screen_relit_after_being_dark_paints_the_frame_the_darkness_swallowed() {
         let (mut r, screen) = renderer();
         r.on_appearance(Appearance::Frame(&frame_asked(Mode::Off)), 0);
-        r.on_appearance(ambient_breath(0), 0);
+        r.on_appearance(input_breath(0), 0);
         r.step(1_000);
         assert_eq!(screen.borrow().fills, 0);
 
@@ -579,9 +579,9 @@ mod tests {
         r.on_appearance(Appearance::Frame(&frame_asked(Mode::OnChange)), 0);
         assert_eq!(screen.borrow().ceiling, LightState::BACKLIGHT_FLOOR_PCT);
 
-        r.on_appearance(ambient_breath(0), 0);
+        r.on_appearance(input_breath(0), 0);
         assert_eq!(
-            r.on_appearance(ambient_breath(0), 0),
+            r.on_appearance(input_breath(0), 0),
             Drive::TimeDriven,
             "dimming is a brightness, not a rate"
         );
@@ -597,7 +597,7 @@ mod tests {
             0,
         );
         assert_eq!(
-            r.on_appearance(ambient_breath(0), 0),
+            r.on_appearance(input_breath(0), 0),
             Drive::Idle,
             "a breathing light does not breathe through the page's ground"
         );
@@ -709,7 +709,7 @@ mod tests {
             Appearance::Frame(&frame_on(PageId::Network, Mode::Continuous)),
             0,
         );
-        r.on_appearance(ambient_breath(0), 0);
+        r.on_appearance(input_breath(0), 0);
         assert_eq!(screen.borrow().color, Rgb(0, 0, 0));
 
         assert_eq!(

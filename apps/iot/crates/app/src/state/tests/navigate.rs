@@ -31,7 +31,7 @@ fn the_page_switch_reaches_the_audio_page_and_back() {
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Menu);
     feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), PageId::Ambient);
+    assert_eq!(manager.state().page(), PageId::Input);
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn the_camera_page_cycles_from_the_board_and_back() {
     feed_input(&mut manager, triple_click());
     assert_eq!(manager.state().page(), PageId::Menu);
     feed_input(&mut manager, triple_click());
-    assert_eq!(manager.state().page(), PageId::Ambient);
+    assert_eq!(manager.state().page(), PageId::Input);
 }
 
 #[test]
@@ -92,7 +92,7 @@ fn a_full_lap_walks_every_page_and_returns_home() {
         PageId::Text,
         PageId::Widgets,
         PageId::Menu,
-        PageId::Ambient,
+        PageId::Input,
     ] {
         feed_input(&mut manager, triple_click());
         assert_eq!(manager.state().page(), expected);
