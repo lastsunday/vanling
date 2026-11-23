@@ -2,7 +2,7 @@
 
 use iot_core::ui::{NodeId, Style, TextAlign, Ui, Widget};
 
-use crate::shared::kit::theme::Theme;
+use crate::shared::ui::theme::Theme;
 
 const SIZE: i16 = 24;
 

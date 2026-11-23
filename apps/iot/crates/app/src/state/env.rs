@@ -6,7 +6,7 @@
 //! The bench flag lives here rather than in `bench` so the network worker never names the
 //! harness that suppresses its build credential.
 
-use crate::shared::kit::i18n::Lang;
+use crate::shared::i18n::Lang;
 use crate::state::PageId;
 use iot_core::demand::{Override, parse_override};
 
@@ -117,7 +117,7 @@ const fn unknown_page(name: Option<&str>) -> Option<&str> {
 #[cfg(test)]
 mod tests {
     use super::{boot_page_from_env, lang_from_env, unknown_lang, unknown_page};
-    use crate::shared::kit::i18n::Lang;
+    use crate::shared::i18n::Lang;
     use crate::shared::route::SPLASH_MS;
     use crate::state::PageId;
 

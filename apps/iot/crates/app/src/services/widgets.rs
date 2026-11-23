@@ -1,30 +1,31 @@
-//! The basic-widgets page: the kit's components grouped under headings, the whole gallery in one
+//! The basic-widgets page: every UI component grouped under headings, the whole gallery in one
 //! scroll box. Controls that can hold a value keep it in this page, not in the device state.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::{Canvas, NodeId, Rect, Screen, ScrollId, Style, Ui};
 
+use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, Key, WidgetsAction, WidgetsIntent};
-use crate::shared::kit::i18n::{Lang, Msg};
-use crate::shared::kit::keyboard::FIELD_BYTES;
-use crate::shared::kit::panel::{finish, headless};
-use crate::shared::kit::scroll::{
-    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
-};
-use crate::shared::kit::slot::Slot;
-use crate::shared::kit::state::State;
-use crate::shared::kit::tag::TagTable;
-use crate::shared::kit::theme::{ButtonKind, Theme};
-use crate::shared::kit::widgets::{
-    Avatar, Badge, Button, Checkbox, Chip, Divider, IconButton, Indicator, ListTile, ProgressBar,
-    Radio, Select, Slider, Spinner, Switch, TextField, Tone, Tooltip, Variant,
-};
-use crate::shared::kit::{chrome, keyboard};
 use crate::shared::model::{Command, DeviceState, Effects};
+use crate::shared::page;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
     FrameSnapshot, PageSnapshot, ScrollAreaView, ScrollShift, WidgetsSnapshot,
+};
+use crate::shared::surface::{finish, headless};
+use crate::shared::ui::keyboard;
+use crate::shared::ui::keyboard::FIELD_BYTES;
+use crate::shared::ui::scroll::{
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
+};
+use crate::shared::ui::slot::Slot;
+use crate::shared::ui::state::State;
+use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::theme::{ButtonKind, Theme};
+use crate::shared::ui::widgets::{
+    Avatar, Badge, Button, Checkbox, Chip, Divider, IconButton, Indicator, ListTile, ProgressBar,
+    Radio, Select, Slider, Spinner, Switch, TextField, Tone, Tooltip, Variant,
 };
 
 use super::{Descriptor, Repaint};
@@ -32,7 +33,7 @@ use super::{Descriptor, Repaint};
 const AREA: ScrollId = ScrollId::new(1);
 
 /// The gallery's column: the panel less the page margin and the thumb's gutter.
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - chrome::MARGIN - 2 * BAR;
+const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
 const GAP: i16 = 6;
 const BUTTON: i16 = (CONTENT_W - 2 * GAP) / 3;
 /// Wide enough for `OUTLINED` at 14 px and fixed, so the row holds its shape in either language.
@@ -383,8 +384,8 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
     let w = snapshot.pages.widgets;
     let theme = Theme::PANEL;
     let mut keyboard = None;
-    chrome::page(ui, |ui| {
-        chrome::title(ui, Msg::WidgetsTitle.bytes(lang));
+    page::body(ui, |ui| {
+        page::title(ui, Msg::WidgetsTitle.bytes(lang));
         if w.focus {
             ui.add(
                 TextField::new(w.text.as_bytes())
@@ -394,7 +395,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
             keyboard = Some(ui.custom(Style::new().width(CONTENT_W).height(keyboard::H), KEY_SLOT));
             return;
         }
-        chrome::scroller(ui, AREA, w.area, |ui| {
+        page::scroller(ui, AREA, w.area, |ui| {
             section(ui, Msg::SectionActions.bytes(lang), &theme);
             ui.row(Style::new().gap(GAP).middle(), |ui| {
                 ui.add(
@@ -589,7 +590,7 @@ fn custom(
 }
 
 /// The gallery never draws wider than the panel.
-const _: () = assert!(CONTENT_W + 2 * BAR + chrome::MARGIN == PANEL_COLUMNS as i16);
+const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
 const _: () = assert!(3 * BUTTON + 2 * GAP == CONTENT_W);
 
 #[cfg(test)]

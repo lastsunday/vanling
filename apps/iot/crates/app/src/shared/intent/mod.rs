@@ -7,7 +7,7 @@ mod keyboard;
 pub use self::action::WidgetsAction;
 pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WINDOW_MS};
 
-use crate::shared::kit::i18n::Lang;
+use crate::shared::i18n::Lang;
 use iot_core::drivers::input::{InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 

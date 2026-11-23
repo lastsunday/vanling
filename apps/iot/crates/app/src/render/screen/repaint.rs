@@ -84,7 +84,7 @@ mod tests {
     fn a_language_switch_repaints_a_page_that_only_prints_words() {
         let base = FrameSnapshot::default();
         let mut moved = base;
-        moved.lang = crate::shared::kit::i18n::Lang::ZhHans;
+        moved.lang = crate::shared::i18n::Lang::ZhHans;
         assert!(repaint_due(PageId::Env, &base, &moved, 0, true));
         assert!(repaint_due(PageId::Speaker, &base, &moved, 0, true));
     }

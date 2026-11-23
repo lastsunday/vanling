@@ -7,13 +7,13 @@ mod tests;
 
 use iot_core::drivers::audio::{dbfs, spl};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use iot_core::ui::text::{format_dba, format_i32, format_u16};
 use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
+use crate::shared::i18n::Msg;
 use crate::shared::intent::{AudioIntent, BusinessIntent, InputIntent, LightAction};
-use crate::shared::kit::chrome;
-use crate::shared::kit::i18n::Msg;
-use crate::shared::kit::text::{format_dba, format_i32, format_u16};
 use crate::shared::model::{AudioPhase, Command, DeviceState, Effects};
+use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -63,9 +63,9 @@ impl super::LocalPage for AudioPage {
         let audio = &snapshot.audio;
         let fault = audio.health.fault();
         let offset = ui.screen().spl_offset_db;
-        chrome::page(ui, |ui| {
+        page::body(ui, |ui| {
             ui.row(Style::new().between(), |ui| {
-                chrome::title(ui, Msg::AudioTitle.bytes(lang));
+                page::title(ui, Msg::AudioTitle.bytes(lang));
                 ui.text(
                     format_dba(spl(dbfs(audio.dba_lsb), offset), &mut [0u8; 12]),
                     Style::new().nowrap(),
@@ -74,7 +74,7 @@ impl super::LocalPage for AudioPage {
             level(ui, b"PK", dbfs(audio.envelope.loudest()), offset);
             level(ui, b"RMS", dbfs(audio.envelope.loudest_rms()), offset);
             ui.row(Style::new().between(), |ui| {
-                chrome::reading(
+                page::reading(
                     ui,
                     b"ST",
                     match (fault, audio.phase) {
@@ -84,7 +84,7 @@ impl super::LocalPage for AudioPage {
                         (None, AudioPhase::Stopped) => Msg::Stopped.bytes(lang),
                     },
                 );
-                chrome::reading(
+                page::reading(
                     ui,
                     b"MS",
                     format_i32(
@@ -94,12 +94,12 @@ impl super::LocalPage for AudioPage {
                 );
             });
             ui.row(Style::new().gap(12), |ui| {
-                chrome::reading(
+                page::reading(
                     ui,
                     b"COL",
                     format_u16(u16::from(audio.envelope.committed()), &mut [0u8; 6]),
                 );
-                chrome::reading(ui, b"RST", format_u16(audio.restarts, &mut [0u8; 6]));
+                page::reading(ui, b"RST", format_u16(audio.restarts, &mut [0u8; 6]));
                 if audio.envelope.clipped() {
                     ui.text(Msg::Clip.bytes(lang), Style::new().nowrap());
                 }
@@ -158,10 +158,10 @@ fn audio_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
 /// One level row: the decibels and the sound pressure they mean.
 fn level(ui: &mut Ui<'_, '_>, label: &[u8], decibels: i16, offset: i16) {
     let mut buf = [0u8; 48];
-    let take = label.len().min(chrome::LABEL_BYTES);
+    let take = label.len().min(page::LABEL_BYTES);
     buf[..take].copy_from_slice(&label[..take]);
     let mut end = take;
-    while end < chrome::LABEL_BYTES {
+    while end < page::LABEL_BYTES {
         buf[end] = b' ';
         end += 1;
     }

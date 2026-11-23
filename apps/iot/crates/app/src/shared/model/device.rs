@@ -1,8 +1,8 @@
 //! The whole of what the device knows: one record per domain, plus the queries that read
 //! across them.
 
+use crate::shared::i18n::Lang;
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction};
-use crate::shared::kit::i18n::Lang;
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::input::SwipeDirection;

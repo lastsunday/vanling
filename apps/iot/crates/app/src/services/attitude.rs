@@ -2,14 +2,14 @@
 
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::horizon::{SCALE, horizon};
+use iot_core::ui::text::{format_i32, format_tenths, format_u16};
 use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
+use crate::shared::i18n::Msg;
+use crate::shared::i18n::words::NOT_AVAILABLE;
 use crate::shared::intent::{BusinessIntent, InputIntent};
-use crate::shared::kit::chrome;
-use crate::shared::kit::i18n::Msg;
-use crate::shared::kit::text::format_u16;
-use crate::shared::kit::text::{NOT_AVAILABLE, format_i32, format_tenths};
 use crate::shared::model::DeviceState;
+use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
 
 /// The dial's box in the page's bottom-right corner.
@@ -27,31 +27,31 @@ impl super::LocalPage for AttitudePage {
     }
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
-        chrome::page(ui, |ui| {
-            chrome::title(ui, Msg::AttitudeTitle.bytes(snapshot.lang));
+        page::body(ui, |ui| {
+            page::title(ui, Msg::AttitudeTitle.bytes(snapshot.lang));
             let Some(sample) = snapshot.motion else {
-                chrome::reading(ui, b"ERR", Msg::Wait.bytes(snapshot.lang));
+                page::reading(ui, b"ERR", Msg::Wait.bytes(snapshot.lang));
                 return;
             };
             if !sample.valid {
-                chrome::reading(ui, b"ERR", Msg::ReadFailed.bytes(snapshot.lang));
+                page::reading(ui, b"ERR", Msg::ReadFailed.bytes(snapshot.lang));
                 return;
             }
             ui.stack(Style::new().grow(1), |ui| {
                 ui.row(Style::new().gap(8), |ui| {
-                    ui.column(Style::new().width(chrome::READING), |ui| axes(ui, &sample));
-                    ui.column(Style::new().width(chrome::READING), |ui| {
+                    ui.column(Style::new().width(page::READING), |ui| axes(ui, &sample));
+                    ui.column(Style::new().width(page::READING), |ui| {
                         estimator(ui, &sample);
                         counters(ui, snapshot, 0, 7);
                     });
-                    ui.column(Style::new().width(chrome::READING), |ui| {
+                    ui.column(Style::new().width(page::READING), |ui| {
                         counters(ui, snapshot, 7, MOTION_SEMANTIC_ROWS);
                     });
                 });
                 ui.custom(
                     Style::new()
                         .absolute()
-                        .right(chrome::MARGIN)
+                        .right(page::MARGIN)
                         .bottom(0)
                         .size(DIAL, DIAL),
                     0,
@@ -92,7 +92,7 @@ fn axes(ui: &mut Ui<'_, '_>, sample: &MotionSample) {
                 _ => format_tenths(i32::from(sample.tilt_deg_x10[axis]), &mut buf),
             };
             let label = [prefix, b'0' + axis as u8];
-            chrome::reading(ui, &label, value);
+            page::reading(ui, &label, value);
         }
     }
 }
@@ -106,13 +106,13 @@ fn estimator(ui: &mut Ui<'_, '_>, sample: &MotionSample) {
     ];
     for (label, value) in counters {
         if label == b"ST" {
-            chrome::reading(
+            page::reading(
                 ui,
                 label,
                 format_u16(u16::from(sample.status), &mut [0u8; 6]),
             );
         } else {
-            chrome::reading(ui, label, format_i32(value, &mut [0u8; 12]));
+            page::reading(ui, label, format_i32(value, &mut [0u8; 12]));
         }
     }
 }
@@ -197,7 +197,7 @@ fn counters(ui: &mut Ui<'_, '_>, snapshot: &FrameSnapshot, first: usize, last: u
         } else {
             NOT_AVAILABLE
         };
-        chrome::reading(ui, label, value);
+        page::reading(ui, label, value);
     }
 }
 

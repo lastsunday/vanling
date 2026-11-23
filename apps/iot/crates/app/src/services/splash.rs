@@ -1,7 +1,7 @@
 //! The boot page: the product's name over the hold that opens setup mode.
 
+use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, InputIntent, NavigationIntent};
-use crate::shared::kit::i18n::Msg;
 use crate::shared::model::DeviceState;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, InputEvent};

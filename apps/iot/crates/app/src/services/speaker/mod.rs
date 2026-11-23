@@ -3,13 +3,14 @@
 #[cfg(test)]
 mod tests;
 
+use crate::shared::i18n::Msg;
+use crate::shared::i18n::words::sound_label;
 use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
-use crate::shared::kit::chrome;
-use crate::shared::kit::i18n::Msg;
-use crate::shared::kit::text::{format_u16, sound_label};
 use crate::shared::model::{Command, DeviceState, Effects, PlaybackPhase};
+use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use iot_core::ui::text::format_u16;
 use iot_core::ui::{Style, Ui};
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -53,14 +54,14 @@ impl super::LocalPage for SpeakerPage {
         let lang = snapshot.lang;
         let playback = snapshot.playback;
         let fault = playback.health.fault();
-        chrome::page(ui, |ui| {
+        page::body(ui, |ui| {
             ui.row(Style::new().between(), |ui| {
-                chrome::title(ui, Msg::SpeakerTitle.bytes(lang));
+                page::title(ui, Msg::SpeakerTitle.bytes(lang));
                 if playback.muted {
                     ui.text(Msg::Mute.bytes(lang), Style::new().nowrap());
                 }
             });
-            chrome::reading(
+            page::reading(
                 ui,
                 b"ST",
                 match (fault, playback.phase) {
@@ -69,9 +70,9 @@ impl super::LocalPage for SpeakerPage {
                     (None, PlaybackPhase::Playing) => Msg::Playing.bytes(lang),
                 },
             );
-            chrome::reading(ui, b"SRC", sound_label(playback.sound));
-            chrome::reading(ui, b"PLY", format_u16(playback.plays, &mut [0u8; 6]));
-            chrome::reading(ui, b"DRP", format_u16(playback.dropped, &mut [0u8; 6]));
+            page::reading(ui, b"SRC", sound_label(playback.sound));
+            page::reading(ui, b"PLY", format_u16(playback.plays, &mut [0u8; 6]));
+            page::reading(ui, b"DRP", format_u16(playback.dropped, &mut [0u8; 6]));
             ui.text(b"", Style::new());
             match fault {
                 Some(reason) => {

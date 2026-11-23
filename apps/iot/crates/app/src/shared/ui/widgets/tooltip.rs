@@ -2,7 +2,7 @@
 
 use iot_core::ui::{NodeId, Style, Ui, Widget};
 
-use crate::shared::kit::theme::Theme;
+use crate::shared::ui::theme::Theme;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Tooltip<'a> {

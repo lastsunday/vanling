@@ -74,7 +74,7 @@ impl Scratch {
     }
 }
 
-/// The largest corner any kit widget asks for; the array of row insets is sized by it.
+/// The largest corner any widget asks for; the array of row insets is sized by it.
 const MAX_RADIUS: u8 = 16;
 
 /// Where a glyph sits and how big its ink box is, in panel pixels.

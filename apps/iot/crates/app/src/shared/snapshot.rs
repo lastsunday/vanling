@@ -1,11 +1,11 @@
 //! The frame snapshot: everything one frame of pages draws from, extracted together so the
 //! render layer never borrows the state it paints.
 
-use crate::shared::kit::i18n::Lang;
-use crate::shared::kit::keyboard::{FIELD_BYTES, Text};
+use crate::shared::i18n::Lang;
 use crate::shared::model::DeviceState;
 use crate::shared::model::{AudioPhase, Backed, Health, NetworkView};
 use crate::shared::route::PageId;
+use crate::shared::ui::keyboard::{FIELD_BYTES, Text};
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};

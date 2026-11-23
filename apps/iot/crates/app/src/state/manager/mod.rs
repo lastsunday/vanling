@@ -4,7 +4,7 @@
 use alloc::vec::Vec;
 
 use crate::services::Services;
-use crate::shared::kit::i18n::Lang;
+use crate::shared::i18n::Lang;
 use crate::shared::model::{Backed, DeviceState, MAX_LIGHTS, PlaybackState, SurfaceRole};
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand, Override};

@@ -1,6 +1,5 @@
-//! The portable page surface: a `Canvas`, the screen it belongs to, and the dispatch that
-//! turns a page's declaration into ink.
-//! The panel owns the marks, not the frame data: `services::paint` hands it the snapshot.
+//! The portable page surface: a `Canvas`, its screen, and the dispatch from a page's
+//! declaration to ink. Frame data arrives from `services::paint`; the surface owns no page.
 
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, RIGHT};

@@ -3,15 +3,15 @@
 //! frame never walks the face again. A finger drags a region live; the lift flings it.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, TextIntent};
-use crate::shared::kit::panel::{finish, headless};
-use crate::shared::kit::scroll::{
-    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift, thumb as scroll_thumb,
-};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
     FrameSnapshot, PageSnapshot, ScrollAreaView, ScrollShift, TEXT_AREAS, TEXT_LINES, TEXT_ROWS,
     TextLine, TextSnapshot,
+};
+use crate::shared::surface::{finish, headless};
+use crate::shared::ui::scroll::{
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift, thumb as scroll_thumb,
 };
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::font::{Face, FontFamily, Metrics as FontMetrics};
@@ -343,7 +343,7 @@ fn scroll_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShif
 
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let text = snapshot.pages.text;
-    crate::shared::kit::chrome::page(ui, |ui| {
+    crate::shared::page::body(ui, |ui| {
         coverage(ui, text);
         region(ui, WRAP, b"WRAP", text.areas[0], |ui| {
             let accent = ui.color(Color::rgb(0xE0, 0x40, 0x40));
@@ -443,7 +443,7 @@ fn thumb(ui: &mut Ui<'_, '_>, view: ScrollAreaView) {
         view.rect.h,
         view.offset,
         view.max,
-        crate::shared::kit::scroll::MIN_THUMB,
+        crate::shared::ui::scroll::MIN_THUMB,
     ) {
         ui.node(
             Style::new()
@@ -508,7 +508,7 @@ fn missing(face: &Face) -> u16 {
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
-    use crate::shared::kit::scroll::LINE_PX;
+    use crate::shared::ui::scroll::LINE_PX;
     use iot_core::ui::{MAX_NODES, TEXT_BYTES};
 
     fn sample(points: &[(iot_core::drivers::input::TouchStatus, u8, u16, u16)]) -> InputEvent {

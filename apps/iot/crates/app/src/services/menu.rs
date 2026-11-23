@@ -4,21 +4,21 @@ use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::TOUCH_MIN;
 use iot_core::ui::{Rect, ScrollId, Style, Ui};
 
+use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsIntent};
-use crate::shared::kit::chrome;
-use crate::shared::kit::i18n::{Lang, Msg};
-use crate::shared::kit::panel::{finish, headless};
-use crate::shared::kit::scroll::{
-    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
-};
-use crate::shared::kit::state::State;
-use crate::shared::kit::tag::TagTable;
-use crate::shared::kit::widgets::{Button, Chip};
 use crate::shared::model::{Command, DeviceState, Effects};
+use crate::shared::page;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
     FrameSnapshot, MenuSnapshot, PageSnapshot, ScrollAreaView, ScrollShift,
 };
+use crate::shared::surface::{finish, headless};
+use crate::shared::ui::scroll::{
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
+};
+use crate::shared::ui::state::State;
+use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::widgets::{Button, Chip};
 
 use super::{Descriptor, Repaint};
 
@@ -274,7 +274,7 @@ impl super::LocalPage for MenuPage {
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let lang = snapshot.lang;
     let backed = snapshot.backed;
-    chrome::page(ui, |ui| {
+    page::body(ui, |ui| {
         ui.row(
             Style::new()
                 .height(TOUCH_MIN as i16 + GAP)
@@ -282,7 +282,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 .middle()
                 .gap(GAP),
             |ui| {
-                chrome::title(ui, Msg::MenuTitle.bytes(lang));
+                page::title(ui, Msg::MenuTitle.bytes(lang));
                 ui.node(Style::new().grow(1));
                 ui.add(
                     Chip::new(Msg::LangEn.bytes(lang))
@@ -300,7 +300,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 );
             },
         );
-        chrome::scroller(ui, AREA, snapshot.pages.menu.area, |ui| {
+        page::scroller(ui, AREA, snapshot.pages.menu.area, |ui| {
             for row in 0..ROWS {
                 ui.row(Style::new().gap(GAP), |ui| {
                     for column in 0..COLUMNS {
@@ -531,7 +531,7 @@ mod tests {
     fn every_name_fits_a_button() {
         let metrics = iot_core::ui::font::Metrics::vector(16);
         for page in PageId::ALL {
-            for lang in crate::shared::kit::i18n::Lang::ALL {
+            for lang in crate::shared::i18n::Lang::ALL {
                 let name = page_name(page).bytes(*lang);
                 let width = metrics.measure(name);
                 assert!(
@@ -545,7 +545,7 @@ mod tests {
     #[test]
     fn every_page_has_a_name() {
         for page in PageId::ALL {
-            for lang in crate::shared::kit::i18n::Lang::ALL {
+            for lang in crate::shared::i18n::Lang::ALL {
                 assert!(!page_name(page).bytes(*lang).is_empty(), "{page:?}");
             }
         }
@@ -558,16 +558,12 @@ mod tests {
             {
                 let canvas =
                     iot_core::ui::Canvas::new(&mut frame, PANEL_COLUMNS, CONTENT_BOTTOM, None);
-                let mut panel = crate::shared::kit::panel::Panel::new(canvas, Screen::default());
+                let mut panel = crate::shared::surface::Panel::new(canvas, Screen::default());
                 let snapshot = FrameSnapshot {
                     backed,
                     ..FrameSnapshot::default()
                 };
-                panel.view(
-                    &snapshot,
-                    MenuPage::view,
-                    crate::shared::kit::panel::no_custom,
-                );
+                panel.view(&snapshot, MenuPage::view, crate::shared::surface::no_custom);
             }
             frame
         };
@@ -580,7 +576,7 @@ mod tests {
 
     #[test]
     fn the_menu_fits_one_declaration() {
-        for lang in crate::shared::kit::i18n::Lang::ALL {
+        for lang in crate::shared::i18n::Lang::ALL {
             let mut ui = headless();
             MenuPage::view(
                 &FrameSnapshot {

@@ -1,12 +1,13 @@
 //! The Input page: the debug overlay over an empty ground, and nothing on a release build.
 
+use crate::shared::i18n::words::light_mode_word;
 use crate::shared::intent::{BusinessIntent, InputIntent};
-use crate::shared::kit::chrome;
-use crate::shared::kit::text::{format_pair, format_u16, light_mode_word, write_u16};
 use crate::shared::model::DeviceState;
+use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::input::{FINGER_LONG_PRESS, FINGER_SWIPE, FINGER_TAP};
 use iot_core::light::{MODE_BREATH, MODE_SOLID, Rgb, brightness_of, rgb_hue};
+use iot_core::ui::text::{format_pair, format_u16, write_u16};
 use iot_core::ui::{Style, Ui};
 
 /// The Input page owns no state: the lamp is its whole answer and the overlay its whole view.
@@ -35,7 +36,7 @@ impl super::LocalPage for InputPage {
         } else {
             (light.brightness, light.hue)
         };
-        chrome::page(ui, |ui| overlay(ui, snapshot, live));
+        page::body(ui, |ui| overlay(ui, snapshot, live));
     }
 
     fn descriptor() -> super::Descriptor {
@@ -75,17 +76,17 @@ fn overlay(ui: &mut Ui<'_, '_>, snapshot: &FrameSnapshot, live: (u8, u8)) {
                 (b"SWP", u16::from(touch.swipes)),
             ];
             for (label, value) in counters {
-                chrome::reading(ui, label, format_u16(value, &mut buf));
+                page::reading(ui, label, format_u16(value, &mut buf));
             }
             let mut dir = [b' '; 8];
             dir[0] = direction_arrow(touch.last_swipe_dir);
             dir[1] = b' ';
             let n = write_u16(touch.last_swipe_dist, &mut dir, 2);
-            chrome::reading(ui, b"DIR", &dir[..n]);
+            page::reading(ui, b"DIR", &dir[..n]);
             let mut xy = [0u8; 12];
-            chrome::reading(ui, b"XY", format_pair(touch.last_gesture_origin, &mut xy));
+            page::reading(ui, b"XY", format_pair(touch.last_gesture_origin, &mut xy));
             let mut end = [0u8; 12];
-            chrome::reading(ui, b"XY2", format_pair(touch.last_gesture_end, &mut end));
+            page::reading(ui, b"XY2", format_pair(touch.last_gesture_end, &mut end));
         });
         ui.column(Style::new().grow(1), |ui| {
             let mut buf = [0u8; 6];
@@ -105,7 +106,7 @@ fn overlay(ui: &mut Ui<'_, '_>, snapshot: &FrameSnapshot, live: (u8, u8)) {
                         1
                     }
                 };
-                chrome::reading(ui, labels[0].as_bytes(), &xy[..n]);
+                page::reading(ui, labels[0].as_bytes(), &xy[..n]);
                 let last = touch.finger[slot];
                 let mut value = [b'-'; 6];
                 let value_len = if last.kind == 0 {
@@ -115,53 +116,53 @@ fn overlay(ui: &mut Ui<'_, '_>, snapshot: &FrameSnapshot, live: (u8, u8)) {
                     value[..digits.len()].copy_from_slice(digits);
                     digits.len()
                 };
-                chrome::reading(ui, labels[1].as_bytes(), &[gesture_glyph(last.kind)]);
-                chrome::reading(ui, labels[2].as_bytes(), &value[..value_len]);
-                chrome::reading(
+                page::reading(ui, labels[1].as_bytes(), &[gesture_glyph(last.kind)]);
+                page::reading(ui, labels[2].as_bytes(), &value[..value_len]);
+                page::reading(
                     ui,
                     labels[3].as_bytes(),
                     &[direction_arrow(touch.live_dir[slot])],
                 );
             }
-            chrome::reading(
+            page::reading(
                 ui,
                 b"CHP",
                 format_u16(u16::from(touch.chip_gesture_id), &mut buf),
             );
-            chrome::reading(ui, b"FRM", format_u16(touch.frames, &mut buf));
+            page::reading(ui, b"FRM", format_u16(touch.frames, &mut buf));
         });
         ui.column(Style::new().grow(1), |ui| {
             let mut buf = [0u8; 6];
-            chrome::reading(ui, b"MOD", light_mode_word(light.mode));
-            chrome::reading(ui, b"BRI", format_u16(u16::from(live.0), &mut buf));
+            page::reading(ui, b"MOD", light_mode_word(light.mode));
+            page::reading(ui, b"BRI", format_u16(u16::from(live.0), &mut buf));
             match light.mode {
                 MODE_BREATH => {
                     let mut lo_hi = [0u8; 8];
                     let mut n = write_u16(u16::from(light.breath.min_brightness), &mut lo_hi, 0);
                     lo_hi[n] = b' ';
                     n = write_u16(u16::from(light.breath.max_brightness), &mut lo_hi, n + 1);
-                    chrome::reading(ui, b"LOHI", &lo_hi[..n]);
-                    chrome::reading(ui, b"PER", format_u16(light.breath.period_ms, &mut buf));
-                    chrome::reading(ui, b"HUE", format_u16(u16::from(live.1), &mut buf));
-                    chrome::reading(ui, b"HPR", format_u16(light.breath.hue_period_ms, &mut buf));
-                    chrome::reading(
+                    page::reading(ui, b"LOHI", &lo_hi[..n]);
+                    page::reading(ui, b"PER", format_u16(light.breath.period_ms, &mut buf));
+                    page::reading(ui, b"HUE", format_u16(u16::from(live.1), &mut buf));
+                    page::reading(ui, b"HPR", format_u16(light.breath.hue_period_ms, &mut buf));
+                    page::reading(
                         ui,
                         b"SPN",
                         format_u16(u16::from(light.breath.hue_span), &mut buf),
                     );
-                    chrome::reading(
+                    page::reading(
                         ui,
                         b"GRP",
                         format_u16(u16::from(light.breath.group_len), &mut buf),
                     );
-                    chrome::reading(
+                    page::reading(
                         ui,
                         b"SAT",
                         format_u16(u16::from(light.breath.saturation), &mut buf),
                     );
                 }
                 MODE_SOLID => {
-                    chrome::reading(ui, b"HUE", format_u16(u16::from(live.1), &mut buf));
+                    page::reading(ui, b"HUE", format_u16(u16::from(live.1), &mut buf));
                 }
                 _ => {}
             }

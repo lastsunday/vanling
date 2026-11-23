@@ -2,9 +2,8 @@
 
 use iot_core::drivers::audio::{COLUMN_MS, ENVELOPE_COLUMNS, SCOPE_FLOOR_DECIBELS, scope_height};
 use iot_core::ui::panel::LINE;
+use iot_core::ui::text::format_i32;
 use iot_core::ui::{Canvas, Rect};
-
-use crate::shared::kit::text::format_i32;
 
 const FLOOR: i32 = SCOPE_FLOOR_DECIBELS;
 

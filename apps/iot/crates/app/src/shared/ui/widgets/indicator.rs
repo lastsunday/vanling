@@ -2,7 +2,7 @@
 
 use iot_core::ui::{NodeId, Style, TextAlign, Ui, Widget};
 
-use crate::shared::kit::theme::Theme;
+use crate::shared::ui::theme::Theme;
 
 /// The dot's diameter and how far its corner reaches past the child.
 const DOT: i16 = 8;
@@ -70,7 +70,7 @@ impl<W: Widget> Widget for Indicator<'_, W> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::shared::kit::widgets::Avatar;
+    use crate::shared::ui::widgets::Avatar;
     use iot_core::ui::{BoxConstraints, Canvas, PX, Screen};
 
     #[test]

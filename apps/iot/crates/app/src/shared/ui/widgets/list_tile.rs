@@ -3,9 +3,9 @@
 use iot_core::ui::panel::ROW_PITCH;
 use iot_core::ui::{Canvas, Rect};
 
-use crate::shared::kit::slot::Slot;
-use crate::shared::kit::state::State;
-use crate::shared::kit::theme::Theme;
+use crate::shared::ui::slot::Slot;
+use crate::shared::ui::state::State;
+use crate::shared::ui::theme::Theme;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ListTile<'a> {

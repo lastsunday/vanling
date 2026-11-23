@@ -43,7 +43,7 @@ weight = 10
 
 - **接线只出现在 `bsp/` 板模块**：`Board::new(Peripherals)` 内固定引脚；业务代码禁止出现引脚号
 - **bsp-esp 内部分两层元件**：`components/` 是实际元件（芯片驱动，参数化总线与引脚，不认板）；`virtual_components/` 是抽象元件（由实际元件组装而成的虚拟器件，如 `Screen` 把 ST7789 面板、背光与帧缓冲组装成 `ScreenSurface`）。板模块只做选引脚与装配，元件本身跨板通用
-- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground；`font` 只做字模，`typeset` 做禁则与换行，`layout` 是 Flutter 词汇的盒模型（flex/wrap/stack/scroll），`panel` 是从字面推出的面板度量。它不认页面、快照、网络、产品或芯片；页面壳（`shared::kit::{panel::Panel, chrome}`）、页面视图与网络几何都在 `iot-app`，因此仍可在宿主机测试而不依赖屏幕
+- **`core::ui` 只认像素与字形**：`Canvas` 只持有帧缓冲、尺寸与 ground；`font` 只做字模，`typeset` 做禁则与换行，`layout` 是 Flutter 词汇的盒模型（flex/wrap/stack/scroll），`panel` 是从字面推出的面板度量。它不认页面、快照、网络、产品或芯片；页面壳（`shared::surface::Panel`）与版式（`shared::page`）、页面视图与网络几何都在 `iot-app`，因此仍可在宿主机测试而不依赖屏幕
 - **bsp 只送去画，不认页面**：`bsp-esp` 持有帧缓冲、DMA、面板与相机采样，经 `core` 的 `ScreenPainter` 接缝把 `ScreenTarget`/`ScreenContext` 交给 app；页面状态与重绘门控在 app，bsp 不知道 `FrameSnapshot` 或任何页面类型
 - **元件独立 feature**：每个元件一个 feature，在 `components/` 的 `mod` 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 [features.md](@/development/iot/features.md) 模块轴）
 - **iot-chip-esp**：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 `#[esp_rtos::main]` 留在 app 的 bin 入口（`main.rs`、`bin/*.rs`）
@@ -91,7 +91,10 @@ weight = 10
 | `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
 | `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
 | `shared/snapshot.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 `PageSnapshot` |
-| `shared/kit/` | 页面壳 `Panel`（声明 → 布局 → 绘制的调度）、跨页版面 `chrome`（页边距、行距、标签槽）、文字词汇 `text` 与滚动状态 `scroll`（偏移、滑行、回弹、两个开关）；只认像素与快照，不认页面 |
+| `shared/i18n/` | 面板文案：`Lang`、`Msg` 与不翻译的固定词；叶子，只依赖 `core` |
+| `shared/ui/` | 组件与交互词汇：`State`/`Theme`/`Slot`、滚动状态、键盘、命中表与 `widgets/`；不读快照 |
+| `shared/page.rs` | 页面版式：页边距、行距、`body`/`title`/`scroller` 与读数行 |
+| `shared/surface.rs` | 落墨面 `Panel`：声明 → 布局 → 绘制的调度；只认快照 |
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
 | `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE`、`IOT_LANG` 与覆盖项） |
@@ -115,10 +118,10 @@ weight = 10
 
 ```
 lib               → { render, state, runtime }
-services/<page>   → { assets, shared::{intent, kit, model, route, snapshot} }
-services          → { services::<page>::controller, shared::{intent, kit, model, route, snapshot} }
+services/<page>   → { assets, shared::{i18n, intent, model, page, route, snapshot, surface, ui} }
+services          → { services::<page>::controller, shared::{i18n, intent, model, page, route, snapshot, surface, ui} }
 state             → { services::Services, shared::{intent, model, route} }
-render            → { services::{descriptor, paint}, shared::{kit, model, route, snapshot} }
+render            → { services::{descriptor, paint}, shared::{model, route, snapshot, surface} }
 runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }
 runtime::system       → { state, runtime::feature::input }
 runtime::feature::input    → { shared::{intent, model}, runtime::workers }
@@ -130,9 +133,9 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 - **页面之间不互相 import**：页面只读 `shared`（含 `DeviceState`）；页面需要另一页的东西时，那份东西就属于 `shared`
 - **`services` 是唯一认识所有服务的模块**：每页一个具体类型（`InputPage`…`NetworkPage`），`Services::apply` 是唯一的业务分派表，一条 `BusinessIntent` 组一条臂；`state` 只经 `Services::bind`/`apply`/`snapshot`/`enter`/`leave` 提问，`render` 只经 `services::paint` 与 `services::descriptor(page)` 上的读取取答案；页面只读 `shared`（含 `DeviceState`、`FrameSnapshot`），不认识 `state`/`render`，`PageId` 等词汇来自 `shared::route`
-- **`shared/kit` 不认页面**：`Panel` 把页面的声明布局成盒子再落墨，`chrome` 只提供跨页共用的边距、行距与标签槽；哪个页面声明什么由 `services::descriptor(page).view` 决定，页面自己画的槽由 `descriptor(page).custom` 决定
+- **`shared/ui` 与 `shared/page` 不认页面**：`surface::Panel` 把页面的声明布局成盒子再落墨，`page` 只提供跨页共用的边距、行距与读数行，`ui` 只认组件状态；哪个页面声明什么由 `services::descriptor(page).view` 决定，页面自己画的槽由 `descriptor(page).custom` 决定
 - `shared` 是叶子：不依赖 `state`/`services`/`render`/`runtime`。`DeviceState`、`PageSnapshot` 与 `NetworkView` 放在这里，就是为了让页面、快照和渲染都只朝下看
-- `shared` 五个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`kit`（像素原语）/`snapshot`（帧与页面视图）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_five_the_taxonomy_names` 守着桶的集合
+- `shared` 八个桶各有一个变更理由：`model`（记录）/`route`（目的地）/`intent`（入站消息）/`i18n`（文案，叶子）/`ui`（组件与交互）/`page`（页面版式）/`surface`（落墨面）/`snapshot`（帧与页面视图）；`every_shared_bucket_has_two_product_readers` 守着“只有一个读者就不是共享”，`the_shared_buckets_are_the_eight_the_taxonomy_names` 守着桶的集合
 - **测试跟着断言对象走**：一个测试放在它断言的模块的文件里，或该模块自己的 `tests.rs`；`state/tests/` 是唯一按主题分文件的测试树，夹具只有一份，在 `state/tests/support.rs`（`state::test_support` 只是它的再导出）。测试不算模块图的一条边，`module_boundaries.rs` 因此不扫 `tests/`、`tests.rs` 与 `test_support.rs`
 - `runtime::workers` 不带 `wifi` 门控：host 构建照样持有 `Network`，只是没人应答
 - `runtime::workers` 不反向依赖任何工作者：它只认识 `core` 的类型，这样 `playback`/`network`/`input` 才能单向引用它
@@ -146,7 +149,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 渲染答案分两层：`LocalPage::view` 用 `Ui` 的 `row`/`column`/`stack`/`wrap`/`scroll`/`text`/`custom` 声明整页，`services::paint` 取 `descriptor(page).view` 交给 `Panel`（布局一次、画字与盒子、再按槽调 `descriptor(page).custom`），最后盖角标；其余五个答案都是 `descriptor(page)` 上的读取（`ground()`/`camera_frames()`/`repaint_step_ms()`/`repaints_on()`/`scroll_shift()`）。
 
-长内容页把滚动留在页面：`Style::scroll_area(id)` 给滚动盒命名，布局沿轴累加子节点（含 `gap`）并把矩形与可滚动距离记进 `Tree`，`Ui::scroll_info(id)` 读回；`shared::kit::scroll::ScrollState<N>` 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。`measure` 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag` 直接改偏移（越界半程阻尼），抬手用 `fling` 接手：速度带符号、阈值以下只回弹。被按住的区 `tick` 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 `Repaint::WhenOrOverlay`，`FrameSnapshot::animating()` 为真时渲染器保持 `TimeDriven`；`PageSystem` 在 `schedule.tick` 里把墙钟增量（首帧 0，夹到 `MAX_CATCH_UP_MS`）交给 `DeviceManager::tick_pages`，偏移因此与快照同帧，也不会因某帧光栅化慢而按固定步长少走。
+长内容页把滚动留在页面：`Style::scroll_area(id)` 给滚动盒命名，布局沿轴累加子节点（含 `gap`）并把矩形与可滚动距离记进 `Tree`，`Ui::scroll_info(id)` 读回；`shared::ui::scroll::ScrollState<N>` 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。`measure` 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 `GestureEvent::Drag` 每移动 2 px 报一次，页面用 `drag` 直接改偏移（越界半程阻尼），抬手用 `fling` 接手：速度带符号、阈值以下只回弹。被按住的区 `tick` 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 `Repaint::WhenOrOverlay`，`FrameSnapshot::animating()` 为真时渲染器保持 `TimeDriven`；`PageSystem` 在 `schedule.tick` 里把墙钟增量（首帧 0，夹到 `MAX_CATCH_UP_MS`）交给 `DeviceManager::tick_pages`，偏移因此与快照同帧，也不会因某帧光栅化慢而按固定步长少走。
 
 `text` 页在构造时断行一次：`typeset::wrap` 的每行按字节范围与宽度存进快照，声明时各是一个 `nowrap` + 显式宽度的文本节点；`layout_text` 对 nowrap 且宽度已定的节点跳过 `max_content`，一帧不再逐字查字模表。`\n`、`\r`、`\r\n` 都按硬换行处理。
 
@@ -168,7 +171,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 | `ui::panel` | 从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距 | `PANEL_COLUMNS`、`CONTENT_BOTTOM`、`LINE`、`ROW_PITCH`、`TOUCH_MIN` |
 | `ui::canvas` | 像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，矢量轮廓按 4 条子扫描线取覆盖，不超过 24 px 的字形按 `(char, size, weight)` 缓存进 `GlyphCache`；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char_at, draw_char_heavy_at, draw_text_at, push_clip, with_glyphs}`、`GlyphCache` |
 
-页面组合有两条硬规矩：读数行一律走 `chrome::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
+页面组合有两条硬规矩：读数行一律走 `page::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
 
 自绘叶子（波形、刻度盘、网络带）走槽派发：`Ui::custom(style, slot)` 只记槽号，`Ui::paint` 布局后按槽回调页面的 `Custom`。页面的 `view` 与自绘函数都不认识帧缓冲以外的世界，`Panel` 只认识一块 `Canvas` 与它属于哪块屏幕。
 

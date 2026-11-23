@@ -7,8 +7,8 @@ use core::any::Any;
 
 use crate::services::camera::CameraPage;
 use crate::services::{descriptor, paint};
-use crate::shared::kit::panel::{Panel, no_custom};
 use crate::shared::snapshot::{FrameSnapshot, ScrollShift};
+use crate::shared::surface::{Panel, no_custom};
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{
     DamageRect, FrameDamage, ScreenContext, ScreenPainter, ScreenTarget,

@@ -2,7 +2,7 @@
 
 use iot_core::ui::{FontFamily, Length, NodeId, Style, TextAlign, Ui, Widget};
 
-use crate::shared::kit::theme::{CORNER, Theme};
+use crate::shared::ui::theme::{CORNER, Theme};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Chip<'a> {

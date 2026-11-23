@@ -4,7 +4,7 @@ use crate::services::network::view::text::{
     NAME_BYTES, format_address, format_bars, format_network_name, format_phase, format_psk,
     format_setup_name, format_window,
 };
-use crate::shared::kit::i18n::{Lang, Msg};
+use crate::shared::i18n::{Lang, Msg};
 use crate::shared::model::NetworkView;
 use iot_core::drivers::network::{AccessPoint, Ipv4, LinkStatus};
 use iot_core::provision::{MAC_TEXT_BYTES, mac_text};

@@ -439,17 +439,50 @@ fn a_service_does_not_import_another_service() {
     }
 }
 
-/// The surface paints every page, but it learns the page's ink from the page that owns it.
+/// The shared vocabulary paints for every page but names none: a page's ink is its own.
 #[test]
-fn the_kit_names_no_page() {
+fn the_shared_vocabulary_names_no_page() {
+    let mut files = shipping_sources(&app_src().join("shared/ui"));
+    files.extend(shipping_source(app_src().join("shared/page.rs")));
+    files.extend(shipping_source(app_src().join("shared/surface.rs")));
     assert_no_reference(
-        shipping_sources(&app_src().join("shared/kit")),
+        files,
         &[
             "crate::services",
             "PageId",
             "NetworkView",
             "Entry",
             "SetupWait",
+        ],
+    );
+}
+
+/// Words are the floor: every bucket may read them, and they read none.
+#[test]
+fn the_i18n_stays_a_leaf() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("shared/i18n")),
+        &[
+            "crate::shared::intent",
+            "crate::shared::model",
+            "crate::shared::page",
+            "crate::shared::route",
+            "crate::shared::snapshot",
+            "crate::shared::surface",
+            "crate::shared::ui",
+        ],
+    );
+}
+
+/// A component that read frame data would be a page.
+#[test]
+fn the_ui_stays_below_frame_data() {
+    assert_no_reference(
+        shipping_sources(&app_src().join("shared/ui")),
+        &[
+            "crate::shared::snapshot",
+            "crate::shared::page",
+            "crate::shared::surface",
         ],
     );
 }
@@ -768,7 +801,7 @@ fn shared_never_reaches_up() {
 
 /// A sixth bucket is a decision this test asks a reader to make on purpose.
 #[test]
-fn the_shared_buckets_are_the_five_the_taxonomy_names() {
+fn the_shared_buckets_are_the_eight_the_taxonomy_names() {
     let shared = app_src().join("shared");
     let mut found: Vec<String> = std::fs::read_dir(&shared)
         .expect("the shared directory is readable")
@@ -787,7 +820,9 @@ fn the_shared_buckets_are_the_five_the_taxonomy_names() {
     found.sort();
     assert_eq!(
         found,
-        ["intent", "kit", "model", "route", "snapshot"],
+        [
+            "i18n", "intent", "model", "page", "route", "snapshot", "surface", "ui"
+        ],
         "shared/ is one bucket per change reason; a new one must say why it is not a page's"
     );
 }
@@ -803,7 +838,9 @@ fn every_shared_bucket_has_two_product_readers() {
             !path.starts_with(src.join("bench")) && !path.starts_with(src.join("bin"))
         })
         .collect();
-    for bucket in ["intent", "kit", "model", "route", "snapshot"] {
+    for bucket in [
+        "i18n", "intent", "model", "page", "route", "snapshot", "surface", "ui",
+    ] {
         let dir = shared.join(bucket);
         let file = shared.join(format!("{bucket}.rs"));
         let own = if dir.is_dir() { dir } else { file };

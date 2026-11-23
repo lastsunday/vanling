@@ -19,12 +19,12 @@ pub mod widgets;
 use crate::shared::intent::{
     BusinessIntent, InputIntent, LightAction, MenuIntent, NavigationIntent,
 };
-use crate::shared::kit::panel::{Custom, Panel, View, no_custom};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
 use crate::shared::snapshot::ScrollShift;
+use crate::shared::surface::{Custom, Panel, View, no_custom};
 use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::Ui;

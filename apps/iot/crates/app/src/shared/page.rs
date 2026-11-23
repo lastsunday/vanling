@@ -1,11 +1,10 @@
-//! What the product's pages share: the panel's margins, the line rhythm, and the one shape a
-//! label and its reading take.
+//! The page's furniture: margins, line rhythm, title, scrolling body, and the reading row.
 
 use iot_core::ui::panel;
 use iot_core::ui::{FontFamily, Length, ScrollId, Style, Ui};
 
-use crate::shared::kit::scroll::{BAR, MIN_THUMB, thumb};
 use crate::shared::snapshot::ScrollAreaView;
+use crate::shared::ui::scroll::{BAR, MIN_THUMB, thumb};
 
 pub const MARGIN: i16 = panel::MARGIN as i16;
 pub const LINE: i16 = panel::LINE as i16;
@@ -26,20 +25,18 @@ pub const VALUE_BYTES: usize = VALUE as usize / panel::GLYPH;
 pub const READING: i16 = LABEL + VALUE + panel::GLYPH as i16;
 const READING_BYTES: usize = READING as usize / panel::GLYPH;
 
-/// The page's padding: one margin at the left and top, nothing at the right, so a stretched
-/// child can reach the panel's edge where it means to. The body grows to the panel's height,
-/// which is what leaves a `grow(1)` leaf inside it the rows the page did not use.
-pub const fn body() -> Style {
-    Style::new()
-        .padding(MARGIN, 8, 0, 0)
-        .stretch()
-        .grow(1)
-        .gap(1)
-}
-
-/// Runs a page's body inside the panel margin.
-pub fn page(ui: &mut Ui<'_, '_>, body: impl FnOnce(&mut Ui<'_, '_>)) {
-    ui.column(self::body(), body);
+/// Runs a page's body inside the panel margin: one margin at the left and top, nothing at the
+/// right, so a stretched child can reach the panel's edge; `grow(1)` leaves a `grow(1)` leaf
+/// inside it the rows the page did not use.
+pub fn body(ui: &mut Ui<'_, '_>, run: impl FnOnce(&mut Ui<'_, '_>)) {
+    ui.column(
+        Style::new()
+            .padding(MARGIN, 8, 0, 0)
+            .stretch()
+            .grow(1)
+            .gap(1),
+        run,
+    );
 }
 
 /// The page's name, a step larger than body copy so the panel has a head.

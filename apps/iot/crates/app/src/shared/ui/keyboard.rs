@@ -5,7 +5,7 @@ use iot_core::ui::panel::GLYPH;
 use iot_core::ui::{Canvas, Rect};
 
 use crate::shared::intent::{Cycling, Key, Layer, MULTITAP_WINDOW_MS};
-use crate::shared::kit::theme::Theme;
+use crate::shared::ui::theme::Theme;
 
 /// The longest run a field on this panel holds.
 pub const FIELD_BYTES: usize = 24;

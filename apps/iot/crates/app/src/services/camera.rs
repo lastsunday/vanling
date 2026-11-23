@@ -2,15 +2,14 @@
 
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::light::Rgb;
+use iot_core::ui::text::{format_pair, format_u32, frame_fingerprint, write_ratio};
 use iot_core::ui::{Style, Ui};
 
+use crate::shared::i18n::Msg;
+use crate::shared::i18n::words::light_mode_word;
 use crate::shared::intent::{BusinessIntent, InputIntent};
-use crate::shared::kit::chrome;
-use crate::shared::kit::i18n::Msg;
-use crate::shared::kit::text::{
-    format_pair, format_u32, frame_fingerprint, light_mode_word, write_ratio,
-};
 use crate::shared::model::DeviceState;
+use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
 
 /// The camera page draws the sensor's frames and its own readout over them.
@@ -51,9 +50,9 @@ impl CameraPage {
             .then(|| ui.canvas().map(|canvas| frame_fingerprint(canvas.frame())))
             .flatten();
 
-        chrome::page(ui, |ui| {
+        page::body(ui, |ui| {
             ui.row(Style::new().between(), |ui| {
-                chrome::title(ui, Msg::CameraTitle.bytes(lang));
+                page::title(ui, Msg::CameraTitle.bytes(lang));
                 match (fault, readout.starting) {
                     (Some(_), _) => ui.text(Msg::NoCam.bytes(lang), Style::new().nowrap()),
                     (None, true) => ui.text(Msg::Wait.bytes(lang), Style::new().nowrap()),
@@ -62,8 +61,8 @@ impl CameraPage {
             });
             if fault.is_none() {
                 if let Some(geometry) = readout.geometry {
-                    chrome::reading(ui, b"WIN", write_ratio(&mut [0u8; 6], geometry.subsample));
-                    chrome::reading(
+                    page::reading(ui, b"WIN", write_ratio(&mut [0u8; 6], geometry.subsample));
+                    page::reading(
                         ui,
                         b"OUT",
                         format_pair(
@@ -71,7 +70,7 @@ impl CameraPage {
                             &mut [0u8; 12],
                         ),
                     );
-                    chrome::reading(
+                    page::reading(
                         ui,
                         b"RD",
                         format_pair(
@@ -80,24 +79,24 @@ impl CameraPage {
                         ),
                     );
                 } else if readout.starting {
-                    chrome::reading(ui, b"BUS", b"----");
+                    page::reading(ui, b"BUS", b"----");
                 } else {
-                    chrome::reading(ui, b"BUS", b"NOBUS");
+                    page::reading(ui, b"BUS", b"NOBUS");
                 }
                 ui.text(b"", Style::new());
-                chrome::reading(
+                page::reading(
                     ui,
                     b"FRM",
                     format_u32(readout.counters.frames, &mut [0u8; 12]),
                 );
-                chrome::reading(
+                page::reading(
                     ui,
                     b"RM",
                     format_u32(readout.counters.restarts, &mut [0u8; 12]),
                 );
-                chrome::reading(ui, b"MOD", light_mode_word(snapshot.lights[0].mode));
+                page::reading(ui, b"MOD", light_mode_word(snapshot.lights[0].mode));
                 if let Some(fingerprint) = fingerprint {
-                    chrome::reading(ui, b"FP", format_u32(fingerprint, &mut [0u8; 12]));
+                    page::reading(ui, b"FP", format_u32(fingerprint, &mut [0u8; 12]));
                 }
             } else if let Some(reason) = fault {
                 ui.text(reason.as_bytes(), Style::new().nowrap());

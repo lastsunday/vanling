@@ -10,7 +10,7 @@ translated_at = "2026-11-23T00:00:00Z"
 
 The panel's widget vocabulary: two shapes, states and theme, rounded corners, the basic widgets, the pages built from them, cell drawing, i18n and budgets.
 
-> Status: the basic widgets are in place (`core::ui::widget` + `shared::kit::widgets`); advanced and optional widgets are only a list.
+> Status: the basic widgets are in place (`core::ui::widget` + `shared::ui::widgets`); advanced and optional widgets are only a list.
 
 ## Two shapes
 
@@ -44,10 +44,13 @@ Two hard rules for widgets: one instance stays within five nodes; `Theme` keeps 
 | Location | Content |
 | --- | --- |
 | `core::ui::widget` | The `Widget` trait and `Ui::add`; general vocabulary, knows no page |
-| `app::shared::kit::state` | The `State` bitset |
-| `app::shared::kit::theme` | `Theme::PANEL` and button/field style resolution |
-| `app::shared::kit::slot` | The `Slot` enum, replacing `Widget?` |
-| `app::shared::kit::widgets` | Concrete widgets, one file each |
+| `app::shared::i18n` | `Lang`, `Msg` and the fixed words; words only, no pixels |
+| `app::shared::ui::state` | The `State` bitset |
+| `app::shared::ui::theme` | `Theme::PANEL` and button/field style resolution |
+| `app::shared::ui::slot` | The `Slot` enum, replacing `Widget?` |
+| `app::shared::ui::widgets` | Concrete widgets, one file each |
+| `app::shared::page` | Page furniture: margins, line rhythm, title, scrolling body, reading row |
+| `app::shared::surface` | `Panel`: lays a declaration out into boxes and inks them |
 | `services/<page>` | Composes widgets and binds intents |
 
 A widget takes props only: it does not read `DeviceState`, take callbacks, or embed user-visible text. The page translates snapshot state into `State` and `&[u8]` before calling.
@@ -70,7 +73,7 @@ This mirrors Flutter's `WidgetState` without `hovered` (there is no mouse). Widg
 
 The state layer is a translucent overlay: `Color::rgba(..., 0x40)` goes through `Canvas` as source-over, with no theme engine.
 
-There is no two-way binding (Slint/QML's `<=>`). Flutter's `TextEditingController` is also a controller plus a rebuild, not a binding; here the snapshot is `Copy` and `view` is pure, so listeners would turn "repaint follows the snapshot diff" into "whoever notifies repaints". Editing state uses controllers instead: `kit::scroll::ScrollState` and `kit::keyboard::Text`.
+There is no two-way binding (Slint/QML's `<=>`). Flutter's `TextEditingController` is also a controller plus a rebuild, not a binding; here the snapshot is `Copy` and `view` is pure, so listeners would turn "repaint follows the snapshot diff" into "whoever notifies repaints". Editing state uses controllers instead: `ui::scroll::ScrollState` and `ui::keyboard::Text`.
 
 ## Theme and palette
 
@@ -149,7 +152,7 @@ Flutter to here:
 
 ## Basic widgets
 
-Built and living in `shared/kit/widgets`:
+Built and living in `shared/ui/widgets`:
 
 | Widget | Shape | Nodes | Notes |
 | --- | --- | --- | --- |
@@ -165,17 +168,17 @@ Built and living in `shared/kit/widgets`:
 | `Checkbox` | W | 2–3 | Box + tick |
 | `Radio` | W | 2–3 | Circle + dot |
 | `Slider` | W | 3 | Track + knob; the page supplies the value |
-| `TextField` | W | 2 | Value + caret; once focused the page hands over to `kit::keyboard` |
+| `TextField` | W | 2 | Value + caret; once focused the page hands over to `ui::keyboard` |
 | `Select` | W | 2 | Value + arrow |
 | `Tooltip` | W | 2 | Anchor + floating line |
 | `Avatar` | W | 1 | Initial or short mark on a round fill |
 | `ListTile` | C | 0 | List row: four text runs + selected fill |
-| `Scrollbar` | C | 0 | Existing `kit::scroll` |
+| `Scrollbar` | C | 0 | Existing `ui::scroll` |
 | `Image` | C | 0 | Camera frames and RGB565 assets through a custom slot |
 
 `Text` / `RichText` need no wrapper: `ui.text` and `ui.span` are the vocabulary.
 
-Type comes in three steps: page titles at 20 px vector (`chrome::title`), button and chip labels at 14 px vector, body copy and readings on the 12 px bitmap. The bitmap face has one size: `Metrics::at(13..=24)` jumps to 24 px, where an eight-letter label like `ATTITUDE` no longer fits a 98 px button, so larger type has to be vector. Painting falls back per run: one missing glyph drops the whole run to the bitmap face. `every_word_the_panel_prints_has_a_vector_glyph` pins every `Msg::ALL` word at 14 and 20 px; rerun `iot-tool outline` before adding copy.
+Type comes in three steps: page titles at 20 px vector (`page::title`), button and chip labels at 14 px vector, body copy and readings on the 12 px bitmap. The bitmap face has one size: `Metrics::at(13..=24)` jumps to 24 px, where an eight-letter label like `ATTITUDE` no longer fits a 98 px button, so larger type has to be vector. Painting falls back per run: one missing glyph drops the whole run to the bitmap face. `every_word_the_panel_prints_has_a_vector_glyph` pins every `Msg::ALL` word at 14 and 20 px; rerun `iot-tool outline` before adding copy.
 
 Text grows a layout, but only the nodes that did not fix their size: with no `width`, a text node takes the run's advance width and `line_height` (ink plus leading), so a column gets taller and a row gets wider. A `width` on a `nowrap` run clips it instead, and a `Button` stays 98×44 however large its label is; changing the type size means changing the layout constants with it. The panel is a fixed 320×240: growth comes out of the `grow` nodes and then runs off the panel, it never scales the layout down.
 
@@ -198,11 +201,11 @@ pub enum Slot<'a> {
 | `Menu` | A three-column button grid of every page; pages the board cannot back are greyed and do not navigate. The boot page whenever a screen is present. |
 | `Widgets` | The basic-widget gallery: five sections (actions / selection / input / display / rows), each under a heading, the whole page in one scroll box; controls that can hold a value are tappable. |
 
-`Menu` puts its buttons in `chrome::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower and still needs no scrolling.
+`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower and still needs no scrolling.
 
 The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
 
-A focused `TextField` replaces the page with a 4×4 keyboard (`kit::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table.
+A focused `TextField` replaces the page with a 4×4 keyboard (`ui::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table.
 
 ## Advanced widgets
 
@@ -253,7 +256,7 @@ Explicitly out: `Map`, `Video`, `Lottie`/`Rive`, `Hover`, `Mouse`, `Semantics`, 
 
 ## Internationalisation
 
-Two layers: this documentation is bilingual; panel strings come from `shared::kit::i18n`.
+Two layers: this documentation is bilingual; panel strings come from `shared::i18n`.
 
 The vocabulary is an enum with an exhaustive match, so a missing translation fails to compile:
 
@@ -280,8 +283,8 @@ The default is `en`, matching the panel's current wording; `IOT_LANG=zh` builds 
 
 Layout constraints:
 
-- The reading label slot is `chrome::LABEL = 24 px`: four ASCII cells or two hanzi. Longer labels are cut, so labels stay short.
-- Long strings go through `chrome::title` (full row) or two lines in `EmptyState`.
+- The reading label slot is `page::LABEL = 24 px`: four ASCII cells or two hanzi. Longer labels are cut, so labels stay short.
+- Long strings go through `page::title` (full row) or two lines in `EmptyState`.
 - The `~` from `text::fit` is a fallback, not a design; every reading label needs a width test.
 - The bitmap `ui12.bin` covers GB2312 + Big5; the vector table covers only `vector-sample.txt`, and a missing glyph drops the whole line to the bitmap face. New strings require rerunning `iot-tool outline`.
 - SSIDs, MACs, IPs and logs are data, not copy.
@@ -311,7 +314,7 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 
 ## Hit testing and events
 
-- Widgets: `Ui::headless` runs the same declaration and `Ui::tags()` measures every tag once into `kit::tag::TagTable`. Tappable widgets carry `Style::tag`, and `TagTable::at(x, y, offset)` yields the intent id.
+- Widgets: `Ui::headless` runs the same declaration and `Ui::tags()` measures every tag once into `ui::tag::TagTable`. Tappable widgets carry `Style::tag`, and `TagTable::at(x, y, offset)` yields the intent id.
 - Cells: the page's `shape` constants compute rectangles shared with drawing.
 - A `NodeId` is valid only within one declaration and never crosses frames; use `tag` for a stable id.
 - Dialogs and toasts are declared in a `stack` overlay; the page decides visibility.

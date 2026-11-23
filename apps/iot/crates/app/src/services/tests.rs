@@ -8,14 +8,14 @@ use alloc::vec;
 use alloc::vec::Vec;
 
 use crate::services::{Services, descriptor, paint};
+use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{
     BusinessIntent, MenuIntent, SettingsIntent, TextIntent, WidgetsIntent,
 };
-use crate::shared::kit::i18n::{Lang, Msg};
-use crate::shared::kit::panel::Panel;
 use crate::shared::model::DeviceState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
+use crate::shared::surface::Panel;
 use iot_core::drivers::board::Backed;
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::Rgb;

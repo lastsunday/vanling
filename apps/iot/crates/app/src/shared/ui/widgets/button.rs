@@ -2,8 +2,8 @@
 
 use iot_core::ui::{FontFamily, Length, NodeId, Style, TextAlign, Ui, Widget};
 
-use crate::shared::kit::state::State;
-use crate::shared::kit::theme::{ButtonKind, Theme};
+use crate::shared::ui::state::State;
+use crate::shared::ui::theme::{ButtonKind, Theme};
 
 #[derive(Clone, Copy, Debug)]
 pub struct Button<'a> {

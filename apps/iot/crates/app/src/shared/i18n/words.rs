@@ -1,7 +1,4 @@
-//! The glyph vocabulary the product's pages share: generic formatters, the sound labels,
-//! and the light modes' words.
-
-pub use iot_core::ui::text::*;
+//! The fixed words a page prints that no language translates.
 
 /// What a page prints for a reading the hardware does not provide.
 pub const NOT_AVAILABLE: &[u8] = b"N/A";
