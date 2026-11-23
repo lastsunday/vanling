@@ -9,6 +9,6 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "recharts": "3.10.1"
+    "recharts": "3.11.0"
   }
 }
