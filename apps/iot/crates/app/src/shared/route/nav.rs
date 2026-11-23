@@ -1,9 +1,7 @@
-//! Where the device is: the declared route table plus a fixed-depth stack of destinations. A
-//! page is a destination, not a picture — a board with no panel still lands on one.
-//!
-//! A destination is shown, a transient is pushed over it, and back drops the top while the root
-//! stays. The button replaces the top (a tab, not a growing history), and the boot transient is
-//! pushed over the landing page and popped when its lifetime ends.
+//! Where the device is: the route table plus a fixed-depth stack. A page is a destination, not a
+//! picture — a board with no panel still lands on one.
+//! A transient is pushed over the shown page and popped at the end of its lifetime; the button
+//! replaces the top (a tab, not a growing history).
 
 use super::PageId;
 use iot_core::drivers::board::Backed;

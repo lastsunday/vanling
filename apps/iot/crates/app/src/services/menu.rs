@@ -1,13 +1,16 @@
 //! The Menu page: every page the board can back, one button away, three to a row.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, TOUCH_MIN};
-use iot_core::ui::{BoxConstraints, PX, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::panel::TOUCH_MIN;
+use iot_core::ui::{Rect, ScrollId, Style, Ui};
 
 use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsIntent};
 use crate::shared::kit::chrome;
 use crate::shared::kit::i18n::{Lang, Msg};
-use crate::shared::kit::scroll::{BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed};
+use crate::shared::kit::panel::{finish, headless};
+use crate::shared::kit::scroll::{
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
+};
 use crate::shared::kit::state::State;
 use crate::shared::kit::tag::TagTable;
 use crate::shared::kit::widgets::{Button, Chip};
@@ -153,10 +156,8 @@ impl super::Service for MenuPage {
                 speed,
                 at_ms,
             } => {
-                if self.drag.as_ref().is_some_and(|drag| drag.id == id) {
-                    let drag = self.drag.take().expect("the slot was found");
-                    let speed = drag.release(at_ms);
-                    self.scroll.fling(drag.area, speed);
+                if let Some((area, speed)) = lift(&mut self.drag, id, at_ms) {
+                    self.scroll.fling(area, speed);
                 }
                 self.scroll
                     .scroll(area, lines, if lines == 0 { 0 } else { speed });
@@ -268,17 +269,6 @@ impl super::LocalPage for MenuPage {
         self.scroll.reset();
         self.drag = None;
     }
-}
-
-fn headless() -> Ui<'static, 'static> {
-    Ui::headless(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default())
-}
-
-fn finish(ui: &mut Ui<'_, '_>) {
-    ui.layout(BoxConstraints::tight(
-        PANEL_COLUMNS as i32 * PX,
-        CONTENT_BOTTOM as i32 * PX,
-    ));
 }
 
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
@@ -399,7 +389,8 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use iot_core::drivers::board::Backed;
     use iot_core::drivers::motion::MotionCapabilities;
-    use iot_core::ui::panel::TOUCH_MIN;
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
+    use iot_core::ui::{BoxConstraints, PX, Screen};
 
     const ALL: Backed = Backed {
         motion: Some(MotionCapabilities::EMPTY),

@@ -1,8 +1,6 @@
-//! The portable page surface: a [`Canvas`], the screen it belongs to, and the dispatch that
+//! The portable page surface: a `Canvas`, the screen it belongs to, and the dispatch that
 //! turns a page's declaration into ink.
-//!
-//! The panel owns the marks, not the frame data: [`paint`](crate::services::paint) hands it the
-//! snapshot and decides which page declares what.
+//! The panel owns the marks, not the frame data: `services::paint` hands it the snapshot.
 
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, RIGHT};
@@ -17,6 +15,19 @@ pub type Custom = fn(&FrameSnapshot, Screen, u8, &mut Canvas<'_>, Rect);
 
 /// A page with nothing to paint itself.
 pub const fn no_custom(_: &FrameSnapshot, _: Screen, _: u8, _: &mut Canvas<'_>, _: Rect) {}
+
+/// A page's declaration with no canvas, for the one measurement a page does at construction.
+pub fn headless() -> Ui<'static, 'static> {
+    Ui::headless(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default())
+}
+
+/// Lays a declaration out at the content size [`Panel::declare`] paints with.
+pub fn finish(ui: &mut Ui<'_, '_>) {
+    ui.layout(BoxConstraints::tight(
+        PANEL_COLUMNS as i32 * PX,
+        CONTENT_BOTTOM as i32 * PX,
+    ));
+}
 
 /// One surface's draw target: the frame buffer and the settings this panel draws with.
 pub struct Panel<'a> {

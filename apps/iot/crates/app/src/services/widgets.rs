@@ -2,13 +2,16 @@
 //! scroll box. Controls that can hold a value keep it in this page, not in the device state.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-use iot_core::ui::{BoxConstraints, Canvas, NodeId, PX, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::panel::PANEL_COLUMNS;
+use iot_core::ui::{Canvas, NodeId, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::intent::{BusinessIntent, InputIntent, Key, WidgetsAction, WidgetsIntent};
 use crate::shared::kit::i18n::{Lang, Msg};
 use crate::shared::kit::keyboard::FIELD_BYTES;
-use crate::shared::kit::scroll::{BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed};
+use crate::shared::kit::panel::{finish, headless};
+use crate::shared::kit::scroll::{
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
+};
 use crate::shared::kit::slot::Slot;
 use crate::shared::kit::state::State;
 use crate::shared::kit::tag::TagTable;
@@ -217,10 +220,8 @@ impl super::Service for WidgetsPage {
                 // The finger is off the glass: whatever it last pressed is no longer held,
                 // and a slider left latched would turn the next drag anywhere into a slide.
                 self.values.pressed = 0;
-                if self.drag.as_ref().is_some_and(|drag| drag.id == id) {
-                    let drag = self.drag.take().expect("the slot was found");
-                    let speed = drag.release(at_ms);
-                    self.scroll.fling(drag.area, speed);
+                if let Some((area, speed)) = lift(&mut self.drag, id, at_ms) {
+                    self.scroll.fling(area, speed);
                 }
                 self.scroll
                     .scroll(area, lines, if lines == 0 { 0 } else { speed });
@@ -375,17 +376,6 @@ impl super::LocalPage for WidgetsPage {
         self.values.pressed = 0;
         self.values.focus = false;
     }
-}
-
-fn headless() -> Ui<'static, 'static> {
-    Ui::headless(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default())
-}
-
-fn finish(ui: &mut Ui<'_, '_>) {
-    ui.layout(BoxConstraints::tight(
-        PANEL_COLUMNS as i32 * PX,
-        CONTENT_BOTTOM as i32 * PX,
-    ));
 }
 
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
@@ -608,6 +598,8 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use alloc::vec::Vec;
     use iot_core::drivers::input::{RawPoint, TouchContinuity, TouchGestures};
+    use iot_core::ui::PX;
+    use iot_core::ui::panel::CONTENT_BOTTOM;
 
     fn op(event: GestureEvent) -> InputIntent {
         InputIntent {

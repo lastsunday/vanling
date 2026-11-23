@@ -1,7 +1,5 @@
 //! The product's services, one vertical slice each: a page or device service and what it owns.
-//!
-//! [`Service`] is what every platform shares — a business intent comes in, its one owner
-//! answers. [`LocalPage`] is what the panel and buttons see.
+//! `Service` is what every platform shares; `LocalPage` is what the panel and buttons see.
 
 pub mod attitude;
 pub mod audio;

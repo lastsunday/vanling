@@ -1,5 +1,4 @@
 //! Subpixel lengths and the box constraints that bound them.
-//!
 //! Fractions exist only between a container's edges and its children's; the rectangles a page
 //! finally draws at are whole pixels.
 

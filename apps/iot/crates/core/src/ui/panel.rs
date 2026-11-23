@@ -1,8 +1,6 @@
-//! The panel's own measurements: how big the glass is, and the lines and margins a page is
-//! laid out in.
-//!
-//! Everything here is derived from the face the panel draws with, so a page written against
-//! these numbers moves with the font rather than with a copy of its metrics.
+//! The panel's own measurements: the glass, and the lines and margins a page is laid out in.
+//! Every number derives from the face the panel draws with, so a page moves with the font
+//! rather than with a copy of its metrics.
 
 use super::font::Face;
 

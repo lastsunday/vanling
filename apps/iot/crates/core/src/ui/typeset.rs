@@ -1,9 +1,6 @@
 //! Setting a run of text into lines the panel can draw.
-//!
-//! Break opportunities follow UAX #14's shape for the classes a 320 px panel meets, with
-//! CLReq's line-start and line-end prohibitions on top: no line starts on `。` or ends on
-//! `「`. Measurement and drawing call the same breaker, so a line that fits when measured is
-//! the line that is drawn.
+//! Breaks follow UAX #14's shape for a 320 px panel plus CLReq's line-start/line-end bans;
+//! measurement and drawing call the same breaker, so a measured line is the drawn line.
 
 use super::font::{MISSING, Metrics};
 

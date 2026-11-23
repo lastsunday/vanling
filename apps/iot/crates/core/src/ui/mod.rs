@@ -1,8 +1,6 @@
 //! Pixels, text, and the boxes a page declares: the panel's whole drawing surface.
-//!
-//! A page states what it wants while its `view` runs; [`Ui`] builds the tree, lays it out once,
-//! then draws its text and custom marks into the canvas it was handed. The same declaration can
-//! run without a canvas, which is how a hit test uses the picture's own rectangles.
+//! A `view` builds the tree, lays it out once, then draws; the same declaration runs without a
+//! canvas, which is how a hit test reuses the picture's rectangles.
 
 pub mod canvas;
 pub mod color;

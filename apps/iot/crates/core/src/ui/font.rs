@@ -1,9 +1,6 @@
-//! The panel's faces: 12 px glyphs, and the wrap region's outlines.
-//!
-//! The bitmap table comes from the subset BDF (`cargo run -p iot-tool -- font`): GB2312 plus
-//! Big5, 15,466 code points, of which 866 Big5 points have no upstream glyph and draw as
-//! [`MISSING`]. The vector table is cut by `iot-tool outline` from the release Noto Sans Mono
-//! CJK SC for exactly `vector-sample.txt`; coordinates are 1/64 em, y up from the baseline.
+//! The panel's faces: 12 px bitmaps, and the wrap region's outlines.
+//! The bitmap table (`iot-tool font`) covers GB2312 plus Big5; the vector table (`iot-tool
+//! outline`) is cut from Noto Sans Mono CJK SC for `vector-sample.txt`, 1/64 em, y up.
 
 /// Where the tables and their sources live.
 mod table {

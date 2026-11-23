@@ -313,6 +313,14 @@ impl Drag {
     }
 }
 
+/// Lifts the drag `id` owns, answering the area it claimed and the speed it lends.
+///
+/// A lift from another finger must not stop the glide, so a mismatched id leaves the slot alone.
+pub fn lift(slot: &mut Option<Drag>, id: u8, at_ms: Option<u32>) -> Option<(u8, i16)> {
+    let drag = slot.take_if(|drag| drag.id == id)?;
+    Some((drag.area, drag.release(at_ms)))
+}
+
 /// The thumb's top and height inside a viewport, or `None` when the content fits.
 pub fn thumb(viewport: i32, offset: i16, max: i16, min: i32) -> Option<(i16, i16)> {
     let max = i32::from(max);

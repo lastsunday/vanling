@@ -3,8 +3,9 @@
 //! frame never walks the face again. A finger drags a region live; the lift flings it.
 
 use crate::shared::intent::{BusinessIntent, InputIntent, TextIntent};
+use crate::shared::kit::panel::{finish, headless};
 use crate::shared::kit::scroll::{
-    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, thumb as scroll_thumb,
+    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift, thumb as scroll_thumb,
 };
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
@@ -14,11 +15,8 @@ use crate::shared::snapshot::{
 };
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::font::{Face, FontFamily, Metrics as FontMetrics};
-use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{
-    BoxConstraints, Color, FontWeight, Length, PX, Rect, RunStyle, Screen, ScrollId, Style, Ui,
-};
+use iot_core::ui::{Color, FontWeight, Length, Rect, RunStyle, ScrollId, Style, Ui};
 
 use super::{Descriptor, Repaint};
 
@@ -128,15 +126,11 @@ impl super::Service for TextPage {
                 speed,
                 at_ms,
             } => {
-                let slot = self
-                    .drag
-                    .iter()
-                    .position(|drag| drag.as_ref().is_some_and(|drag| drag.id == id));
-                if let Some(slot) = slot {
-                    let drag = self.drag[slot].take().expect("the slot was found");
-                    let speed = drag.release(at_ms);
-                    self.scroll.fling(drag.area, speed);
-                    return (None, Effects::default());
+                for slot in &mut self.drag {
+                    if let Some((area, speed)) = lift(slot, id, at_ms) {
+                        self.scroll.fling(area, speed);
+                        return (None, Effects::default());
+                    }
                 }
                 self.scroll
                     .scroll(area, lines, if lines == 0 { 0 } else { speed });
@@ -273,22 +267,9 @@ impl super::LocalPage for TextPage {
     }
 }
 
-fn headless() -> Ui<'static, 'static> {
-    Ui::headless(PANEL_COLUMNS, CONTENT_BOTTOM, Screen::default())
-}
-
-/// Rows one wrapped line takes: the face's ink box plus its leading, the same rhythm layout
-/// and paint use.
 fn wrap_line_px() -> i16 {
     let height = iot_core::ui::typeset::line_height(FontMetrics::vector(u16::from(WRAP_PX)));
     i16::try_from(height).unwrap_or(i16::MAX)
-}
-
-fn finish(ui: &mut Ui<'_, '_>) {
-    ui.layout(BoxConstraints::tight(
-        PANEL_COLUMNS as i32 * PX,
-        CONTENT_BOTTOM as i32 * PX,
-    ));
 }
 
 fn text_layout(width: i32) -> TextSnapshot {

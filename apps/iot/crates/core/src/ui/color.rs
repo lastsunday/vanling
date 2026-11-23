@@ -1,8 +1,6 @@
 //! ARGB colours as a page states them, and the palette one declaration interns them in.
-//!
-//! The panel writes RGB565; a colour keeps its alpha so a translucent mark blends with what is
-//! already in the frame. A declaration holds at most [`MAX_COLORS`] distinct colours, and a
-//! node names one by index, which is what keeps a colour one byte in a node's style.
+//! The panel writes RGB565; alpha is kept so a translucent mark blends with the frame, and a
+//! declaration holds at most `MAX_COLORS` colours named by index.
 
 use crate::light::{Rgb, rgb565};
 

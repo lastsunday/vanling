@@ -1,7 +1,5 @@
 //! The panel's words: one enum, one exhaustive match per language.
-//!
-//! Readout keys (`PK`, `RMS`, `GST`), protocol words (`SCAN`, `UP`) and data (SSIDs, MACs,
-//! addresses, logs) stay as they are; only product copy moves through here.
+//! Readout keys, protocol words and data stay as they are; only product copy moves through here.
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Lang {
