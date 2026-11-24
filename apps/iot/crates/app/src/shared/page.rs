@@ -5,11 +5,18 @@ use iot_core::ui::{FontFamily, Length, ScrollId, Style, Ui};
 
 use crate::shared::snapshot::ScrollAreaView;
 use crate::shared::ui::scroll::{BAR, MIN_THUMB, thumb};
+use crate::shared::ui::theme::Theme;
+use crate::shared::ui::widgets::Divider;
 
 pub const MARGIN: i16 = panel::MARGIN as i16;
 pub const LINE: i16 = panel::LINE as i16;
 pub const PITCH: i16 = panel::ROW_PITCH as i16;
 pub const TOUCH: i16 = panel::TOUCH_MIN as i16;
+
+/// The width a gallery sample gets: the panel less the left margin and the thumb gutter.
+pub const CONTENT_W: i16 = panel::PANEL_COLUMNS as i16 - MARGIN - 2 * BAR;
+
+const _: () = assert!(CONTENT_W + 2 * BAR + MARGIN == panel::PANEL_COLUMNS as i16);
 
 /// The label slot of a reading line, in pixels and in ASCII cells.
 pub const LABEL: i16 = 24;
@@ -63,6 +70,7 @@ pub fn scroller(
                 .grow(1)
                 .basis(0)
                 .gap(2)
+                .stretch()
                 .scroll_area(id)
                 .scroll_offset(view.offset),
             body,
@@ -82,6 +90,18 @@ pub fn scroller(
             }
         });
     });
+}
+
+/// One gallery sample's name and, when it has one, its gesture: a muted line above the sample.
+pub fn caption(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
+    let ink = ui.color(theme.muted);
+    ui.text(run, Style::new().nowrap().color(ink));
+}
+
+/// A named band of samples: a rule, then the name.
+pub fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
+    ui.add(Divider::new().width(CONTENT_W));
+    caption(ui, run, theme);
 }
 
 pub fn reading(ui: &mut Ui<'_, '_>, label: &[u8], value: &[u8]) {

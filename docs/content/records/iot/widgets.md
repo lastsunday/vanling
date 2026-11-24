@@ -1,6 +1,6 @@
 +++
 title = "高级组件与 Feed"
-description = "25 个高级组件、一条 Feed 与四个画廊已落地：host 552 条测试、32 行黄金图，S3 主栈 82,264 B，镜像 2,037,312 / 1,833,280 B 并已烧进两块板。"
+description = "25 个高级组件、一条 Feed 与四个画廊已落地：host 557 条测试、32 行黄金图，S3 主栈 82,264 B，镜像 2,064,128 / 1,861,584 B 并已烧进两块板。"
 weight = 70
 sort_by = "weight"
 +++
@@ -114,3 +114,61 @@ custom 槽用量：`Extended` 6 个（键盘/键格、表格、图表、仪表�
 ## 手感：只能用手确认的那几项
 
 仲裁阈值是 `DRAG_SLOP = GLYPH − 1 = 5 px`（`shared/ui/scroll.rs`），翻卡阈值是卡宽的四分之一（`pager.rs::turn`），圆点命中区是中心两侧各 `TOUCH_MIN / 2`。测试钉住的是「按哪条规则走」，起手 5 px 内算点、翻卡是否太灵敏只有手指能判；调这两处不动页面代码。
+
+## 可读性一轮：说明行、遮罩与手势收尾
+
+四个画廊原先只有分区词，底部样例看不出叫什么、能不能点。这一轮给每个样例加一行说明（`page::caption`）：名字加手势，例如 `TABLE / TAP A ROW`，中英各一条 `Msg`（新增 24 条 `Cap*`）。`Advanced` / `Extended` 的分区词因此删掉，`Data` 的浮层一带保留 `page::section`（一条线加名字）。说明行是 muted 的 `nowrap`，不带 tag。
+
+顺带修掉的三处：
+
+- **说明行与页签文字宽度为 0**。`page::scroller` 的滚动体没有拉伸，`grow(1) + basis(0)` 的行量出自然宽度 0，标签被裁成空。滚动体改为 `stretch`（Flutter `ListView` 给子节点整条交叉轴的语义），`Tabs` / `Segmented` / `Stepper` / `NavigationBar` / `FilterChips` 的行也各自 `stretch`，分格才真分到宽度。
+- **根节点上的 `absolute` 子节点量不到尺寸**。flex / wrap / scroll 只排 in-flow 子节点，出流子节点从来没被 `layout_node` 量过，`paint_rect` 得到 `0×0`；`stack` 是唯一会摆它们的地方。抽出 `place_absolute` 让四种流都摆出流子节点，scroll 额外带上内容位移；回归测试 `an_absolute_child_of_a_row_or_a_scroll_is_placed_too`。
+- **拖动后的抬手被当成点击**。线上抬手仍是一枚 `Tap`，`Data` 的表格行、`Extended` 的键格、`Advanced` 的卡片会在拖动结束时各选一个。`Scroller::dragging()` 暴露仲裁状态，三页的 Tap 分支先问它；测试从按下、拖动到抬手，断言什么都没选、下一次拖动照常滚。
+
+界面调整：`Dialog` 的遮罩改成不透明的 `theme.ground`，卡片用新的 `theme.surface`（`rgb(0x22,0x22,0x22)`）加 muted 描边，槽从滚动区挪到根节点 `320×228`，卡片在内容区正中；`NavigationBar` 换成 `surface` 条上内嵌选中胶囊，与 `Tabs` 的整格 accent 区分；`Accordion` 的展开体挪进标题那张纸；`Pager` 每张卡各自裁切；`Table` 行高从 `TOUCH_MIN = 44` 降到 `LINE × 2 + 4 = 28`，`TABLE_H = 128`。
+
+`Style::overflow` 补上 Flutter `TextOverflow` 里 `nowrap` 段能用的那一档：`Clip`（默认）/ `Ellipsis`，`.ellipsis()` 是简写，落在 `Banner` / `Button` / `EmptyState` / `FilterChips` / `Segmented` / `Stepper` 上。矢量表本就有 `…`（`iot-tool outline` 固定补 `…` 与 `□`），不必改 `vector-sample.txt`。
+
+中文说明行需要 44 个新汉字与 `-`，`vector-sample.txt` 随之扩行，`vector.bin` 重切为 351 字形 / **182,810 B**（上一版 306 字形 / 157,460 B）。
+
+### 实测
+
+| 项 | 结果 |
+| --- | --- |
+| host 测试 | `cargo test -p iot-app --lib --no-default-features --features host`：**557 passed** |
+| 工具测试 | `moon run iot:test-tool`：**31 + 4 passed** |
+| 格式 / lint | `cargo fmt --all -- --check` 无输出；riscv `cargo clippy --workspace --exclude iot-tool --target riscv32imac-unknown-none-elf -- -D warnings`、S3 `iot-xtensa.sh clippy …`、`cargo clippy -p iot-core --all-targets -- -D warnings` 均通过 |
+| 目标检查 | `moon run iot:check-host` / `check-c6` / `check-s3` 全部通过 |
+| 黄金图 | 仍 32 行；`advanced` / `feedback` / `extended` / `data` 因拉伸、说明行、遮罩与行高重录，`menu` / `widgets` 未变 |
+| custom 槽 | `Advanced` 2、`Feedback` 0、`Extended` 1（键盘与键格共用一个槽）、`Data` 5 |
+| 镜像 | S3 **2,064,128 / 6,291,456 B**（32.81%）；C6 **1,861,584 / 6,291,456 B**（29.59%） |
+| S3 主栈 | 串口 `[DISPLAY] … main stack 82264 B`，峰值 20,696 B；`[STACK] core 1 peak 2000~2176 B of 24576 B`（两次启动） |
+| 烧录 | S3 `/dev/cu.usbmodem1442301`、C6 `/dev/cu.usbmodem14201` 各烧一次，两边都印 `this boot is healthy` |
+
+`moon run iot:flash` 在无 tty 的 shell 里刷完最后一步会失败：espflash 烧录后要开交互式 monitor，`Failed to initialize input reader` 退出码 1。镜像已经写完（日志里的 `Flashing has completed!` 在前），抓启动日志用 `espflash monitor --non-interactive --after hard-reset`，不必重烧。
+
+## 四个手感缺陷：未带 tag 的 canvas 槽与浮层补全
+
+用户报的四处（`Extended` 键格无反应、键盘标点不全、`Data` 菜单/抽屉太单薄、图表/表盘点击无响应）里，三处是同一个根因。
+
+线上一次点击是 `Press` 后跟 `Tap`。`page::scroller` 里的 canvas 槽（`TABLE_SLOT` / `CHART_SLOT` / `GAUGE_SLOT` / `KEY_SLOT`）原先**没有 tag**：按下点 `tag_at` 得 0，`Scroller::apply(Press)` 于是把这次手势认领成拖动（`tag == 0 → claim`），抬手时 `dragging()` 为真；两页的 Tap 分支都以 `!self.scroll.dragging()` 为前置，整段跳过，`Tap` 被 `scroll.bind` 当 `Release` 吃掉。带 tag 的按钮 / chip 正常，所以只有这些槽里的行、柱、盘、格全点不动——用户没报表格，其实表格也一起坏了。旧测试只发 `Tap`、不发 `Press`，测不出这条路径。
+
+修法：给四个槽各带 tag（`TAG_TABLE` / `TAG_CHART` / `TAG_GAUGE` / `TAG_KEYPAD`），`TagTable` 容量各加 3 / 1；按下只记住，超过 `DRAG_SLOP` 才认领滚动。回归测试走 `bind` 的 `Press → Tap` 整链，断言行 / 柱 / 盘 / 格真的落到意图，并另钉一条“每个 canvas 热区中心 `tag_at` 非 0”。
+
+键盘补全：新增 `Layer::More`，放 `SYMBOLS` 没覆盖的 22 个标点（`" ' ( ) [ ] { } < > / \ & % + = * $ ~ ^ | ` `` ` ``），四层（字母 / 数字 / 符号 / 更多）合起来正好打出 `0x20..=0x7E` 全部可打印 ASCII。纯 ASCII，`ui12.bin` 已含全部字符，不必重切 `vector.bin`。
+
+菜单 / 抽屉：从常驻内联 `Widget` 改成和 `Dialog` 同构的 canvas 浮层（`card` + `item_at` / `row_at` + `draw`，不透明遮罩）。`Data` 在根节点新增两个常驻 `absolute` 槽 `MENU_SLOT` / `SHEET_SLOT`，按开合绘制；触发按钮带 tag，菜单锚在触发按钮下边缘（快照发布 `menu_anchor`，绘制时夹在内容区内），抽屉从内容区底边升起；浮层打开时 `bind` 在滚动区之前先收 Tap，点项选中并关闭、点遮罩或外部关闭，其余手势一律吞掉。选中结果用 `page::reading` 印在触发按钮下。
+
+### 实测
+
+| 项 | 结果 |
+| --- | --- |
+| host 测试 | `cargo test -p iot-app --lib --no-default-features --features host`：**568 passed** |
+| 工具测试 | `moon run iot:test-tool`：**4 passed** |
+| 格式 / lint | `cargo fmt --all -- --check` 无输出；`cargo clippy -p iot-app --lib --no-default-features --features host -- -D warnings` 通过（`--tests` 下 4 条既有告警在未改动的 `i18n/lang.rs`、`render/engine/test_support.rs`、`render/screen/painter.rs`） |
+| 目标检查 | `moon run iot:check-host` / `check-c6` / `check-s3` 全部通过 |
+| 黄金图 | 仍 32 行，`data` 默认态未变（触发按钮在首屏之下、浮层默认关闭），未重录 |
+| custom 槽 | `Data` 7（`TABLE` / `CHART` / `GAUGE` / `SWIPE` / `DIALOG` / `MENU` / `SHEET`） |
+| 镜像 | S3 **2,065,824 / 6,291,456 B**（32.84%）；C6 **1,866,448 / 6,291,456 B**（29.67%） |
+| S3 主栈 | 串口 `[DISPLAY] … main stack 82296 B`；`[STACK] core 1 peak 2000 B of 24576 B` |
+| 烧录 | S3、C6 各烧一次，两边都印 `this boot is healthy` |

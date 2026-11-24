@@ -144,6 +144,17 @@ pub enum TextAlign {
     Justify,
 }
 
+/// What a one-line run does when it is wider than its box: Flutter's `TextOverflow`, the half a
+/// `nowrap` run can use.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
+pub enum Overflow {
+    /// Cut the ink at the box edge; the box itself never grows past what it was given.
+    #[default]
+    Clip,
+    /// Cut at the box edge and end the visible run with an ellipsis.
+    Ellipsis,
+}
+
 /// How a box arranges its children.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Flow {
@@ -210,6 +221,13 @@ pub enum DecorationStyle {
     Dotted,
     Dashed,
     Wavy,
+}
+
+/// Bits of [`Style::flags`], the box's three on/off answers.
+mod bits {
+    pub const ABSOLUTE: u8 = 1;
+    pub const FILL: u8 = 1 << 1;
+    pub const BORDER: u8 = 1 << 2;
 }
 
 /// Bits of [`Style::text_flags`]. Four bits of weight, two of family, three of decoration,
@@ -301,15 +319,14 @@ pub struct Style {
     pub grow: u16,
     pub shrink: u16,
     pub basis: Length,
-    pub absolute: bool,
+    flags: u8,
     pub text_align: TextAlign,
     pub nowrap: bool,
+    pub overflow: Overflow,
     pub max_lines: u16,
     pub scroll_offset: i16,
     pub scroll_area: ScrollId,
     pub tag: u16,
-    pub fill: bool,
-    pub border: bool,
     /// The corner radius in px, clamped to half the box; 0 is a square corner.
     pub radius: u8,
     /// The text size in px; 0 is the root size.
@@ -345,15 +362,14 @@ impl Style {
             grow: 0,
             shrink: 0,
             basis: Length::Auto,
-            absolute: false,
+            flags: 0,
             text_align: TextAlign::Start,
             nowrap: false,
+            overflow: Overflow::Clip,
             max_lines: typeset::MAX_LINES as u16,
             scroll_offset: 0,
             scroll_area: ScrollId::NONE,
             tag: 0,
-            fill: false,
-            border: false,
             radius: 0,
             font_size: 0,
             text_flags: 0,
@@ -481,8 +497,12 @@ impl Style {
     }
 
     pub const fn absolute(mut self) -> Self {
-        self.absolute = true;
+        self.flags |= bits::ABSOLUTE;
         self
+    }
+
+    pub const fn is_absolute(self) -> bool {
+        self.flags & bits::ABSOLUTE != 0
     }
 
     pub const fn left(mut self, value: i16) -> Self {
@@ -515,6 +535,18 @@ impl Style {
         self
     }
 
+    pub const fn overflow(mut self, overflow: Overflow) -> Self {
+        self.overflow = overflow;
+        self
+    }
+
+    /// One line that says it was cut: a label in a cell it cannot grow out of.
+    pub const fn ellipsis(mut self) -> Self {
+        self.nowrap = true;
+        self.overflow = Overflow::Ellipsis;
+        self
+    }
+
     pub const fn lines(mut self, value: u16) -> Self {
         self.max_lines = value;
         self
@@ -539,14 +571,22 @@ impl Style {
 
     /// Paints the box's own paper: the ground turned over, under everything inside it.
     pub const fn filled(mut self) -> Self {
-        self.fill = true;
+        self.flags |= bits::FILL;
         self
+    }
+
+    pub const fn has_fill(self) -> bool {
+        self.flags & bits::FILL != 0
     }
 
     /// Draws a one-pixel outline around the box.
     pub const fn bordered(mut self) -> Self {
-        self.border = true;
+        self.flags |= bits::BORDER;
         self
+    }
+
+    pub const fn has_border(self) -> bool {
+        self.flags & bits::BORDER != 0
     }
 
     /// Rounds the box's painted corners, clamped to half the shorter side and to 16 px, so a

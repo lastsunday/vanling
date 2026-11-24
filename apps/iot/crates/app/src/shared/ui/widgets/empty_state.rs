@@ -79,14 +79,14 @@ impl Widget for EmptyState<'_> {
             ui.text(
                 self.title,
                 Style::new()
-                    .nowrap()
+                    .ellipsis()
                     .color(ink)
                     .text_align(TextAlign::Center),
             );
             ui.text(
                 self.hint,
                 Style::new()
-                    .nowrap()
+                    .ellipsis()
                     .color(muted)
                     .text_align(TextAlign::Center),
             );

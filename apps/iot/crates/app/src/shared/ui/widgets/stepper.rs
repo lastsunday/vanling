@@ -44,7 +44,11 @@ impl Widget for Stepper<'_> {
         let current = usize::from(self.current).min(2);
         let mut digits = [0u8; 6];
         ui.row(
-            Style::new().height(TOUCH_MIN as i16).gap(2).tag(self.tag),
+            Style::new()
+                .height(TOUCH_MIN as i16)
+                .gap(2)
+                .stretch()
+                .tag(self.tag),
             |ui| {
                 for (index, label) in self.labels.into_iter().enumerate() {
                     let on = index == current;
@@ -52,7 +56,7 @@ impl Widget for Stepper<'_> {
                         .grow(1)
                         .basis(0)
                         .center()
-                        .nowrap()
+                        .ellipsis()
                         .radius(3)
                         .text_align(TextAlign::Center)
                         .background(if on { paper } else { ui.color(theme.ground) })

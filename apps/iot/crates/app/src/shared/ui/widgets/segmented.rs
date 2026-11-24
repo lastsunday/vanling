@@ -39,6 +39,7 @@ impl Widget for Segmented<'_> {
         ui.row(
             Style::new()
                 .height(TOUCH_MIN as i16)
+                .stretch()
                 .bordered()
                 .color(edge)
                 .radius(CORNER),
@@ -49,7 +50,7 @@ impl Widget for Segmented<'_> {
                         .grow(1)
                         .basis(0)
                         .center()
-                        .nowrap()
+                        .ellipsis()
                         .tag(self.tags[index])
                         .text_align(TextAlign::Center)
                         .background(if on { paper } else { ui.color(theme.ground) })

@@ -359,7 +359,7 @@ impl<'a, 's> Ui<'a, 's> {
 mod tests {
     use super::*;
     use crate::ui::layout::PX;
-    use crate::ui::{DecorationStyle, FontFamily, FontWeight, Length, TextAlign};
+    use crate::ui::{DecorationStyle, FontFamily, FontWeight, Length, Overflow, TextAlign};
 
     /// The declaration lives on the panel core's stack (24 KiB on the S3) for the length of
     /// one page, so it is budgeted separately from that stack's other work. Every page's
@@ -395,6 +395,62 @@ mod tests {
             !(41..H).any(|y| (0..W).any(|x| ink(x, y))),
             "below the box is empty"
         );
+    }
+
+    #[test]
+    fn a_run_wider_than_its_box_is_cut_and_can_be_marked() {
+        const W: usize = 80;
+        const H: usize = 20;
+        let ink = |overflow: Overflow| -> usize {
+            let mut frame = [0u8; W * H * 2];
+            let mut canvas = Canvas::new(&mut frame, W, H, None);
+            let mut ui = Ui::new(&mut canvas, Screen::default());
+            ui.column(Style::new().width(30), |ui| {
+                ui.text(b"WWWWWWWW", Style::new().nowrap().overflow(overflow));
+            });
+            ui.paint(BoxConstraints::tight(80 * PX, 20 * PX), &mut |_, _, _| {});
+            let frame = ui.into_canvas().expect("a canvas was handed in").frame();
+            (0..W * H)
+                .filter(|at| frame[at * 2] != 0 || frame[at * 2 + 1] != 0)
+                .count()
+        };
+        let clip = ink(Overflow::Clip);
+        assert!(clip > 0, "the cut run still inks");
+        assert!(
+            ink(Overflow::Ellipsis) < clip,
+            "the mark is inked, but one glyph less of the run is"
+        );
+    }
+
+    #[test]
+    fn a_marked_run_keeps_its_alignment() {
+        const W: usize = 40;
+        const H: usize = 12;
+        let first = |align: TextAlign| -> usize {
+            let mut frame = [0u8; W * H * 2];
+            let mut canvas = Canvas::new(&mut frame, W, H, None);
+            let mut ui = Ui::new(&mut canvas, Screen::default());
+            ui.column(Style::new().width(32), |ui| {
+                ui.text(
+                    b"WWWWWWWW",
+                    Style::new().nowrap().ellipsis().text_align(align),
+                );
+            });
+            ui.paint(BoxConstraints::tight(40 * PX, 12 * PX), &mut |_, _, _| {});
+            let frame = ui.into_canvas().expect("a canvas was handed in").frame();
+            (0..W)
+                .find(|x| {
+                    (0..H).any(|y| frame[(y * W + x) * 2] != 0 || frame[(y * W + x) * 2 + 1] != 0)
+                })
+                .expect("the run inks")
+        };
+        let start = first(TextAlign::Start);
+        assert_eq!(
+            first(TextAlign::Center) - start,
+            1,
+            "two pixels of slack, one either side"
+        );
+        assert_eq!(first(TextAlign::End) - start, 2);
     }
 
     #[test]

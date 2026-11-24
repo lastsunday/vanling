@@ -1,12 +1,12 @@
 +++
 title = "Advanced widgets and Feed"
-description = "25 advanced widgets, one Feed and four galleries are in place: 552 host tests, 32 golden rows, an S3 main stack of 82,264 B, images of 2,037,312 / 1,833,280 B, both flashed and booting."
+description = "25 advanced widgets, one Feed and four galleries are in place: 568 host tests, 32 golden rows, an S3 main stack of 82,296 B, images of 2,065,824 / 1,866,448 B, both flashed and booting."
 weight = 70
 sort_by = "weight"
 
 [extra]
-source_file_hash = "3504ce5aaab2107d1ba276d047ebb97a56ae6e97"
-translated_at = "2026-11-24T02:41:25Z"
+source_file_hash = "82f83d90b3a3898935ab3791c6cf8a3b83611e75"
+translated_at = "2026-11-24T07:59:58Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -114,3 +114,61 @@ Tappable elements all take `TOUCH_MIN = 44`: the `Tabs` / `Segmented` / `Stepper
 ## Feel: what only a finger can settle
 
 The arena threshold is `DRAG_SLOP = GLYPH − 1 = 5 px` (`shared/ui/scroll.rs`), a card turns at a quarter of its width (`pager.rs::turn`), and a dot accepts `TOUCH_MIN / 2` either side of its centre. Tests pin the rule, not the feel: whether 5 px still reads as a tap and whether the card turn is too eager needs a finger, and both live in one constant each.
+
+## The readability round: captions, scrims and gesture endings
+
+The four galleries used to name only their sections, so a sample near the bottom did not say what it was or whether it could be tapped. Every sample now carries one caption (`page::caption`): its name plus the gesture, such as `TABLE / TAP A ROW`, with one `Msg` per language (24 new `Cap*` variants). `Advanced` and `Extended` therefore dropped their section words, while `Data` keeps `page::section` (a rule and a name) for the overlay band. A caption is a muted `nowrap` run with no tag.
+
+Three fixes came with it:
+
+- **Captions and tab labels measured zero wide.** The `page::scroller` body did not stretch, so a row written as `grow(1) + basis(0)` measured its natural width of zero and its labels were clipped to nothing. The body now stretches (Flutter's `ListView` hands its children the whole cross axis), and the `Tabs` / `Segmented` / `Stepper` / `NavigationBar` / `FilterChips` rows stretch too, so the cells really divide the width.
+- **An `absolute` child on the root never got a size.** Flex, wrap and scroll placed only in-flow children; an out-of-flow child was never measured, so `paint_rect` returned `0×0`, and `stack` was the only flow that placed one. `place_absolute` now lays out the out-of-flow children of all four flows, with scroll adding its content shift; `an_absolute_child_of_a_row_or_a_scroll_is_placed_too` pins it.
+- **The lift after a drag read as a tap.** On the wire that lift is still a `Tap`, so the `Data` table rows, the `Extended` keypad and the `Advanced` cards each selected something when a drag ended. `Scroller::dragging()` exposes the arena state and the three tap branches ask it first; the tests press, drag, lift, assert nothing was chosen, and assert the next drag still scrolls.
+
+Interface changes: the `Dialog` scrim is now the opaque `theme.ground`, the card uses the new `theme.surface` (`rgb(0x22,0x22,0x22)`) with a muted outline, and the slot moved from the scroll region to the root at `320×228`, centring the card in the content area. `NavigationBar` became an inset accent pill on a `surface` strip, distinct from `Tabs` taking the accent paper whole; the `Accordion` body moved inside the header's paper; `Pager` clips each card; and `Table` rows dropped from `TOUCH_MIN = 44` to `LINE × 2 + 4 = 28` (`TABLE_H = 128`).
+
+`Style::overflow` adds the half of Flutter's `TextOverflow` that a `nowrap` run can use: `Clip` (the default) and `Ellipsis`, with `.ellipsis()` as shorthand, used by `Banner` / `Button` / `EmptyState` / `FilterChips` / `Segmented` / `Stepper`. The vector table already carries `…` (`iot-tool outline` always appends `…` and `□`), so `vector-sample.txt` needed no change for it.
+
+The Chinese captions needed 44 new hanzi and `-`, so `vector-sample.txt` grew and `vector.bin` was recut to 351 glyphs / **182,810 B** (from 306 glyphs / 157,460 B).
+
+### Measured
+
+| Item | Result |
+| --- | --- |
+| Host tests | `cargo test -p iot-app --lib --no-default-features --features host`: **557 passed** |
+| Tool tests | `moon run iot:test-tool`: **31 + 4 passed** |
+| Format / lint | `cargo fmt --all -- --check` clean; riscv `cargo clippy --workspace --exclude iot-tool --target riscv32imac-unknown-none-elf -- -D warnings`, the S3 `iot-xtensa.sh clippy …` and `cargo clippy -p iot-core --all-targets -- -D warnings` all pass |
+| Target checks | `moon run iot:check-host` / `check-c6` / `check-s3` all pass |
+| Golden | Still 32 rows; `advanced` / `feedback` / `extended` / `data` re-recorded for the stretch, the captions, the scrim and the row height, `menu` / `widgets` unchanged |
+| Custom slots | `Advanced` 2, `Feedback` 0, `Extended` 1 (keyboard and keypad share it), `Data` 5 |
+| Images | S3 **2,064,128 / 6,291,456 B** (32.81%); C6 **1,861,584 / 6,291,456 B** (29.59%) |
+| S3 main stack | Serial `[DISPLAY] … main stack 82264 B`, peak 20,696 B; `[STACK] core 1 peak 2000~2176 B of 24576 B` (two boots) |
+| Flashing | S3 at `/dev/cu.usbmodem1442301`, C6 at `/dev/cu.usbmodem14201`, one write each; both print `this boot is healthy` |
+
+In a shell without a tty, `moon run iot:flash` fails its last step: espflash opens an interactive monitor after writing and exits 1 with `Failed to initialize input reader`. The image is already written (the log's `Flashing has completed!` comes first); capture the boot log with `espflash monitor --non-interactive --after hard-reset` rather than flashing again.
+
+## Four feel defects: untagged canvas slots and finished overlays
+
+Three of the four the user reported (the `Extended` keypad dead, the `Data` chart and dial ignoring taps, the menu and sheet examples too thin) shared one root cause.
+
+A tap on the wire is `Press` then `Tap`. The canvas slots inside `page::scroller` (`TABLE_SLOT` / `CHART_SLOT` / `GAUGE_SLOT` / `KEY_SLOT`) carried **no tag**: the press point's `tag_at` resolved to 0, so `Scroller::apply(Press)` claimed the gesture as a drag (`tag == 0 → claim`) and `dragging()` was true on the lift; both pages gate their tap branch on `!self.scroll.dragging()`, skipped it entirely, and `scroll.bind` ate the `Tap` as a `Release`. Tagged buttons and chips worked, so only the rows, bars, dial and cells inside those slots went dead — the table was broken too, though unreported. The old tests sent only `Tap`, never `Press`, so they could not see it.
+
+Fix: tag each of the four slots (`TAG_TABLE` / `TAG_CHART` / `TAG_GAUGE` / `TAG_KEYPAD`) and grow `TagTable` by 3 / 1; a press is only remembered, and only a move past `DRAG_SLOP` claims the scroll. The regression tests run the whole `Press → Tap` chain through `bind`, assert the row / bar / dial / cell really reach the intent, and pin "every canvas hit area's centre has a non-zero `tag_at`".
+
+Keyboard: a new `Layer::More` holds the 22 punctuation marks `SYMBOLS` left out (`" ' ( ) [ ] { } < > / \ & % + = * $ ~ ^ | ` `` ` ``), so the four layers (letters / digits / symbols / more) type every printable ASCII byte `0x20..=0x7E`. Pure ASCII, all already in `ui12.bin`; `vector.bin` needed no recut.
+
+Menu and sheet: converted from always-inline `Widget`s to canvas overlays shaped like `Dialog` (`card` + `item_at` / `row_at` + `draw`, opaque scrim). `Data` gains two always-declared root `absolute` slots `MENU_SLOT` / `SHEET_SLOT`, drawn only while open; the triggers are tagged buttons, the menu is anchored at its trigger's bottom edge (the snapshot publishes `menu_anchor`, the paint clamps it inside the content area) and the sheet rises from the content area's bottom edge; while an overlay is open `bind` takes the tap before the scroller — a row picks and closes, the scrim or outside closes, every other gesture is swallowed. The pick is printed under its trigger with `page::reading`.
+
+### Measured
+
+| Item | Result |
+| --- | --- |
+| Host tests | `cargo test -p iot-app --lib --no-default-features --features host`: **568 passed** |
+| Tool tests | `moon run iot:test-tool`: **4 passed** |
+| Format / lint | `cargo fmt --all -- --check` clean; `cargo clippy -p iot-app --lib --no-default-features --features host -- -D warnings` passes (under `--tests`, 4 pre-existing warnings in the untouched `i18n/lang.rs`, `render/engine/test_support.rs`, `render/screen/painter.rs`) |
+| Target checks | `moon run iot:check-host` / `check-c6` / `check-s3` all pass |
+| Golden | Still 32 rows; the `data` default frame is unchanged (the triggers sit below the first screen and the overlays start closed), so nothing was re-recorded |
+| Custom slots | `Data` 7 (`TABLE` / `CHART` / `GAUGE` / `SWIPE` / `DIALOG` / `MENU` / `SHEET`) |
+| Images | S3 **2,065,824 / 6,291,456 B** (32.84%); C6 **1,866,448 / 6,291,456 B** (29.67%) |
+| S3 main stack | Serial `[DISPLAY] … main stack 82296 B`; `[STACK] core 1 peak 2000 B of 24576 B` |
+| Flashing | One write each to S3 and C6; both print `this boot is healthy` |

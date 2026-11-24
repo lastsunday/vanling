@@ -180,6 +180,29 @@ fn an_absolute_child_is_placed_by_its_insets() {
 }
 
 #[test]
+fn an_absolute_child_of_a_row_or_a_scroll_is_placed_too() {
+    let mut ui = page(100, 100);
+    let mut in_row = NodeId::NONE;
+    let mut in_scroll = NodeId::NONE;
+    ui.column(Style::new(), |ui| {
+        ui.row(Style::new().height(40), |ui| {
+            ui.text(b"A", Style::new().width(10).nowrap());
+            in_row = ui.node(Style::new().absolute().left(10).top(5).size(20, 10));
+        });
+        ui.scroll(Style::new().height(20).scroll_offset(10), |ui| {
+            in_scroll = ui.node(Style::new().absolute().left(0).top(0).size(10, 10));
+        });
+    });
+    finish(&mut ui, 100, 100);
+    assert_eq!(ui.rect(in_row), crate::ui::Rect::new(10, 5, 20, 10));
+    assert_eq!(
+        ui.rect(in_scroll).y,
+        30,
+        "an out-of-flow child rides the scrolled content: 40 for the row above, less the 10"
+    );
+}
+
+#[test]
 fn a_stretched_stack_reaches_its_parents_edge() {
     let mut ui = page(100, 40);
     let mut id = NodeId::NONE;

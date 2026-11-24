@@ -22,8 +22,8 @@ pub use declare::{TEXT_BYTES, Ui};
 pub use geometry::Rect;
 pub use layout::{
     Align, BoxConstraints, Decoration, DecorationStyle, Flow, FontFamily, FontWeight, Justify,
-    Length, MAX_NODES, MAX_SCROLL_AREAS, NodeId, PX, RunStyle, ScrollId, ScrollInfo, Style,
-    TextAlign,
+    Length, MAX_NODES, MAX_SCROLL_AREAS, NodeId, Overflow, PX, RunStyle, ScrollId, ScrollInfo,
+    Style, TextAlign,
 };
 pub use screen::Screen;
 pub use widget::Widget;

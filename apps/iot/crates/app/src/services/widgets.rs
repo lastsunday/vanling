@@ -524,7 +524,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
             caption(ui, Msg::DisplayNames.bytes(lang), &theme);
 
             section(ui, Msg::SectionRows.bytes(lang), &theme);
-            ui.add(Tooltip::new(Msg::TapHint.bytes(lang)));
+            ui.add(Tooltip::new(Msg::Tooltip.bytes(lang)));
             ui.custom(
                 Style::new()
                     .width(CONTENT_W)

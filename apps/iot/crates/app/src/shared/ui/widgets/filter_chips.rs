@@ -35,22 +35,25 @@ impl Widget for FilterChips<'_> {
         let edge = ui.color(theme.muted);
         let accent = ui.color(theme.accent);
         let paper = ui.color(theme.selection);
-        ui.row(Style::new().height(TOUCH_MIN as i16).gap(4), |ui| {
-            for (index, label) in self.labels.into_iter().enumerate() {
-                let on = self.on & (1 << index) != 0;
-                let style = Style::new()
-                    .grow(1)
-                    .basis(0)
-                    .center()
-                    .nowrap()
-                    .radius(CORNER)
-                    .bordered()
-                    .tag(self.tags[index])
-                    .text_align(TextAlign::Center)
-                    .color(if on { accent } else { edge })
-                    .background(if on { paper } else { ui.color(theme.ground) });
-                ui.text(label, style);
-            }
-        })
+        ui.row(
+            Style::new().height(TOUCH_MIN as i16).gap(4).stretch(),
+            |ui| {
+                for (index, label) in self.labels.into_iter().enumerate() {
+                    let on = self.on & (1 << index) != 0;
+                    let style = Style::new()
+                        .grow(1)
+                        .basis(0)
+                        .center()
+                        .ellipsis()
+                        .radius(CORNER)
+                        .bordered()
+                        .tag(self.tags[index])
+                        .text_align(TextAlign::Center)
+                        .color(if on { accent } else { edge })
+                        .background(if on { paper } else { ui.color(theme.ground) });
+                    ui.text(label, style);
+                }
+            },
+        )
     }
 }

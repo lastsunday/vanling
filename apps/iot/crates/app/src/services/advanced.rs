@@ -16,8 +16,7 @@ use crate::shared::ui::scroll::{BAR, ScrollConfig};
 use crate::shared::ui::tag::TagTable;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
-    Accordion, AppBar, Divider, NavigationBar, Pager, PagerCard, Segmented, Stepper, Tabs, dots,
-    pager,
+    Accordion, AppBar, NavigationBar, Pager, PagerCard, Segmented, Stepper, Tabs, dots, pager,
 };
 
 use super::gallery::{REPAINT_MS, Scroller};
@@ -204,7 +203,9 @@ impl super::LocalPage for AdvancedPage {
                 intent,
             })
         };
-        if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event {
+        if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event
+            && !self.scroll.dragging()
+        {
             let area = self.scroll.area();
             let (x, y) = (i32::from(x), i32::from(y));
             let mut dots = self.dots;
@@ -261,7 +262,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     page::body(ui, |ui| {
         page::title(ui, Msg::AdvancedTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
-            section(ui, Msg::SectionNav.bytes(lang), &theme);
+            page::caption(ui, Msg::CapAppBar.bytes(lang), &theme);
             ui.add(
                 AppBar::new(
                     Msg::Brand.bytes(lang),
@@ -269,24 +270,27 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 )
                 .tag(Action::App.tag()),
             );
+            page::caption(ui, Msg::CapNav.bytes(lang), &theme);
             ui.add(NavigationBar::new(
+                [
+                    Msg::EnvTitle.bytes(lang),
+                    Msg::AudioTitle.bytes(lang),
+                    Msg::CameraTitle.bytes(lang),
+                ],
+                [Action::Nav0.tag(), Action::Nav1.tag(), Action::Nav2.tag()],
+                w.nav,
+            ));
+            page::caption(ui, Msg::CapTabs.bytes(lang), &theme);
+            ui.add(Tabs::new(
                 [
                     Msg::PageMenu.bytes(lang),
                     Msg::PageInput.bytes(lang),
                     Msg::PageText.bytes(lang),
                 ],
-                [Action::Nav0.tag(), Action::Nav1.tag(), Action::Nav2.tag()],
-                w.nav,
-            ));
-            ui.add(Tabs::new(
-                [
-                    Msg::Filled.bytes(lang),
-                    Msg::Outlined.bytes(lang),
-                    Msg::Bare.bytes(lang),
-                ],
                 [Action::Tab0.tag(), Action::Tab1.tag(), Action::Tab2.tag()],
                 w.tab,
             ));
+            page::caption(ui, Msg::CapPager.bytes(lang), &theme);
             ui.custom(
                 Style::new()
                     .width(CONTENT_W)
@@ -296,12 +300,13 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             );
             ui.custom(Style::new().width(CONTENT_W).height(page::TOUCH), DOT_SLOT);
 
-            section(ui, Msg::SectionComposed.bytes(lang), &theme);
+            page::caption(ui, Msg::CapAccordion.bytes(lang), &theme);
             ui.add(
-                Accordion::new(Msg::Detail.bytes(lang), Msg::TapHint.bytes(lang))
+                Accordion::new(Msg::Details.bytes(lang), Msg::BodyCopy.bytes(lang))
                     .open(w.open)
                     .tag(Action::Accordion.tag()),
             );
+            page::caption(ui, Msg::CapSegmented.bytes(lang), &theme);
             ui.add(
                 Segmented::new(
                     [
@@ -314,6 +319,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 )
                 .theme(&theme),
             );
+            page::caption(ui, Msg::CapStepper.bytes(lang), &theme);
             ui.add(
                 Stepper::new(
                     [
@@ -333,27 +339,21 @@ fn word(lang: Lang, msg: Msg) -> &'static [u8] {
     msg.bytes(lang)
 }
 
-fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
-    ui.add(Divider::new().width(CONTENT_W));
-    let ink = ui.color(theme.muted);
-    ui.text(run, Style::new().nowrap().color(ink));
-}
-
 fn cards(lang: Lang) -> [PagerCard<'static>; PAGER_COUNT as usize] {
     [
         PagerCard {
             title: Msg::Filled.bytes(lang),
-            detail: Msg::TapHint.bytes(lang),
+            detail: Msg::CardDetail.bytes(lang),
             mark: '1',
         },
         PagerCard {
             title: Msg::Outlined.bytes(lang),
-            detail: Msg::TapHint.bytes(lang),
+            detail: Msg::CardDetail.bytes(lang),
             mark: '2',
         },
         PagerCard {
             title: Msg::Bare.bytes(lang),
-            detail: Msg::TapHint.bytes(lang),
+            detail: Msg::CardDetail.bytes(lang),
             mark: '3',
         },
     ]
@@ -486,6 +486,82 @@ mod tests {
         assert_eq!(page.values.pager, 2);
         tap(&mut page, Action::Pager);
         assert_eq!(page.values.pager, 0, "a card tap advances and wraps");
+    }
+
+    fn send(page: &mut AdvancedPage, event: GestureEvent) {
+        let op = InputIntent {
+            source: 0,
+            event: InputEvent::Gesture(event),
+        };
+        let mut state = DeviceState::default();
+        if let Some(bound) = page.bind(&op, &state) {
+            let BusinessIntent::Gallery { intent, .. } = bound else {
+                panic!("not a gallery intent")
+            };
+            page.apply(
+                &BusinessIntent::Gallery {
+                    wire: PageId::Advanced.code(),
+                    intent,
+                },
+                &mut state,
+            );
+        }
+    }
+
+    /// The lift after a drag arrives as a tap; the pager must let the arena answer it.
+    #[test]
+    fn a_dragged_lift_turns_no_card_and_the_next_drag_still_scrolls() {
+        let mut page = AdvancedPage::default();
+        let area = page.scroll.area();
+        let target = page.pager.y + page.pager.h / 2 - (area.rect.y + area.rect.h / 2);
+        page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
+        let offset = page.scroll.area().offset;
+        let card = pager::card_width(page.pager);
+        let x = page.pager.x + (page.pager.w - card) / 2 + card / 2;
+        let y = page.pager.y + page.pager.h / 2 - i32::from(offset);
+        let (x, y) = (u16::try_from(x).unwrap(), u16::try_from(y).unwrap());
+        let index = page.values.pager;
+        send(&mut page, GestureEvent::Press { id: 0, x, y });
+        send(
+            &mut page,
+            GestureEvent::Drag {
+                id: 0,
+                x,
+                y: y - 30,
+                at_ms: 20,
+            },
+        );
+        send(
+            &mut page,
+            GestureEvent::Tap {
+                id: 0,
+                x,
+                y: y - 30,
+                held_ms: 40,
+                at_ms: 40,
+            },
+        );
+        assert_eq!(page.values.pager, index, "a lift turns no page");
+        assert!(!page.scroll.dragging(), "the arena let the finger go");
+        let moved = page.scroll.area().offset;
+        send(
+            &mut page,
+            GestureEvent::Press {
+                id: 1,
+                x,
+                y: y - 30,
+            },
+        );
+        send(
+            &mut page,
+            GestureEvent::Drag {
+                id: 1,
+                x,
+                y: y - 60,
+                at_ms: 20,
+            },
+        );
+        assert!(page.scroll.area().offset > moved, "the next drag scrolls");
     }
 
     #[test]

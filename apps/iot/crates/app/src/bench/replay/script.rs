@@ -104,7 +104,10 @@ mod tests {
             script.windows(2).all(|pair| pair[1].at_ms > pair[0].at_ms),
             "the script's clock only goes forward"
         );
-        assert_eq!(script_for(b"$"), None, "no key carries a dollar sign");
+        assert!(
+            script_for(b"$").is_some(),
+            "the more layer carries the dollar sign"
+        );
         assert_eq!(script_for(b"\x07"), None, "and none carries a bell");
     }
 }

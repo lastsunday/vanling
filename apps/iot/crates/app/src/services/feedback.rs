@@ -15,7 +15,7 @@ use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{BAR, ScrollConfig};
 use crate::shared::ui::tag::TagTable;
 use crate::shared::ui::theme::Theme;
-use crate::shared::ui::widgets::{Banner, Button, Divider, LoadingOverlay, Skeleton, Toast};
+use crate::shared::ui::widgets::{Banner, Button, LoadingOverlay, Skeleton, Toast};
 
 use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
@@ -175,14 +175,15 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
         let muted = ui.color(theme.muted);
         page::title(ui, Msg::FeedbackTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
-            section(ui, Msg::SectionFeedback.bytes(lang), &theme);
+            page::caption(ui, Msg::CapBanner.bytes(lang), &theme);
             ui.add(
                 Banner::new(
-                    word(lang, if w.banner { Msg::Saved } else { Msg::Detail }),
-                    word(lang, if w.banner { Msg::Cancel } else { Msg::Ok }),
+                    word(lang, if w.banner { Msg::Saved } else { Msg::Failed }),
+                    Msg::Ok.bytes(lang),
                 )
                 .tag(Action::Banner.tag()),
             );
+            page::caption(ui, Msg::CapToast.bytes(lang), &theme);
             if w.toast {
                 ui.add(
                     Toast::new(Msg::Saved.bytes(lang))
@@ -192,11 +193,12 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 );
             } else {
                 ui.add(
-                    Button::new(Msg::Saved.bytes(lang))
+                    Button::new(Msg::Toast.bytes(lang))
                         .width(CONTENT_W)
                         .tag(Action::Toast.tag()),
                 );
             }
+            page::caption(ui, Msg::CapSkeleton.bytes(lang), &theme);
             ui.column(Style::new().height(page::TOUCH * 2).gap(2), |ui| {
                 if w.skeleton {
                     ui.add(Skeleton::new(CONTENT_W));
@@ -207,19 +209,12 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 }
             });
             ui.add(
-                Button::new(word(
-                    lang,
-                    if w.skeleton {
-                        Msg::Loading
-                    } else {
-                        Msg::TapHint
-                    },
-                ))
-                .width(CONTENT_W)
-                .tag(Action::Skeleton.tag()),
+                Button::new(Msg::Loading.bytes(lang))
+                    .width(CONTENT_W)
+                    .tag(Action::Skeleton.tag()),
             );
 
-            section(ui, Msg::SectionOverlay.bytes(lang), &theme);
+            page::caption(ui, Msg::CapOverlay.bytes(lang), &theme);
             if w.overlay {
                 ui.add(
                     LoadingOverlay::new(Msg::Busy.bytes(lang))
@@ -240,12 +235,6 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
 
 fn word(lang: Lang, msg: Msg) -> &'static [u8] {
     msg.bytes(lang)
-}
-
-fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
-    ui.add(Divider::new().width(CONTENT_W));
-    let ink = ui.color(theme.muted);
-    ui.text(run, Style::new().nowrap().color(ink));
 }
 
 fn feedback_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {

@@ -28,6 +28,8 @@ pub struct Theme {
     pub selection: Color,
     /// The scrim a page lays under a busy or modal layer.
     pub overlay: Color,
+    /// A raised face: a dialog card, a navigation bar's own strip.
+    pub surface: Color,
     pub gap: i16,
 }
 
@@ -42,6 +44,7 @@ impl Theme {
         danger: Color::rgb(0xFF, 0x5A, 0x5A),
         selection: Color::rgba(0xFF, 0xFF, 0xFF, 0x30),
         overlay: Color::rgba(0x00, 0x00, 0x00, 0xB0),
+        surface: Color::rgb(0x22, 0x22, 0x22),
         gap: 4,
     };
 

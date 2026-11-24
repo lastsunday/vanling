@@ -318,7 +318,8 @@ fn face_of(key: Key, layer: Layer, shift: bool, out: &mut [u8; 2]) -> &[u8] {
         Key::Layer => match layer {
             Layer::Abc => b"12",
             Layer::Digits => b"#",
-            Layer::Symbols => b"ab",
+            Layer::Symbols => b"&",
+            Layer::More => b"ab",
         },
         Key::Cancel => b"OK",
         Key::Connect | Key::Reveal => b"",

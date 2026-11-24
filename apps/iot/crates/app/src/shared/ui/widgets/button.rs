@@ -62,7 +62,7 @@ impl Widget for Button<'_> {
         }
         let ink = self.theme.on_button(ui, self.kind, self.state);
         let label = Style::new()
-            .nowrap()
+            .ellipsis()
             .color(ink)
             .text_align(TextAlign::Center)
             .font_size(Length::Px(14))

@@ -51,7 +51,7 @@ impl Widget for Banner<'_> {
                 .background(paper),
             |ui| {
                 ui.text(b"!", mark);
-                ui.text(self.message, Style::new().nowrap().color(ink));
+                ui.text(self.message, Style::new().ellipsis().color(ink));
                 ui.node(Style::new().grow(1));
                 ui.text(
                     self.action,
@@ -59,7 +59,7 @@ impl Widget for Banner<'_> {
                         .width(TOUCH_MIN as i16)
                         .height(TOUCH_MIN as i16)
                         .center()
-                        .nowrap()
+                        .ellipsis()
                         .color(accent)
                         .text_align(TextAlign::Center)
                         .tag(self.tag),

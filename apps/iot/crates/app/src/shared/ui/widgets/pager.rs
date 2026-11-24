@@ -59,6 +59,9 @@ impl Pager<'_> {
             canvas.set_color(Some(if focused { theme.accent } else { theme.muted }));
             canvas.stroke_round_rect(card_rect, 6);
 
+            // One card is four pixels of air plus its own words: nothing it says may reach the
+            // neighbour, whatever the language does to the length.
+            canvas.push_clip(card_rect);
             canvas.set_color(Some(if focused { theme.ink } else { theme.muted }));
             canvas.draw_text(
                 card.title,
@@ -79,6 +82,7 @@ impl Pager<'_> {
                 (card_rect.x + MARGIN as i32).max(0) as usize,
                 (card_rect.bottom() - LINE as i32 - 6).max(0) as usize,
             );
+            canvas.pop_clip();
             if focused {
                 canvas.set_color(Some(theme.accent));
                 canvas.draw_line(

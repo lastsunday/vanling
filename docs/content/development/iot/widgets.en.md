@@ -2,8 +2,8 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "91c4c4ba9745651727161c37e3c545bcda2525f3"
-translated_at = "2026-11-24T02:38:01Z"
+source_file_hash = "29d1b978971f1fa294663544824bb52a43a1f3b0"
+translated_at = "2026-11-24T07:59:58Z"
 +++
 
 # UI Widgets
@@ -89,6 +89,8 @@ pub struct Theme {
     pub on_accent: Color,
     pub danger: Color,
     pub selection: Color,
+    pub overlay: Color,
+    pub surface: Color,
     pub gap: i16,
 }
 
@@ -182,6 +184,8 @@ Type comes in three steps: page titles at 20 px vector (`page::title`), button a
 
 Text grows a layout, but only the nodes that did not fix their size: with no `width`, a text node takes the run's advance width and `line_height` (ink plus leading), so a column gets taller and a row gets wider. A `width` on a `nowrap` run clips it instead, and a `Button` stays 98×44 however large its label is; changing the type size means changing the layout constants with it. The panel is a fixed 320×240: growth comes out of the `grow` nodes and then runs off the panel, it never scales the layout down.
 
+`Style::overflow(Overflow)` covers only a `nowrap` run wider than its box, the usable half of Flutter's `TextOverflow`: `Clip` (the default) cuts at the box edge, `Ellipsis` cuts and ends the visible run with `…`; the box never grows. `.ellipsis()` is shorthand for `nowrap + Ellipsis`, used by `Banner` / `Button` / `EmptyState` / `FilterChips` / `Segmented` / `Stepper` so a label that does not fit stays inside. Wrapping runs are unaffected and still stop at `max_lines`.
+
 `ListTile` follows Flutter's fields: `title`, `subtitle`, `leading`, `trailing`, `state`, `dense`. `leading` / `trailing` are `Slot`:
 
 ```rust
@@ -206,11 +210,13 @@ pub enum Slot<'a> {
 | `Data` | The data / overlay gallery: `Table` / `Chart` / `Gauge` / `SwipeAction` / `EmptyState` and `Dialog` / `PopupMenu` / `Sheet`; a row, a bar and the dial share the page state. |
 | `List` | The `Feed` demo: pull to refresh, load more, swipe to delete, empty state. |
 
+Every sample in the four galleries carries one caption (`page::caption`): its name plus how it moves, such as `TABLE / TAP A ROW`, with one `Msg` per language. That is why `Advanced` and `Extended` lost their section words — the caption already names the sample; `Data` keeps `page::section` (a rule and a name) for the overlay band. A caption is a muted `nowrap` run with no tag, so it does nothing when tapped.
+
 `Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower; the fourteen entries fill five rows, and the last one needs a scroll to reach, with hits still resolved against the offset.
 
 The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
 
-A focused `TextField` replaces the page with a 4×4 keyboard (`ui::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table.
+A focused `TextField` replaces the page with a 4×4 keyboard (`ui::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table. Four layers rotate (letters / digits / symbols / more) and together type every printable ASCII byte `0x20..=0x7E`: the letter layer carries both cases and the space, the symbol layer holds `. , : ; ? ! - _ @ #`, and the more layer fills in the remaining 22 punctuation marks; each layer key's face names the next layer (`12` / `#` / `&` / `ab`).
 
 ## Advanced widgets
 
@@ -221,8 +227,8 @@ Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widge
 | Widget | Shape | Notes |
 | --- | --- | --- |
 | `AppBar` | W | Title plus an action at the right; the action carries a tag |
-| `NavigationBar` | W | Three-cell bottom navigation, the selected cell filled |
-| `Tabs` | W | Three tabs, the underline follows the selection |
+| `NavigationBar` | W | Three-cell bottom navigation: an inset accent pill on a `surface` strip |
+| `Tabs` | W | Three tabs; the selected cell takes the accent paper whole |
 | `PageIndicator` | C | Carousel dots; `dot_at` gives each dot a `TOUCH_MIN`-wide target, `fit` drops dots that do not fit |
 | `Pager` | W | A horizontal card strip: `card_width` / `pitch` derive from `rect`, `turn` maps travel to an index, `page_at` serves taps |
 
@@ -230,7 +236,7 @@ Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widge
 
 | Widget | Shape | Notes |
 | --- | --- | --- |
-| `Accordion` | W | Title plus a body; the page owns `open` |
+| `Accordion` | W | Title plus a body inside the same paper; the page owns `open` |
 | `Segmented` | W | Three mutually exclusive segments |
 | `Stepper` | W | Three-step progress, `current` highlighted |
 
@@ -257,7 +263,7 @@ Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widge
 
 | Widget | Shape | Notes |
 | --- | --- | --- |
-| `Table` | C | A header plus four fixed rows, evenly split columns |
+| `Table` | C | A header plus four fixed rows, evenly split columns; a row is `LINE × 2 + 4 = 28` |
 | `Chart` | C | Bars for values 0–100 |
 | `Gauge` | C | Half dial with a needle |
 | `SwipeAction` | C | A left slide uncovers an action band, capped at `REVEAL_MAX` |
@@ -267,11 +273,13 @@ Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widge
 
 | Widget | Shape | Notes |
 | --- | --- | --- |
-| `Dialog` | C | Centred card and scrim; `action_at` splits OK from cancel |
-| `PopupMenu` | W | Three menu rows, the selected one filled |
-| `Sheet` | W | `Edge::Bottom` / `Edge::Left` drawer; the demo uses the bottom edge |
+| `Dialog` | C | Opaque scrim and a centred card; `action_at` splits OK from cancel |
+| `PopupMenu` | C | Opaque scrim and a three-row menu hung under its trigger; `item_at` splits rows, the selected one filled |
+| `Sheet` | C | Opaque scrim and an edge drawer (`Edge::Bottom` / `Edge::Left`); `row_at` splits rows, the demo uses the bottom edge |
 
-Every control reports hits through `Style::tag` and is measured once at construction with `TagTable::measure`. A gallery's `bind` returns only `Gallery { wire, intent }`, where `wire` is the route code, so `shared::intent` does not depend on `shared::route`. Dialog, Keypad, Table, Chart, Gauge and SwipeAction are custom slots; their hit test uses the rectangle from `Ui::paint_rect`, the same geometry as the paint, and Table rows, Chart bars and Keypad cells reuse the equal-split arithmetic their painters use. The `Data` dialog is an `absolute` sibling outside the scroll region, so the card does not scroll away; the scrim covers the gallery, and while `dialog` is true the page takes the tap first.
+Every tappable control reports a tag: widgets through `Style::tag`, canvas slots (Dialog, Keypad, Table, Chart, Gauge, SwipeAction) on the slot itself, all measured once at construction with `TagTable::measure`. A gallery's `bind` returns only `Gallery { wire, intent }`, where `wire` is the route code, so `shared::intent` does not depend on `shared::route`. A canvas slot's hit test uses the rectangle from `Ui::paint_rect`, the same geometry as the paint, and Table rows, Chart bars and Keypad cells reuse the equal-split arithmetic their painters use. Overlay items (three menu rows, two sheet rows) are not declared nodes; `bind` splits them with `item_at` / `row_at`.
+
+The `Data` dialog, popup menu and sheet all sit on root nodes after `page::body`: `absolute`, `320 × 228`, one slot each, always declared and drawn only while open, covering the title and the whole body. They therefore neither scroll with the list nor show the controls underneath through a translucent scrim. The menu is anchored at its trigger's bottom edge (the snapshot publishes `menu_anchor` and the paint clamps it inside the content area) and the sheet rises from the content area's bottom edge; while an overlay is open `bind` takes the tap first — a row picks and closes, the scrim or outside closes.
 
 `Pager` and `PageIndicator` share one index on `Advanced`: cards drag, cards tap and dots tap, and all three land on the same card. Card width and pitch derive from the strip, so no pixel count is pinned.
 
@@ -279,17 +287,18 @@ Every control reports hits through `Style::tag` and is measured once at construc
 
 | Page | Tappable | Decoration only |
 | --- | --- | --- |
-| `Advanced` | AppBar action, three nav cells, three tabs, every dot, every card, the accordion header, the segmented cells, the stepper | The selected tab's highlight itself |
+| `Advanced` | AppBar action, three nav cells, three tabs, every dot, every card, the accordion header, the segmented cells, the stepper | The selected tab's and nav pill's highlight itself |
 | `Feedback` | Banner action, toast, placeholder toggle, scrim caption | `Skeleton` bars, `Divider` |
 | `Extended` | Search field, three chips, the form, the number stepper, twelve keys | — |
-| `Data` | Four table rows, six bars, the dial, the sliding row, the empty state, two dialog answers, three menu rows, two sheet rows | The chart baseline |
+| `Data` | Four table rows, six bars, the dial, the sliding row, the empty state, two dialog answers, the menu/sheet triggers and the rows they open | The chart baseline |
 
-The test is whether there is an action: decorative widgets carry no tag and do nothing when tapped, while a tagged control's root node is the hit area, so the page never guesses at inner layout. Press and drag are arbitrated by `Scroller` in `services/gallery.rs`: it records the press point and tag, a move within `DRAG_SLOP` is a Tap, a longer vertical move claims the scroll region, and a horizontal move on a slide control becomes `Slide`; the first claimer owns the gesture.
+The test is whether there is an action: decorative widgets carry no tag and do nothing when tapped, while a tagged control's root node is the hit area, so the page never guesses at inner layout. Press and drag are arbitrated by `Scroller` in `services/gallery.rs`: it records the press point and tag, a move within `DRAG_SLOP` is a Tap, a longer vertical move claims the scroll region, and a horizontal move on a slide control becomes `Slide`; the first claimer owns the gesture. Canvas slots (table, chart, dial, keypad) must carry a tag too — untagged, the press point resolves to tag 0, the scroller claims the gesture as a drag, and the lift's Tap is eaten as a `Release`, so the rows, bars, dial and cells inside the slot stop answering. The lift after a drag still arrives on the wire as a `Tap`, so a page's tap branch asks `Scroller::dragging()` first: the `Advanced` cards, the `Extended` keypad and the `Data` rows and bars select nothing when a drag lifts, and the next drag scrolls as usual.
 
 ### Adaptive sizing
 
 - Tappable elements bottom out at `TOUCH_MIN = 44`: the `Tabs` / `Segmented` / `Stepper` / `NavigationBar` rows, the `Accordion` header, the `Banner` action, the `NumberField` steppers and a `Keypad` cell all take it.
-- Canvas widgets derive their size from `rect` and text metrics: `Table` uses `LINE + 4` for the header and `TOUCH_MIN` per row; `Dialog` uses `TOUCH_MIN` for the action band and sums the band, the title/body lines and `MARGIN` for the card; `Chart` / `Gauge` / `Keypad` scale with `rect`; `SwipeAction` still caps the uncovered band at `REVEAL_MAX`.
+- `page::scroller` stretches its body: a row takes the content width, so cells written as `grow(1) + basis(0)` actually get a share of it. Without the stretch such a row measures its children's natural widths, and `basis(0)` collapses the whole row to zero.
+- Canvas widgets derive their size from `rect` and text metrics: `Table` uses `LINE + 4` for the header and `LINE × 2 + 4 = 28` per row (`TABLE_H = 128`); `Dialog` uses `TOUCH_MIN` for the action band and sums the band, the title/body lines and `MARGIN` for the card; `Chart` / `Gauge` / `Keypad` scale with `rect`; `SwipeAction` still caps the uncovered band at `REVEAL_MAX`.
 - A page's custom-slot heights are multiples of `page::TOUCH` (two rows for the dial and chart, four for the keypad), not sample magic numbers.
 
 ## Feed
@@ -389,7 +398,7 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 - Widgets: `Ui::headless` runs the same declaration and `Ui::tags()` measures every tag once into `ui::tag::TagTable`. Tappable widgets carry `Style::tag`, and `TagTable::at(x, y, offset)` yields the intent id.
 - Cells: the page's `shape` constants compute rectangles shared with drawing.
 - A `NodeId` is valid only within one declaration and never crosses frames; use `tag` for a stable id.
-- Dialogs and toasts are declared in a `stack` overlay; the page decides visibility.
+- An overlay is an `absolute` child; flex, wrap and scroll boxes all place their out-of-flow children, and an `absolute` child on the root measures correctly. Toasts still live in a `stack`, with the page deciding visibility.
 - Widgets know nothing of `InputEvent`; `bind` turns `InputIntent` into `BusinessIntent`.
 - A hold latch belongs to the page (the slider's is `values.pressed`) and every gesture that ends must clear it: with the latch still set, a 2 px drift binds as a drag and the next tap never becomes a `Tap`.
 

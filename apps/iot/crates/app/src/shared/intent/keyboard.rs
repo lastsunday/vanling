@@ -15,6 +15,7 @@ pub enum Layer {
     Abc,
     Digits,
     Symbols,
+    More,
 }
 
 const ABC: [&[u8]; CHARS] = [
@@ -31,6 +32,19 @@ const ABC: [&[u8]; CHARS] = [
 ];
 const DIGITS: [&[u8]; CHARS] = [b"1", b"2", b"3", b"4", b"5", b"6", b"7", b"8", b"9", b"0"];
 const SYMBOLS: [&[u8]; CHARS] = [b".", b",", b":", b";", b"?", b"!", b"-", b"_", b"@", b"#"];
+/// The punctuation `SYMBOLS` leaves out, so every printable ASCII byte is typeable.
+const MORE: [&[u8]; CHARS] = [
+    b"\"'",  // 1
+    b"()",   // 2
+    b"[]",   // 3
+    b"{}",   // 4
+    b"<>",   // 5
+    b"/\\",  // 6
+    b"&%",   // 7
+    b"+=",   // 8
+    b"*$",   // 9
+    b"~^|`", // 0
+];
 
 /// Most characters any one key types, which is the `pqrs` key's four.
 pub const MAX_CANDIDATES: usize = 4;
@@ -53,7 +67,7 @@ impl Layer {
     pub const fn face(self, digit: usize) -> u8 {
         match self {
             Layer::Abc => DIGITS[digit][0],
-            Layer::Digits | Layer::Symbols => self.candidates(digit)[0],
+            Layer::Digits | Layer::Symbols | Layer::More => self.candidates(digit)[0],
         }
     }
 
@@ -63,6 +77,7 @@ impl Layer {
             Layer::Abc => ABC[digit],
             Layer::Digits => DIGITS[digit],
             Layer::Symbols => SYMBOLS[digit],
+            Layer::More => MORE[digit],
         }
     }
 
@@ -83,7 +98,8 @@ impl Layer {
         match self {
             Layer::Abc => Layer::Digits,
             Layer::Digits => Layer::Symbols,
-            Layer::Symbols => Layer::Abc,
+            Layer::Symbols => Layer::More,
+            Layer::More => Layer::Abc,
         }
     }
 }
@@ -117,27 +133,31 @@ mod tests {
     use super::*;
     use alloc::vec::Vec;
 
-    const LAYERS: [Layer; 3] = [Layer::Abc, Layer::Digits, Layer::Symbols];
+    const LAYERS: [Layer; 4] = [Layer::Abc, Layer::Digits, Layer::Symbols, Layer::More];
+
+    fn typed(layer: Layer) -> Vec<u8> {
+        let mut bytes = Vec::new();
+        for digit in 0..CHARS {
+            bytes.extend_from_slice(layer.candidates(digit));
+        }
+        bytes
+    }
 
     #[test]
-    fn one_layer_covers_every_letter_and_the_one_below_it_every_digit() {
-        let typed = |layer: Layer| {
-            let mut bytes = Vec::new();
-            for digit in 0..CHARS {
-                bytes.extend_from_slice(layer.candidates(digit));
-            }
-            bytes
-        };
+    fn the_four_layers_type_every_printable_ascii() {
         let abc = typed(Layer::Abc);
         for c in b'a'..=b'z' {
             assert!(abc.contains(&c), "{c:?} is not on the alphabet layer");
         }
         assert_eq!(abc[abc.len() - 1], b' ', "the zero key types the space");
-        for c in b'0'..=b'9' {
-            assert!(typed(Layer::Digits).contains(&c), "{c:?} is not typed");
+        let mut all = Vec::new();
+        for layer in LAYERS {
+            all.extend_from_slice(&typed(layer));
         }
-        for c in b".:,;?!-_@#" {
-            assert!(typed(Layer::Symbols).contains(c), "{c:?} is not typed");
+        for code in 0x20u8..=0x7E {
+            let hit = all.contains(&code)
+                || (code.is_ascii_uppercase() && all.contains(&code.to_ascii_lowercase()));
+            assert!(hit, "{code:#04x} is not typeable");
         }
     }
 

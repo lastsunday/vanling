@@ -6,7 +6,7 @@ use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
 use iot_core::ui::{Canvas, Rect, Screen, ScrollId, Style, Ui};
 
-use crate::shared::i18n::Msg;
+use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::page;
@@ -15,10 +15,10 @@ use crate::shared::snapshot::{DataSnapshot, FrameSnapshot, PageSnapshot, ScrollS
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{BAR, ScrollConfig};
 use crate::shared::ui::tag::TagTable;
-use crate::shared::ui::theme::Theme;
+use crate::shared::ui::theme::{ButtonKind, Theme};
 use crate::shared::ui::widgets::{
-    Button, Divider, EmptyState, EmptyTone, PopupMenu, REVEAL_MAX, Sheet, SheetEdge, SwipeAction,
-    Table, chart, dialog, gauge, table,
+    Button, EmptyState, EmptyTone, PopupMenu, REVEAL_MAX, Sheet, SheetEdge, SwipeAction, Table,
+    chart, dialog, gauge, popup_menu, sheet, table,
 };
 
 use super::gallery::{REPAINT_MS, Scroller};
@@ -32,6 +32,8 @@ const CHART_SLOT: u8 = 1;
 const GAUGE_SLOT: u8 = 2;
 const SWIPE_SLOT: u8 = 3;
 const DIALOG_SLOT: u8 = 4;
+const MENU_SLOT: u8 = 5;
+const SHEET_SLOT: u8 = 6;
 
 const TABLE_H: i16 = table::HEADER_H + 4 * table::ROW_H;
 const CHART_H: i16 = page::TOUCH * 2;
@@ -43,6 +45,7 @@ const TAG_CHART: u16 = 70;
 const TAG_GAUGE: u16 = 80;
 const TAG_DIALOG_OK: u16 = 90;
 const TAG_DIALOG_CANCEL: u16 = 91;
+const TAG_DISMISS: u16 = 92;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -50,30 +53,31 @@ const SCROLL: ScrollConfig = ScrollConfig {
     pull: 0,
 };
 
-/// One control on the page. The discriminant is the tag the declaration draws.
+/// One control; the discriminant is the tag it reports.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
 enum Action {
     Swipe = 1,
     Empty,
     DialogOpen,
+    MenuOpen,
     Menu0,
     Menu1,
     Menu2,
+    SheetOpen,
     Sheet0,
     Sheet1,
 }
 
 impl Action {
-    const ALL: [Self; 8] = [
+    /// The controls the declaration draws; the menu items and sheet rows are hit-tested
+    /// inside their overlay slots instead of declared.
+    const ALL: [Self; 5] = [
         Self::Swipe,
         Self::Empty,
         Self::DialogOpen,
-        Self::Menu0,
-        Self::Menu1,
-        Self::Menu2,
-        Self::Sheet0,
-        Self::Sheet1,
+        Self::MenuOpen,
+        Self::SheetOpen,
     ];
 
     const fn tag(self) -> u16 {
@@ -81,8 +85,28 @@ impl Action {
     }
 
     fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.into_iter().find(|action| action.tag() == tag)
+        Self::ALL
+            .into_iter()
+            .chain([
+                Self::Menu0,
+                Self::Menu1,
+                Self::Menu2,
+                Self::Sheet0,
+                Self::Sheet1,
+            ])
+            .find(|action| action.tag() == tag)
     }
+}
+
+const MENU_ITEMS: [Msg; 3] = [Msg::Name, Msg::Mail, Msg::Save];
+const SHEET_ROWS: [Msg; 2] = [Msg::Name, Msg::Mail];
+
+fn menu_item(index: u8, lang: Lang) -> &'static [u8] {
+    MENU_ITEMS[usize::from(index).min(MENU_ITEMS.len() - 1)].bytes(lang)
+}
+
+fn sheet_row(index: u8, lang: Lang) -> &'static [u8] {
+    SHEET_ROWS[usize::from(index).min(SHEET_ROWS.len() - 1)].bytes(lang)
 }
 
 /// The samples the three data marks draw.
@@ -98,11 +122,13 @@ const ROWS: [[&[u8]; 3]; 4] = [
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataPage {
     scroll: Scroller,
-    tags: TagTable<{ Action::ALL.len() }>,
+    tags: TagTable<{ Action::ALL.len() + 3 }>,
     table: Rect,
     chart_rect: Rect,
     gauge_rect: Rect,
     dialog: Rect,
+    /// The full-panel rect every overlay slot shares.
+    overlay: Rect,
     values: DataSnapshot,
 }
 
@@ -120,6 +146,7 @@ impl Default for DataPage {
             chart_rect: ui.paint_rect(CHART_SLOT).unwrap_or_default(),
             gauge_rect: ui.paint_rect(GAUGE_SLOT).unwrap_or_default(),
             dialog: ui.paint_rect(DIALOG_SLOT).unwrap_or_default(),
+            overlay: ui.paint_rect(MENU_SLOT).unwrap_or_default(),
             values: DataSnapshot {
                 gauge: BARS[0],
                 ..DataSnapshot::default()
@@ -134,10 +161,19 @@ impl DataPage {
             .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
     }
 
+    /// The trigger's bottom edge in panel pixels, so the menu hangs under it.
+    fn menu_anchor(&self) -> i16 {
+        let offset = self.scroll.view().offset;
+        self.tags.rect(Action::MenuOpen.tag()).map_or(0, |rect| {
+            i16::try_from(rect.bottom() - i32::from(offset)).unwrap_or(0)
+        })
+    }
+
     fn snapshot(&self) -> DataSnapshot {
         let mut view = self.values;
         view.area = self.scroll.view();
         view.moving = self.scroll.moving();
+        view.menu_anchor = self.menu_anchor();
         view
     }
 
@@ -168,7 +204,7 @@ impl DataPage {
             self.values.gauge = if self.values.gauge >= 100 {
                 0
             } else {
-                self.values.gauge + 25
+                (self.values.gauge + 25).min(100)
             };
             return;
         }
@@ -204,12 +240,35 @@ impl DataPage {
             }
             Action::Empty => self.values.empty_error = !self.values.empty_error,
             Action::DialogOpen => self.values.dialog = true,
-            Action::Menu0 => self.values.menu = 0,
-            Action::Menu1 => self.values.menu = 1,
-            Action::Menu2 => self.values.menu = 2,
-            Action::Sheet0 => self.values.sheet = 0,
-            Action::Sheet1 => self.values.sheet = 1,
+            Action::MenuOpen => self.values.menu_open = true,
+            Action::Menu0 => {
+                self.values.menu = 0;
+                self.values.menu_open = false;
+            }
+            Action::Menu1 => {
+                self.values.menu = 1;
+                self.values.menu_open = false;
+            }
+            Action::Menu2 => {
+                self.values.menu = 2;
+                self.values.menu_open = false;
+            }
+            Action::SheetOpen => self.values.sheet_open = true,
+            Action::Sheet0 => {
+                self.values.sheet = 0;
+                self.values.sheet_open = false;
+            }
+            Action::Sheet1 => {
+                self.values.sheet = 1;
+                self.values.sheet_open = false;
+            }
         }
+    }
+
+    fn close_overlays(&mut self) {
+        self.values.dialog = false;
+        self.values.menu_open = false;
+        self.values.sheet_open = false;
     }
 }
 
@@ -227,7 +286,7 @@ impl super::Service for DataPage {
         }
         match *intent {
             GalleryIntent::Tap { tag } => match tag {
-                TAG_DIALOG_OK | TAG_DIALOG_CANCEL => self.values.dialog = false,
+                TAG_DIALOG_OK | TAG_DIALOG_CANCEL | TAG_DISMISS => self.close_overlays(),
                 _ => self.tap(tag),
             },
             GalleryIntent::Slide { dx, .. } => self.values.reveal = (-dx).clamp(0, REVEAL_MAX),
@@ -259,7 +318,25 @@ impl super::LocalPage for DataPage {
             };
             return tap(GalleryIntent::Tap { tag });
         }
-        if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event {
+        if self.values.menu_open || self.values.sheet_open {
+            let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event else {
+                return None;
+            };
+            let (x, y) = (i32::from(x), i32::from(y));
+            let tag = if self.values.menu_open {
+                popup_menu::item_at(popup_menu::card(self.overlay, self.menu_anchor()), x, y)
+                    .map(|row| Action::Menu0.tag() + u16::from(row))
+            } else {
+                sheet::row_at(sheet::card(self.overlay, SheetEdge::Bottom), x, y)
+                    .map(|row| Action::Sheet0.tag() + u16::from(row))
+            };
+            return tap(GalleryIntent::Tap {
+                tag: tag.unwrap_or(TAG_DISMISS),
+            });
+        }
+        if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event
+            && !self.scroll.dragging()
+        {
             let area = self.scroll.area();
             if area.rect.contains(i32::from(x), i32::from(y)) {
                 let content_y = i32::from(y) + i32::from(area.offset);
@@ -302,7 +379,7 @@ impl super::LocalPage for DataPage {
 
     fn on_hide(&mut self) {
         self.scroll.reset();
-        self.values.dialog = false;
+        self.close_overlays();
     }
 }
 
@@ -313,13 +390,22 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     page::body(ui, |ui| {
         page::title(ui, Msg::DataTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
-            section(ui, Msg::SectionData.bytes(lang), &theme);
-            ui.custom(Style::new().width(CONTENT_W).height(TABLE_H), TABLE_SLOT);
-            let rule = ui.color(theme.muted);
-            ui.text(Msg::TapHint.bytes(lang), Style::new().nowrap().color(rule));
-            ui.custom(Style::new().width(CONTENT_W).height(CHART_H), CHART_SLOT);
-            ui.text(Msg::TapBar.bytes(lang), Style::new().nowrap().color(rule));
-            ui.custom(Style::new().width(CONTENT_W).height(GAUGE_H), GAUGE_SLOT);
+            page::caption(ui, Msg::CapTable.bytes(lang), &theme);
+            ui.custom(
+                Style::new().width(CONTENT_W).height(TABLE_H).tag(TAG_TABLE),
+                TABLE_SLOT,
+            );
+            page::caption(ui, Msg::CapChart.bytes(lang), &theme);
+            ui.custom(
+                Style::new().width(CONTENT_W).height(CHART_H).tag(TAG_CHART),
+                CHART_SLOT,
+            );
+            page::caption(ui, Msg::CapGauge.bytes(lang), &theme);
+            ui.custom(
+                Style::new().width(CONTENT_W).height(GAUGE_H).tag(TAG_GAUGE),
+                GAUGE_SLOT,
+            );
+            page::caption(ui, Msg::CapSwipe.bytes(lang), &theme);
             ui.custom(
                 Style::new()
                     .width(CONTENT_W)
@@ -327,8 +413,9 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                     .tag(Action::Swipe.tag()),
                 SWIPE_SLOT,
             );
+            page::caption(ui, Msg::CapEmpty.bytes(lang), &theme);
             ui.add(
-                EmptyState::new(Msg::Empty.bytes(lang), Msg::TapHint.bytes(lang))
+                EmptyState::new(Msg::Empty.bytes(lang), Msg::TapRetry.bytes(lang))
                     .tone(if w.empty_error {
                         EmptyTone::Error
                     } else {
@@ -338,55 +425,42 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                     .tag(Action::Empty.tag()),
             );
 
-            section(ui, Msg::SectionOverlay.bytes(lang), &theme);
+            page::section(ui, Msg::SectionOverlay.bytes(lang), &theme);
+            page::caption(ui, Msg::CapDialog.bytes(lang), &theme);
             ui.add(
                 Button::new(Msg::Dialog.bytes(lang))
                     .width(CONTENT_W)
                     .tag(Action::DialogOpen.tag()),
             );
+            page::caption(ui, Msg::CapMenu.bytes(lang), &theme);
             ui.add(
-                PopupMenu::new(
-                    [
-                        Msg::Name.bytes(lang),
-                        Msg::Mail.bytes(lang),
-                        Msg::Save.bytes(lang),
-                    ],
-                    [
-                        Action::Menu0.tag(),
-                        Action::Menu1.tag(),
-                        Action::Menu2.tag(),
-                    ],
-                    w.menu,
-                )
-                .width(CONTENT_W)
-                .theme(&theme),
+                Button::new(Msg::MenuTitle.bytes(lang))
+                    .kind(ButtonKind::Outlined)
+                    .width(CONTENT_W)
+                    .tag(Action::MenuOpen.tag()),
             );
+            page::reading(ui, Msg::MenuTitle.bytes(lang), menu_item(w.menu, lang));
+            page::caption(ui, Msg::CapSheet.bytes(lang), &theme);
             ui.add(
-                Sheet::new(
-                    Msg::Detail.bytes(lang),
-                    [Msg::Name.bytes(lang), Msg::Mail.bytes(lang)],
-                    [Action::Sheet0.tag(), Action::Sheet1.tag()],
-                    w.sheet,
-                )
-                .edge(SheetEdge::Bottom)
-                .width(CONTENT_W)
-                .theme(&theme),
+                Button::new(Msg::SortBy.bytes(lang))
+                    .kind(ButtonKind::Outlined)
+                    .width(CONTENT_W)
+                    .tag(Action::SheetOpen.tag()),
             );
+            page::reading(ui, Msg::SortBy.bytes(lang), sheet_row(w.sheet, lang));
         });
+    });
+    for slot in [MENU_SLOT, SHEET_SLOT, DIALOG_SLOT] {
         ui.custom(
             Style::new()
                 .absolute()
-                .width(PANEL_COLUMNS as i16 - page::MARGIN)
-                .height(CONTENT_BOTTOM as i16 - 8),
-            DIALOG_SLOT,
+                .left(0)
+                .top(0)
+                .width(PANEL_COLUMNS as i16)
+                .height(CONTENT_BOTTOM as i16),
+            slot,
         );
-    });
-}
-
-fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
-    ui.add(Divider::new().width(CONTENT_W));
-    let ink = ui.color(theme.muted);
-    ui.text(run, Style::new().nowrap().color(ink));
+    }
 }
 
 fn custom(
@@ -449,13 +523,24 @@ fn custom(
         .draw(canvas, rect, w.reveal, Msg::Delete.bytes(lang), &theme),
         DIALOG_SLOT if w.dialog => {
             dialog::Dialog {
-                title: Msg::Detail.bytes(lang),
-                body: Msg::TapHint.bytes(lang),
+                title: Msg::Confirm.bytes(lang),
+                body: Msg::DialogBody.bytes(lang),
                 ok: Msg::Ok.bytes(lang),
                 cancel: Msg::Cancel.bytes(lang),
             }
             .draw(canvas, rect, &theme);
         }
+        MENU_SLOT if w.menu_open => PopupMenu {
+            items: MENU_ITEMS.map(|item| item.bytes(lang)),
+            selected: w.menu,
+        }
+        .draw(canvas, rect, w.menu_anchor, &theme),
+        SHEET_SLOT if w.sheet_open => Sheet {
+            title: Msg::SortBy.bytes(lang),
+            rows: SHEET_ROWS.map(|row| row.bytes(lang)),
+            selected: w.sheet,
+        }
+        .draw(canvas, rect, SheetEdge::Bottom, &theme),
         _ => {}
     }
 }
@@ -533,9 +618,129 @@ mod tests {
     #[test]
     fn every_declared_control_is_drawn_once() {
         let page = DataPage::default();
-        let drawn: Vec<u16> = page.tags.iter().map(|(tag, _)| tag).collect();
+        let drawn: Vec<u16> = page
+            .tags
+            .iter()
+            .map(|(tag, _)| tag)
+            .filter(|tag| Action::from_tag(*tag).is_some())
+            .collect();
         let expected: Vec<u16> = Action::ALL.iter().map(|action| action.tag()).collect();
         assert_eq!(drawn, expected);
+    }
+
+    #[test]
+    fn every_canvas_mark_carries_its_own_tag() {
+        let page = DataPage::default();
+        for (tag, rect) in [
+            (TAG_TABLE, page.table),
+            (TAG_CHART, page.chart_rect),
+            (TAG_GAUGE, page.gauge_rect),
+        ] {
+            assert_eq!(
+                page.tags.at(rect.x + 2, rect.y + 2, 0),
+                tag,
+                "the arena claims the scroll unless the mark is tagged"
+            );
+        }
+    }
+
+    fn tap_at(page: &mut DataPage, x: i32, y: i32) {
+        let (x, y) = (u16::try_from(x).unwrap_or(0), u16::try_from(y).unwrap_or(0));
+        send(page, GestureEvent::Press { id: 0, x, y });
+        send(
+            page,
+            GestureEvent::Tap {
+                id: 0,
+                x,
+                y,
+                held_ms: 40,
+                at_ms: 40,
+            },
+        );
+    }
+
+    /// The panel sends `Press` on touch-down and `Tap` on the lift; a mark only answers the
+    /// second if its press was remembered rather than claimed by the scroll.
+    #[test]
+    fn a_press_then_a_tap_reaches_the_table_the_chart_and_the_dial() {
+        let mut page = DataPage::default();
+        let x = page.table.x + 4;
+        let row = page.table.y + i32::from(table::HEADER_H) + i32::from(table::ROW_H) + 4;
+        tap_at(&mut page, x, row);
+        assert_eq!(page.values.table, Some(1));
+
+        for mark in [page.chart_rect, page.gauge_rect] {
+            let area = page.scroll.area();
+            let target = mark.y + mark.h / 2 - (area.rect.y + area.rect.h / 2);
+            page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
+            let offset = page.scroll.area().offset;
+            tap_at(
+                &mut page,
+                mark.x + mark.w / 2,
+                mark.y + mark.h / 2 - i32::from(offset),
+            );
+        }
+        assert_eq!(page.values.bar, Some(3), "the chart picked its middle bar");
+        assert_eq!(
+            page.values.gauge,
+            (BARS[3] + 25).min(100),
+            "the dial took the lift"
+        );
+    }
+
+    #[test]
+    fn the_menu_hangs_under_its_trigger_and_picks_an_item() {
+        let mut page = DataPage::default();
+        tap(&mut page, Action::MenuOpen.tag());
+        assert!(page.values.menu_open);
+        let trigger = page.tags.rect(Action::MenuOpen.tag()).expect("a trigger");
+        page.scroll
+            .park(i16::try_from(trigger.bottom() - 60).unwrap_or(0));
+        let anchor = page.snapshot().menu_anchor;
+        let card = popup_menu::card(page.overlay, anchor);
+        assert!(
+            card.y <= i32::from(anchor),
+            "the menu hangs at or above its trigger when the panel runs out"
+        );
+        assert!(card.bottom() <= CONTENT_BOTTOM as i32);
+        let (x, y) = (card.x + 8, card.y + card.h / 2);
+        assert_eq!(popup_menu::item_at(card, x, y), Some(1));
+        tap_at(&mut page, x, y);
+        assert_eq!(page.values.menu, 1);
+        assert!(!page.values.menu_open, "a pick closes the menu");
+    }
+
+    #[test]
+    fn a_tap_outside_the_menu_closes_it_without_picking() {
+        let mut page = DataPage::default();
+        tap(&mut page, Action::MenuOpen.tag());
+        let before = page.values.menu;
+        tap_at(&mut page, 4, 4);
+        assert!(!page.values.menu_open);
+        assert_eq!(page.values.menu, before);
+    }
+
+    #[test]
+    fn the_sheet_rises_from_the_bottom_and_picks_a_row() {
+        let mut page = DataPage::default();
+        tap(&mut page, Action::SheetOpen.tag());
+        assert!(page.values.sheet_open);
+        let card = sheet::card(page.overlay, SheetEdge::Bottom);
+        assert_eq!(card.bottom(), CONTENT_BOTTOM as i32);
+        let y = card.bottom() - sheet::ROW_H / 2 - 2;
+        let (x, y) = (card.x + 10, y);
+        assert_eq!(sheet::row_at(card, x, y), Some(1));
+        tap_at(&mut page, x, y);
+        assert_eq!(page.values.sheet, 1);
+        assert!(!page.values.sheet_open, "a pick closes the sheet");
+    }
+
+    #[test]
+    fn every_overlay_slot_covers_the_whole_panel() {
+        let page = DataPage::default();
+        let full = Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32);
+        assert_eq!(page.dialog, full);
+        assert_eq!(page.overlay, full);
     }
 
     #[test]
@@ -633,6 +838,98 @@ mod tests {
         assert_eq!(dialog::action_at(rect, card.x + 4, y), Some(false));
         assert_eq!(dialog::action_at(rect, card.right() - 4, y), Some(true));
         assert_eq!(dialog::action_at(rect, card.x + card.w / 2, card.y), None);
+    }
+
+    #[test]
+    fn the_dialog_covers_the_whole_gallery_and_centres_its_card() {
+        let page = DataPage::default();
+        assert_eq!(
+            page.dialog,
+            Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32),
+            "the scrim reaches every panel pixel, so no page shows through"
+        );
+        let card = dialog::card(page.dialog);
+        assert_eq!(card.x + card.w / 2, PANEL_COLUMNS as i32 / 2);
+        assert_eq!(card.y + card.h / 2, CONTENT_BOTTOM as i32 / 2);
+    }
+
+    #[test]
+    fn four_rows_fit_the_panel_without_a_tall_table() {
+        assert_eq!(TABLE_H, 128, "a 16 px header over four 28 px rows");
+        assert_eq!(table::ROW_H, page::LINE * 2 + 4);
+    }
+
+    /// The lift after a drag arrives as a tap; the page must let the arena answer it.
+    #[test]
+    fn a_dragged_lift_picks_no_mark_and_the_next_drag_still_scrolls() {
+        let mut page = DataPage::default();
+        page.scroll.park(60);
+        let x = page.chart_rect.x + page.chart_rect.w / 2;
+        let area = page.scroll.area();
+        let from = page.chart_rect.y + page.chart_rect.h / 2 - i32::from(area.offset);
+        let (x, from) = (u16::try_from(x).unwrap(), u16::try_from(from).unwrap());
+        let to = from - 30;
+        let before = area.offset;
+        send(&mut page, GestureEvent::Press { id: 0, x, y: from });
+        send(
+            &mut page,
+            GestureEvent::Drag {
+                id: 0,
+                x,
+                y: to,
+                at_ms: 20,
+            },
+        );
+        let moved = page.scroll.area().offset;
+        assert!(moved > before, "the first drag scrolls");
+
+        send(
+            &mut page,
+            GestureEvent::Tap {
+                id: 0,
+                x,
+                y: to,
+                held_ms: 40,
+                at_ms: 40,
+            },
+        );
+        assert!(page.values.bar.is_none(), "a lift is not a pick");
+        assert!(!page.scroll.dragging(), "the arena let the finger go");
+
+        send(&mut page, GestureEvent::Press { id: 1, x, y: to });
+        send(
+            &mut page,
+            GestureEvent::Drag {
+                id: 1,
+                x,
+                y: to - 30,
+                at_ms: 20,
+            },
+        );
+        assert!(
+            page.scroll.area().offset > moved,
+            "the next drag still scrolls"
+        );
+    }
+
+    fn send(page: &mut DataPage, event: GestureEvent) {
+        let op = InputIntent {
+            source: 0,
+            event: InputEvent::Gesture(event),
+        };
+        let mut state = DeviceState::default();
+        if let Some(bound) = page.bind(&op, &state) {
+            let BusinessIntent::Gallery { intent, .. } = bound else {
+                panic!("not a gallery intent")
+            };
+            page.apply(
+                &BusinessIntent::Gallery {
+                    wire: PageId::Data.code(),
+                    intent,
+                },
+                &mut state,
+            );
+        }
     }
 
     #[test]

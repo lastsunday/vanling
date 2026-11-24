@@ -278,6 +278,10 @@ pub struct DataSnapshot {
     pub dialog: bool,
     pub menu: u8,
     pub sheet: u8,
+    pub menu_open: bool,
+    pub sheet_open: bool,
+    /// The trigger's bottom edge in panel pixels: where the menu hangs.
+    pub menu_anchor: i16,
 }
 
 /// What the List page publishes: the feed's two edges and the row under the finger.

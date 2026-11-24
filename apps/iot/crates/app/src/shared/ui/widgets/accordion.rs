@@ -1,7 +1,7 @@
 //! A header row that opens one line of body copy beneath it.
 
 use iot_core::ui::panel::TOUCH_MIN;
-use iot_core::ui::{NodeId, Style, Ui, Widget};
+use iot_core::ui::{NodeId, Overflow, Style, Ui, Widget};
 
 use crate::shared::ui::theme::Theme;
 
@@ -47,29 +47,27 @@ impl Widget for Accordion<'_> {
         let ink = ui.color(theme.ink);
         let muted = ui.color(theme.muted);
         let paper = ui.color(theme.selection);
-        ui.column(Style::new().gap(1), |ui| {
-            ui.row(
-                Style::new()
-                    .height(TOUCH_MIN as i16)
-                    .middle()
-                    .pad(3)
-                    .background(paper)
-                    .tag(self.tag),
-                |ui| {
+        ui.column(
+            Style::new().pad(3).gap(1).background(paper).tag(self.tag),
+            |ui| {
+                ui.row(Style::new().height(TOUCH_MIN as i16 - 6).middle(), |ui| {
                     ui.text(self.title, Style::new().nowrap().color(ink));
                     ui.node(Style::new().grow(1));
                     ui.text(
                         if self.open { b"-" } else { b"+" },
                         Style::new().nowrap().color(ink),
                     );
-                },
-            );
-            if self.open {
-                ui.text(self.body, Style::new().nowrap().color(muted));
-            } else {
-                let faint = ui.color(self.theme.selection);
-                ui.text(self.body, Style::new().nowrap().color(faint));
-            }
-        })
+                });
+                if self.open {
+                    ui.text(
+                        self.body,
+                        Style::new()
+                            .nowrap()
+                            .overflow(Overflow::Ellipsis)
+                            .color(muted),
+                    );
+                }
+            },
+        )
     }
 }

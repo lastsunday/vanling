@@ -179,10 +179,10 @@ fn previous_cluster(text: &[u8], start: usize, end: usize, metrics: Metrics) -> 
     let mut at = start;
     while at < end {
         let cluster = Cluster::next(text, at, metrics)?;
+        previous = Some(cluster);
         if cluster.end >= end {
             break;
         }
-        previous = Some(cluster);
         at = cluster.end;
     }
     previous
@@ -366,6 +366,17 @@ mod tests {
         assert!(paragraph.truncated);
         assert_eq!(paragraph.count, 1);
         assert!(paragraph.lines[0].width < 3 * 6);
+    }
+
+    #[test]
+    fn an_ellipsised_line_keeps_every_glyph_that_fits() {
+        let paragraph = wrap(b"ABCDEFGH", 32, 1, Metrics::default());
+        assert!(paragraph.truncated);
+        assert_eq!(
+            paragraph.lines[0].end, 3,
+            "three 6 px glyphs and the 12 px mark"
+        );
+        assert_eq!(paragraph.lines[0].width, 18);
     }
 
     #[test]

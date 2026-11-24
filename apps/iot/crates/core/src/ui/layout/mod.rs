@@ -14,7 +14,7 @@ pub(crate) use self::node::{NodeInfo, NodeKind, Span};
 pub use self::scroll::{ScrollId, ScrollInfo};
 pub use self::style::{
     Align, Axis, Decoration, DecorationStyle, Flow, FontFamily, FontWeight, Inset, Justify, Length,
-    RunStyle, Style, TextAlign,
+    Overflow, RunStyle, Style, TextAlign,
 };
 
 use self::constraints::{INFINITY, Point, Size, Subpx, pixels, tight};
@@ -393,7 +393,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let loose = if horizontal {
                     BoxConstraints {
                         min_w: 0,
@@ -472,7 +472,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let main_size = self.nodes[usize::from(child)].alloc;
                 let constraints = if horizontal {
                     BoxConstraints {
@@ -516,7 +516,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let size = self.nodes[usize::from(child)].measured;
                 let cross_size = if horizontal { size.h } else { size.w };
                 let cross_offset = align_offset(
@@ -540,11 +540,13 @@ impl Tree {
             }
             child = next;
         }
-        if horizontal {
-            Size { w: main, h: cross }
+        let (w, h) = if horizontal {
+            (main, cross)
         } else {
-            Size { w: cross, h: main }
-        }
+            (cross, main)
+        };
+        self.place_absolute(id, w, h, Point::default(), text);
+        Size { w, h }
     }
 
     fn stretch_cross(&mut self, id: NodeId, horizontal: bool, cross: Subpx, text: &[u8]) {
@@ -552,7 +554,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let node = self.nodes[usize::from(child)];
-            if !node.style.absolute {
+            if !node.style.is_absolute() {
                 let main_size = node.alloc;
                 let constraints = if horizontal {
                     BoxConstraints {
@@ -594,7 +596,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let measured = self.nodes[usize::from(child)].measured;
                 let (main_size, cross_size) = if horizontal {
                     (measured.w, measured.h)
@@ -632,7 +634,7 @@ impl Tree {
             while child != NONE {
                 let next = self.nodes[usize::from(child)].next;
                 let child_node = self.nodes[usize::from(child)];
-                if !child_node.style.absolute {
+                if !child_node.style.is_absolute() {
                     let measured = self.nodes[usize::from(child)].measured;
                     let (main_size, cross_size) = if horizontal {
                         (measured.w, measured.h)
@@ -653,7 +655,7 @@ impl Tree {
             while child != end {
                 let next = self.nodes[usize::from(child)].next;
                 let child_node = self.nodes[usize::from(child)];
-                if !child_node.style.absolute {
+                if !child_node.style.is_absolute() {
                     let measured = self.nodes[usize::from(child)].measured;
                     let (main_size, cross_size) = if horizontal {
                         (measured.w, measured.h)
@@ -706,10 +708,39 @@ impl Tree {
             cursor = end;
             y += run_cross + gap + spacing;
         }
-        if horizontal {
-            Size { w: main, h: cross }
+        let (w, h) = if horizontal {
+            (main, cross)
         } else {
-            Size { w: cross, h: main }
+            (cross, main)
+        };
+        self.place_absolute(id, w, h, Point::default(), text);
+        Size { w, h }
+    }
+
+    /// Lays out a box's out-of-flow children once its content size is known; unplaced, their
+    /// rectangles stay empty.
+    fn place_absolute(
+        &mut self,
+        id: NodeId,
+        width: Subpx,
+        height: Subpx,
+        drift: Point,
+        text: &[u8],
+    ) {
+        let mut child = self.nodes[usize::from(id.0)].first;
+        while child != NONE {
+            let next = self.nodes[usize::from(child)].next;
+            let style = self.nodes[usize::from(child)].style;
+            if style.is_absolute() {
+                let size =
+                    self.layout_node(NodeId(child), BoxConstraints::loose(width, height), text);
+                let (x, y) = absolute_offset(&style, size, width, height);
+                self.nodes[usize::from(child)].offset = Point {
+                    x: x + drift.x,
+                    y: y + drift.y,
+                };
+            }
+            child = next;
         }
     }
 
@@ -729,7 +760,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let size = self.layout_node(
                     NodeId(child),
                     BoxConstraints {
@@ -752,12 +783,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if child_node.style.absolute {
-                let size =
-                    self.layout_node(NodeId(child), BoxConstraints::loose(width, height), text);
-                let (x, y) = absolute_offset(&child_node.style, size, width, height);
-                self.nodes[usize::from(child)].offset = Point { x, y };
-            } else {
+            if !child_node.style.is_absolute() {
                 let size = self.nodes[usize::from(child)].measured;
                 self.nodes[usize::from(child)].offset = Point {
                     x: align_offset(node.style.align, child_node.style.align_self, size.w, width),
@@ -771,6 +797,7 @@ impl Tree {
             }
             child = next;
         }
+        self.place_absolute(id, width, height, Point::default(), text);
         Size {
             w: width,
             h: height,
@@ -786,17 +813,21 @@ impl Tree {
         text: &[u8],
     ) -> Size {
         let horizontal = node.style.axis == Axis::Row;
+        // A stretched list gives each row the viewport's whole cross extent; without it a row
+        // that only grows has no width to grow into and collapses to its gaps.
+        let stretched = node.style.align == Align::Stretch;
+        let across_max = if horizontal { inner.max_h } else { inner.max_w };
         let unbounded = if horizontal {
             BoxConstraints {
                 min_w: 0,
                 max_w: INFINITY,
-                min_h: 0,
-                max_h: inner.max_h.max(0),
+                min_h: if stretched { across_max.max(0) } else { 0 },
+                max_h: across_max.max(0),
             }
         } else {
             BoxConstraints {
-                min_w: 0,
-                max_w: inner.max_w.max(0),
+                min_w: if stretched { across_max.max(0) } else { 0 },
+                max_w: across_max.max(0),
                 min_h: 0,
                 max_h: INFINITY,
             }
@@ -813,7 +844,7 @@ impl Tree {
         while across > 0 && child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let size = self.layout_node(NodeId(child), unbounded, text);
                 if count > 0 {
                     content += gap;
@@ -852,7 +883,7 @@ impl Tree {
         while child != NONE {
             let next = self.nodes[usize::from(child)].next;
             let child_node = self.nodes[usize::from(child)];
-            if !child_node.style.absolute {
+            if !child_node.style.is_absolute() {
                 let (main, across) = if horizontal {
                     (child_node.measured.w, child_node.measured.h)
                 } else {
@@ -878,6 +909,13 @@ impl Tree {
             }
             child = next;
         }
+        // An out-of-flow child rides the content, so it takes the same shift the rows did.
+        let drift = if horizontal {
+            Point { x: shift, y: 0 }
+        } else {
+            Point { x: 0, y: shift }
+        };
+        self.place_absolute(id, width, height, drift, text);
         Size {
             w: width,
             h: height,

@@ -35,21 +35,24 @@ impl Widget for Tabs<'_> {
         let muted = ui.color(theme.muted);
         let on_paper = ui.color(theme.on_accent);
         let paper = ui.color(theme.accent);
-        ui.row(Style::new().height(TOUCH_MIN as i16).gap(2), |ui| {
-            for (index, label) in self.labels.into_iter().enumerate() {
-                let on = index == usize::from(self.selected);
-                let style = Style::new()
-                    .grow(1)
-                    .basis(0)
-                    .center()
-                    .nowrap()
-                    .radius(3)
-                    .tag(self.tags[index])
-                    .text_align(TextAlign::Center)
-                    .background(if on { paper } else { ui.color(theme.ground) })
-                    .color(if on { on_paper } else { muted });
-                ui.text(label, style);
-            }
-        })
+        ui.row(
+            Style::new().height(TOUCH_MIN as i16).gap(2).stretch(),
+            |ui| {
+                for (index, label) in self.labels.into_iter().enumerate() {
+                    let on = index == usize::from(self.selected);
+                    let style = Style::new()
+                        .grow(1)
+                        .basis(0)
+                        .center()
+                        .nowrap()
+                        .radius(3)
+                        .tag(self.tags[index])
+                        .text_align(TextAlign::Center)
+                        .background(if on { paper } else { ui.color(theme.ground) })
+                        .color(if on { on_paper } else { muted });
+                    ui.text(label, style);
+                }
+            },
+        )
     }
 }

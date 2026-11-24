@@ -30,13 +30,14 @@ pub fn card(rect: Rect) -> Rect {
 
 impl Dialog<'_> {
     pub fn draw(self, canvas: &mut Canvas<'_>, rect: Rect, theme: &Theme) {
-        canvas.set_color(Some(theme.overlay));
+        canvas.set_color(Some(theme.ground));
         canvas.fill_rect(rect);
         let card = card(rect);
-        canvas.set_color(Some(theme.ground));
+        canvas.set_color(Some(theme.surface));
         canvas.fill_round_rect(card, 4);
         canvas.set_color(Some(theme.muted));
         canvas.stroke_round_rect(card, 4);
+        canvas.push_clip(card);
         let width = canvas.measure(self.title) as i32;
         canvas.set_color(Some(theme.ink));
         canvas.draw_text(
@@ -51,6 +52,7 @@ impl Dialog<'_> {
             (card.x + (card.w - width) / 2).max(0) as usize,
             (card.y + BODY_TOP).max(0) as usize,
         );
+        canvas.pop_clip();
         canvas.set_color(Some(theme.muted));
         canvas.draw_line(
             card.x as isize,
@@ -83,12 +85,14 @@ impl Dialog<'_> {
 
     fn label(&self, canvas: &mut Canvas<'_>, rect: Rect, run: &[u8], theme: &Theme, accent: bool) {
         let width = canvas.measure(run) as i32;
+        canvas.push_clip(rect);
         canvas.set_color(Some(if accent { theme.accent } else { theme.muted }));
         canvas.draw_text(
             run,
             (rect.x + (rect.w - width) / 2).max(0) as usize,
             (rect.y + (rect.h - LINE as i32) / 2).max(0) as usize,
         );
+        canvas.pop_clip();
     }
 }
 

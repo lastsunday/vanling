@@ -30,7 +30,8 @@ pub fn key_label(key: Key, layer: Layer) -> &'static [u8] {
         Key::Layer => match layer {
             Layer::Abc => b"123",
             Layer::Digits => b"#&?",
-            Layer::Symbols => b"abc",
+            Layer::Symbols => b"&+",
+            Layer::More => b"abc",
         },
         Key::Shift => b"SH",
         Key::Backspace => b"<-",
@@ -395,7 +396,8 @@ mod tests {
     fn the_layer_key_names_the_layer_it_switches_to() {
         assert_eq!(key_label(Key::Layer, Layer::Abc), b"123");
         assert_eq!(key_label(Key::Layer, Layer::Digits), b"#&?");
-        assert_eq!(key_label(Key::Layer, Layer::Symbols), b"abc");
+        assert_eq!(key_label(Key::Layer, Layer::Symbols), b"&+");
+        assert_eq!(key_label(Key::Layer, Layer::More), b"abc");
     }
 
     #[test]

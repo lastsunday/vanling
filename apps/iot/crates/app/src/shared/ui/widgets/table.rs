@@ -1,13 +1,14 @@
 //! A header plus fixed cells, drawn on one canvas: columns share the width equally.
 
-use iot_core::ui::panel::{LINE, TOUCH_MIN};
+use iot_core::ui::panel::LINE;
 use iot_core::ui::{Canvas, Rect};
 
 use crate::shared::ui::theme::Theme;
 
 /// One text line plus the rule's breathing room.
 pub const HEADER_H: i16 = LINE as i16 + 4;
-pub const ROW_H: i16 = TOUCH_MIN as i16;
+/// A data row: two lines tall, dense enough that four of them leave the page room.
+pub const ROW_H: i16 = LINE as i16 * 2 + 4;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Table<'a> {

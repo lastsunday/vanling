@@ -50,6 +50,12 @@ impl Scroller {
         self.scroll.moving()
     }
 
+    /// Whether a finger already owns this gesture: a scroll or a slide in flight. A page that
+    /// reads its own canvas must not answer the lift that belongs to that gesture.
+    pub fn dragging(&self) -> bool {
+        self.drag.is_some() || self.slide.is_some()
+    }
+
     pub fn area_at(&self, x: i32, y: i32) -> Option<u8> {
         self.scroll.area_at(x, y)
     }
