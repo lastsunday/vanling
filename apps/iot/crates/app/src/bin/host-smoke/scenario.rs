@@ -73,6 +73,9 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     Timer::after(Duration::from_millis(3_200)).await;
 
+    // The boot page is the menu; the lamp's verbs live on the light-only pages.
+    triple_click_to(PageId::Input).await;
+
     PRESSED[0].store(true, Ordering::SeqCst);
     Timer::after(LONG_HOLD).await;
     PRESSED[0].store(false, Ordering::SeqCst);
