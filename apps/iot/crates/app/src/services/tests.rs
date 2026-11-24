@@ -92,9 +92,9 @@ fn fingerprint(frame: &[u8]) -> u32 {
 }
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
-const GOLDEN: [(&str, bool, u32); 22] = [
-    ("menu", false, 0x588e_8ac1),
-    ("menu", true, 0x3310_ba71),
+const GOLDEN: [(&str, bool, u32); 32] = [
+    ("menu", false, 0x3ca9_d77c),
+    ("menu", true, 0x64ef_df2c),
     ("input", false, 0xc18e_7dc5),
     ("input", true, 0xb334_d787),
     ("attitude", false, 0x4404_48b2),
@@ -115,6 +115,16 @@ const GOLDEN: [(&str, bool, u32); 22] = [
     ("text", true, 0x7aae_e74e),
     ("widgets", false, 0x9246_7a40),
     ("widgets", true, 0x8522_dff0),
+    ("advanced", false, 0x1491_3b92),
+    ("advanced", true, 0x0ed5_7342),
+    ("feedback", false, 0xac56_44ea),
+    ("feedback", true, 0x8761_6e9a),
+    ("extended", false, 0x4bcc_d28e),
+    ("extended", true, 0x5d8f_f83e),
+    ("data", false, 0x8727_2891),
+    ("data", true, 0x071a_da41),
+    ("list", false, 0x9e17_da2d),
+    ("list", true, 0x5dc1_73dd),
 ];
 
 /// The one path the board takes that the golden table does not: every page through a real glyph
@@ -175,6 +185,11 @@ fn a_language_switch_reaches_the_ink() {
         PageId::Speaker,
         PageId::Camera,
         PageId::Network,
+        PageId::Advanced,
+        PageId::Feedback,
+        PageId::Extended,
+        PageId::Data,
+        PageId::List,
     ];
     for page in speaking {
         let ink = |lang| {
@@ -397,10 +412,6 @@ fn motion() -> FrameSnapshot {
     }
 }
 
-#[test]
-#[test]
-#[test]
-#[test]
 #[test]
 fn the_attitude_page_with_numbers_draws_the_recorded_picture() {
     let actual = fingerprint(&render_snapshot(&motion(), false));

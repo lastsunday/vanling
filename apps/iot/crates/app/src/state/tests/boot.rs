@@ -93,7 +93,17 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
         ..Default::default()
     }));
     assert_eq!(manager.state().page(), PageId::Camera);
-    for expected in [PageId::Env, PageId::Text, PageId::Widgets, PageId::Menu] {
+    for expected in [
+        PageId::Env,
+        PageId::Text,
+        PageId::Widgets,
+        PageId::Advanced,
+        PageId::Feedback,
+        PageId::Extended,
+        PageId::Data,
+        PageId::List,
+        PageId::Menu,
+    ] {
         feed_input(&mut manager, triple_click());
         assert_eq!(manager.state().page(), expected);
     }

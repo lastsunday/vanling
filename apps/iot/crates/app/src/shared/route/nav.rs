@@ -181,6 +181,23 @@ mod tests {
         );
         assert_eq!(nav.advance(bare), PageId::Text, "then the other one");
         assert_eq!(nav.advance(bare), PageId::Widgets, "then the widget bench");
+        assert_eq!(
+            nav.advance(bare),
+            PageId::Advanced,
+            "then the advanced bench"
+        );
+        assert_eq!(
+            nav.advance(bare),
+            PageId::Feedback,
+            "then the feedback bench"
+        );
+        assert_eq!(
+            nav.advance(bare),
+            PageId::Extended,
+            "then the extended bench"
+        );
+        assert_eq!(nav.advance(bare), PageId::Data, "then the data bench");
+        assert_eq!(nav.advance(bare), PageId::List, "then the feed");
         assert_eq!(nav.advance(bare), PageId::Menu, "then home");
         assert_eq!(nav.advance(bare), PageId::Input, "and the lap comes round");
         assert_eq!(nav.depth, 1);

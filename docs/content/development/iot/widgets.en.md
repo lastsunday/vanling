@@ -2,15 +2,15 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "911cc14a86b789443ec108975e1819826ba8d283"
-translated_at = "2026-11-23T00:00:00Z"
+source_file_hash = "91c4c4ba9745651727161c37e3c545bcda2525f3"
+translated_at = "2026-11-24T02:38:01Z"
 +++
 
 # UI Widgets
 
 The panel's widget vocabulary: two shapes, states and theme, rounded corners, the basic widgets, the pages built from them, cell drawing, i18n and budgets.
 
-> Status: the basic widgets are in place (`core::ui::widget` + `shared::ui::widgets`); advanced and optional widgets are only a list.
+> Status: the basic widgets and 25 advanced widgets are in place, shown by the `Widgets` page and the `Advanced` / `Feedback` / `Extended` / `Data` galleries; one `Feed` component provides both pull-to-refresh and load-more. Optional widgets are still a list.
 
 ## Two shapes
 
@@ -200,8 +200,13 @@ pub enum Slot<'a> {
 | --- | --- |
 | `Menu` | A three-column button grid of every page; pages the board cannot back are greyed and do not navigate. The boot page whenever a screen is present. |
 | `Widgets` | The basic-widget gallery: five sections (actions / selection / input / display / rows), each under a heading, the whole page in one scroll box; controls that can hold a value are tappable. |
+| `Advanced` | The navigation / composed gallery: `AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager` and `Accordion` / `Segmented` / `Stepper`, one scroll box. |
+| `Feedback` | The feedback gallery: `Banner` / `Toast` / `Skeleton` / `LoadingOverlay`; the banner raises a toast and the placeholder swaps for content. |
+| `Extended` | The input gallery: `SearchField` / `FilterChips` / `FormField` / `NumberField` / `Keypad`; focusing the search field hands the page to the keyboard. |
+| `Data` | The data / overlay gallery: `Table` / `Chart` / `Gauge` / `SwipeAction` / `EmptyState` and `Dialog` / `PopupMenu` / `Sheet`; a row, a bar and the dial share the page state. |
+| `List` | The `Feed` demo: pull to refresh, load more, swipe to delete, empty state. |
 
-`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower and still needs no scrolling.
+`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower; the fourteen entries fill five rows, and the last one needs a scroll to reach, with hits still resolved against the offset.
 
 The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
 
@@ -209,34 +214,101 @@ A focused `TextField` replaces the page with a 4×4 keyboard (`ui::keyboard`, a 
 
 ## Advanced widgets
 
-Composites, navigation, feedback and data display, built as the product needs them. Not yet in place:
+Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widgets`, one file each. Four pages show them: `Advanced` covers navigation and composed, `Feedback` feedback, `Extended` input, and `Data` data and overlay.
 
-| Widget | Shape | Reference |
+### Navigation
+
+| Widget | Shape | Notes |
 | --- | --- | --- |
-| `ListView` (windowed) | C | `ListView.builder` |
-| `GridView` / `Table` | C | `GridView` / `DataTable` |
-| `Accordion` | W | `ExpansionTile` |
-| `Tabs` / `TabView` | W | `TabBar` / `TabBarView` |
-| `SegmentedButton` | W | `SegmentedButton` |
-| `Stepper` | W | `Stepper` |
-| `PageIndicator` | C | Carousel dots |
-| `SwipeAction` | C | `Dismissible` |
-| `AppBar` | W | `AppBar` |
-| `NavigationBar` | W | `NavigationBar` |
-| `Drawer` / `BottomSheet` | W | `Drawer` / `showModalBottomSheet` |
-| `Menu` | W | `PopupMenuButton` |
-| `Dialog` | W | `AlertDialog` |
-| `Toast` | W | `SnackBar` |
-| `Banner` | W | `MaterialBanner` |
-| `EmptyState` / `ErrorState` | W | No official; Ant `Empty` / `Result` |
-| `LoadingOverlay` | W | No official; MUI `Backdrop` |
-| `Skeleton` | W/C | Community `Skeleton` |
-| `Form` / `FormField` | W | `Form` / `FormField` |
-| `NumberField` | W | `TextField` + formatter |
-| `Keypad` | C | No official |
-| `SearchField` | W | `SearchBar` |
-| `FilterChips` | W | `FilterChip` |
-| `Chart` / `Gauge` / `Scale` | C | No official; `fl_chart` is reference only |
+| `AppBar` | W | Title plus an action at the right; the action carries a tag |
+| `NavigationBar` | W | Three-cell bottom navigation, the selected cell filled |
+| `Tabs` | W | Three tabs, the underline follows the selection |
+| `PageIndicator` | C | Carousel dots; `dot_at` gives each dot a `TOUCH_MIN`-wide target, `fit` drops dots that do not fit |
+| `Pager` | W | A horizontal card strip: `card_width` / `pitch` derive from `rect`, `turn` maps travel to an index, `page_at` serves taps |
+
+### Composed
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `Accordion` | W | Title plus a body; the page owns `open` |
+| `Segmented` | W | Three mutually exclusive segments |
+| `Stepper` | W | Three-step progress, `current` highlighted |
+
+### Feedback
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `Banner` | W | Message plus an action |
+| `Toast` | W | One-line notice; the page gives the width |
+| `Skeleton` | W | Grey placeholder bar |
+| `LoadingOverlay` | W | Translucent scrim plus a caption, switched by `on` |
+
+### Input
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `SearchField` | W | Magnifier cell plus value/placeholder; a tap hands the page to `ui::keyboard` |
+| `FilterChips` | W | Three multi-select chips; the selection is a bit set |
+| `FormField` | W | Label, value and hint; `State::ERROR` draws the error edge |
+| `NumberField` | W | A value with minus/plus 44 px hit areas |
+| `Keypad` | C | 4×3 phone keypad; `key_at` and `draw` share `KEYS` |
+
+### Data
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `Table` | C | A header plus four fixed rows, evenly split columns |
+| `Chart` | C | Bars for values 0–100 |
+| `Gauge` | C | Half dial with a needle |
+| `SwipeAction` | C | A left slide uncovers an action band, capped at `REVEAL_MAX` |
+| `EmptyState` | W | Title and hint in `Tone::Empty` or `Tone::Error` |
+
+### Overlay
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `Dialog` | C | Centred card and scrim; `action_at` splits OK from cancel |
+| `PopupMenu` | W | Three menu rows, the selected one filled |
+| `Sheet` | W | `Edge::Bottom` / `Edge::Left` drawer; the demo uses the bottom edge |
+
+Every control reports hits through `Style::tag` and is measured once at construction with `TagTable::measure`. A gallery's `bind` returns only `Gallery { wire, intent }`, where `wire` is the route code, so `shared::intent` does not depend on `shared::route`. Dialog, Keypad, Table, Chart, Gauge and SwipeAction are custom slots; their hit test uses the rectangle from `Ui::paint_rect`, the same geometry as the paint, and Table rows, Chart bars and Keypad cells reuse the equal-split arithmetic their painters use. The `Data` dialog is an `absolute` sibling outside the scroll region, so the card does not scroll away; the scrim covers the gallery, and while `dialog` is true the page takes the tap first.
+
+`Pager` and `PageIndicator` share one index on `Advanced`: cards drag, cards tap and dots tap, and all three land on the same card. Card width and pitch derive from the strip, so no pixel count is pinned.
+
+### Tap matrix
+
+| Page | Tappable | Decoration only |
+| --- | --- | --- |
+| `Advanced` | AppBar action, three nav cells, three tabs, every dot, every card, the accordion header, the segmented cells, the stepper | The selected tab's highlight itself |
+| `Feedback` | Banner action, toast, placeholder toggle, scrim caption | `Skeleton` bars, `Divider` |
+| `Extended` | Search field, three chips, the form, the number stepper, twelve keys | — |
+| `Data` | Four table rows, six bars, the dial, the sliding row, the empty state, two dialog answers, three menu rows, two sheet rows | The chart baseline |
+
+The test is whether there is an action: decorative widgets carry no tag and do nothing when tapped, while a tagged control's root node is the hit area, so the page never guesses at inner layout. Press and drag are arbitrated by `Scroller` in `services/gallery.rs`: it records the press point and tag, a move within `DRAG_SLOP` is a Tap, a longer vertical move claims the scroll region, and a horizontal move on a slide control becomes `Slide`; the first claimer owns the gesture.
+
+### Adaptive sizing
+
+- Tappable elements bottom out at `TOUCH_MIN = 44`: the `Tabs` / `Segmented` / `Stepper` / `NavigationBar` rows, the `Accordion` header, the `Banner` action, the `NumberField` steppers and a `Keypad` cell all take it.
+- Canvas widgets derive their size from `rect` and text metrics: `Table` uses `LINE + 4` for the header and `TOUCH_MIN` per row; `Dialog` uses `TOUCH_MIN` for the action band and sums the band, the title/body lines and `MARGIN` for the card; `Chart` / `Gauge` / `Keypad` scale with `rect`; `SwipeAction` still caps the uncovered band at `REVEAL_MAX`.
+- A page's custom-slot heights are multiples of `page::TOUCH` (two rows for the dial and chart, four for the keypad), not sample magic numbers.
+
+## Feed
+
+`shared/ui/feed.rs` is one component for three jobs: a list, pull-to-refresh and load-more. Both edge gestures act on one scroll region, and two components would duplicate the offset and the drag state.
+
+| Item | Contract |
+| --- | --- |
+| Rows | `ROW_H` starts at `TOUCH_MIN`; a `Source` supplies rows, and painting declares no nodes |
+| Content | `content(rows) = rows * ROW_H + FOOTER_H`; the footer always stays inside, so `max` does not jump |
+| Pull | The top edge overscrolls only when `ScrollConfig.pull > 0`; a release past `PULL_MIN = 28 px` refreshes |
+| Load | A release within `LOAD_AHEAD = 24 px` of the end asks for the next page, once per row count |
+| Footer | `More::{Idle, Running, End, Failed}`; a failed page may be asked again |
+| Answer | The page calls `loaded(rows, end)` when its data returns, or `failed()` |
+| Delete | The page owns the band a left slide uncovers; `Feed` only takes `reveal: Option<(row, px)>` |
+
+`Feed` owns no data: `FeedView` takes a `Source`, `Words`, the offset, the pull and the two edge states, and `draw` paints the visible rows and the footer in one pass. `asked_at` records the row count of the last request, so the same count is never asked twice; `reset()` clears the drag, the edges and that record.
+
+The `List` page is the demo: 34 rows over pages of 8, with 600 ms of fake work per edge. A pull resets to the first page, loading appends pages until `End`, a left slide then a tap on the band deletes the row, and a tap on the row itself selects it. With no rows the list shows `EMPTY` centred, and the pull indicator floats at the top.
 
 ## Optional widgets
 
@@ -247,7 +319,7 @@ Composites, navigation, feedback and data display, built as the product needs th
 | `TreeView` / `Timeline` / `Heatmap` | Sensor history |
 | `QRCode` / `Barcode` | Setup sharing, device labels |
 | `PageView` / `Carousel` | Multi-page onboarding |
-| `ReorderableList` / `PullToRefresh` | Ordering and refresh |
+| `ReorderableList` | Ordering; `PullToRefresh` is now part of `Feed` |
 | `RichTextEditor` | Selection and undo are expensive |
 | Implicit animation / `Hero` / `Focus` | The page `tick` can drive them when needed |
 | `SplitView` / `Masonry` | Desktop or multi-column; not this panel |
@@ -328,7 +400,7 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 | Nodes | `ui.node_count()` |
 | Text | `ui.text_bytes()` |
 | Colours | The page-wide `MAX_COLORS` |
-| Golden | One fingerprint per widget; the page table is separate |
+| Golden | One fingerprint per page and debug state; `Advanced` / `Feedback` / `Extended` / `Data` / `List` add two each |
 | Hit | Painted rectangle equals the headless rectangle |
 
 After a change:

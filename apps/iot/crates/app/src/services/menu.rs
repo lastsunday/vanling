@@ -14,7 +14,7 @@ use crate::shared::snapshot::{
 };
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{
-    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
+    BAR, DRAG_SLOP, Drag, Press, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
 };
 use crate::shared::ui::state::State;
 use crate::shared::ui::tag::TagTable;
@@ -26,7 +26,7 @@ const AREA: ScrollId = ScrollId::new(1);
 const COLUMNS: usize = 3;
 const BUTTON_W: i16 = 98;
 const GAP: i16 = 6;
-const COUNT: usize = 9;
+const COUNT: usize = PageId::ALL.len() - 2;
 const ROWS: usize = COUNT.div_ceil(COLUMNS);
 
 /// The language chips sit outside the grid, so their tags stay clear of the page codes.
@@ -37,6 +37,7 @@ const TAGS: usize = COUNT + 2;
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
     bar: true,
+    pull: 0,
 };
 
 /// A scroll frame blits the pixels already in the buffer, so it fits the loop's 20 ms cadence.
@@ -46,6 +47,7 @@ const REPAINT_MS: u64 = 20;
 pub struct MenuPage {
     scroll: ScrollState<1>,
     drag: Option<Drag>,
+    press: Option<Press>,
     tags: TagTable<TAGS>,
 }
 
@@ -59,6 +61,7 @@ impl Default for MenuPage {
         Self {
             scroll,
             drag: None,
+            press: None,
             tags: TagTable::measure(&ui),
         }
     }
@@ -133,21 +136,36 @@ impl super::Service for MenuPage {
         match *intent {
             // The manager turns a choice into navigation; the page owns no destination.
             MenuIntent::Choose { .. } => {}
-            MenuIntent::Press { area } => {
-                // A finger stops a glide, but claims no drag: a tap that never moves has to
-                // reach the button underneath. The first drag sample claims instead.
-                self.scroll.scroll(area, 0, 0);
+            MenuIntent::Press { id, tag, x, y } => {
+                // A press over a button is only remembered: a tap that never moves still has
+                // to reach that button, while the first drag claims the region beneath it.
+                let x = i16::try_from(x).unwrap_or(i16::MAX);
+                let y = i16::try_from(y).unwrap_or(i16::MAX);
+                self.press = Some(Press { id, tag, x, y });
+                if tag == 0
+                    && let Some(area) = self.scroll.area_at(i32::from(x), i32::from(y))
+                {
+                    self.claim(id, area, y, 0);
+                    self.press = None;
+                }
             }
             MenuIntent::Drag { id, x, y, at_ms } => {
                 let y = i16::try_from(y).unwrap_or(i16::MAX);
-                let Some(drag) = self.drag.as_mut().filter(|drag| drag.id == id) else {
-                    if let Some(area) = self.scroll.area_at(i32::from(x), i32::from(y)) {
-                        self.claim(id, area, y, at_ms);
+                if let Some(drag) = self.drag.as_mut().filter(|drag| drag.id == id) {
+                    let delta = drag.step(y, at_ms);
+                    self.scroll.drag(drag.area, delta);
+                } else if let Some(press) = self.press.take().filter(|press| press.id == id) {
+                    if let Some(area) = self.scroll.area_at(i32::from(press.x), i32::from(press.y))
+                    {
+                        self.scroll.drag(area, 0);
+                        let mut drag = Drag::new(id, area, press.y, 0);
+                        let delta = drag.step(y, at_ms);
+                        self.scroll.drag(area, delta);
+                        self.drag = Some(drag);
                     }
-                    return (None, Effects::default());
-                };
-                let delta = drag.step(y, at_ms);
-                self.scroll.drag(drag.area, delta);
+                } else if let Some(area) = self.scroll.area_at(i32::from(x), i32::from(y)) {
+                    self.claim(id, area, y, at_ms);
+                }
             }
             MenuIntent::Release {
                 id,
@@ -156,6 +174,7 @@ impl super::Service for MenuPage {
                 speed,
                 at_ms,
             } => {
+                self.press = None;
                 if let Some((area, speed)) = lift(&mut self.drag, id, at_ms) {
                     self.scroll.fling(area, speed);
                 }
@@ -201,11 +220,21 @@ impl super::LocalPage for MenuPage {
                         page: page.code(),
                     }))
             }
-            InputEvent::Gesture(GestureEvent::Press { x, y, .. }) => {
-                let area = area(x, y)?;
-                Some(BusinessIntent::Menu(MenuIntent::Press { area }))
+            InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
+                let tag = self.tag_at(i32::from(x), i32::from(y));
+                if tag == 0 && area(x, y).is_none() {
+                    return None;
+                }
+                Some(BusinessIntent::Menu(MenuIntent::Press { id, tag, x, y }))
             }
             InputEvent::Gesture(GestureEvent::Drag { id, x, y, at_ms }) => {
+                if let Some(press) = self.press.filter(|press| press.id == id) {
+                    let dx = i32::from(x) - i32::from(press.x);
+                    let dy = i32::from(y) - i32::from(press.y);
+                    if dx.abs() < i32::from(DRAG_SLOP) && dy.abs() < i32::from(DRAG_SLOP) {
+                        return None;
+                    }
+                }
                 Some(BusinessIntent::Menu(MenuIntent::Drag { id, x, y, at_ms }))
             }
             InputEvent::Gesture(GestureEvent::Swipe {
@@ -268,6 +297,7 @@ impl super::LocalPage for MenuPage {
     fn on_hide(&mut self) {
         self.scroll.reset();
         self.drag = None;
+        self.press = None;
     }
 }
 
@@ -368,6 +398,11 @@ fn page_name(page: PageId) -> Msg {
         PageId::Env => Msg::PageEnv,
         PageId::Text => Msg::PageText,
         PageId::Widgets => Msg::PageWidgets,
+        PageId::Advanced => Msg::PageAdvanced,
+        PageId::Feedback => Msg::PageFeedback,
+        PageId::Extended => Msg::PageExtended,
+        PageId::Data => Msg::PageData,
+        PageId::List => Msg::PageList,
     }
 }
 
@@ -390,7 +425,7 @@ mod tests {
     use iot_core::drivers::board::Backed;
     use iot_core::drivers::motion::MotionCapabilities;
     use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-    use iot_core::ui::{BoxConstraints, PX, Screen};
+    use iot_core::ui::{PX, Screen};
 
     const ALL: Backed = Backed {
         motion: Some(MotionCapabilities::EMPTY),
@@ -419,6 +454,15 @@ mod tests {
 
     fn page_at(page: &MenuPage, x: i32, y: i32) -> Option<PageId> {
         PageId::from_code(u8::try_from(page.tag_at(x, y).checked_sub(1)?).ok()?)
+    }
+
+    /// Brings `content_y` into the middle of the box, so a row below the fold can be touched.
+    fn scroll_to(page: &mut MenuPage, content_y: i32) {
+        let area = page.scroll.areas()[0];
+        let max = i32::from(area.max());
+        let target = (content_y - (area.rect.y + area.rect.h / 2)).clamp(0, max);
+        let delta = i16::try_from(target - i32::from(area.offset)).unwrap_or(0);
+        page.scroll.drag(0, delta);
     }
 
     #[test]
@@ -461,8 +505,13 @@ mod tests {
 
     #[test]
     fn a_button_centre_maps_to_the_page_drawn_there() {
-        let page = MenuPage::default();
+        let mut page = MenuPage::default();
         for expected in entries() {
+            let rect = page
+                .tags
+                .rect(expected.code() as u16 + 1)
+                .expect("the page is listed");
+            scroll_to(&mut page, rect.y + rect.h / 2);
             let (x, y) = page.button_centre(expected).expect("the page is listed");
             assert_eq!(page_at(&page, i32::from(x), i32::from(y)), Some(expected));
         }
@@ -470,7 +519,7 @@ mod tests {
 
     #[test]
     fn the_gaps_between_buttons_are_not_buttons() {
-        let page = MenuPage::default();
+        let mut page = MenuPage::default();
         let area = page.scroll.areas()[0].rect;
         assert_eq!(page_at(&page, area.x, area.y), entry(0));
         assert_eq!(page_at(&page, area.x + i32::from(BUTTON_W), area.y), None);
@@ -478,8 +527,33 @@ mod tests {
             page_at(&page, area.x, area.y + i32::from(TOUCH_MIN as i16)),
             None
         );
-        assert_eq!(page_at(&page, area.right() - 1, area.bottom() - 1), None);
         assert_eq!(page_at(&page, area.x - 1, area.y), None);
+
+        let last = page
+            .tags
+            .rect(entry(COUNT - 2).expect("a page").code() as u16 + 1)
+            .expect("the last row is laid out");
+        scroll_to(&mut page, last.y + last.h / 2);
+        let area = page.scroll.areas()[0].rect;
+        assert_eq!(
+            page_at(&page, area.x, area.bottom() - 1),
+            entry(COUNT - 2),
+            "the last row starts under the first column"
+        );
+        assert_eq!(
+            page_at(
+                &page,
+                area.x + i32::from(BUTTON_W) + i32::from(GAP),
+                area.bottom() - 1
+            ),
+            entry(COUNT - 1),
+            "the last button sits under the second column"
+        );
+        assert_eq!(
+            page_at(&page, area.right() - 1, area.bottom() - 1),
+            None,
+            "the last row has two buttons, not three"
+        );
     }
 
     fn apply(page: &mut MenuPage, intent: BusinessIntent) {

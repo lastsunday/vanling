@@ -64,6 +64,14 @@ pub enum BusinessIntent {
     Menu(MenuIntent),
     /// What a finger asks of the Widgets page: a control, its slider, or the gallery's scroll.
     Widgets(WidgetsIntent),
+    /// What a finger asks of a demo gallery: the tag it touched, or the scroll under it. The
+    /// gallery is named by its route wire code, the way `NavigationIntent::Go` names a page.
+    Gallery {
+        wire: u8,
+        intent: GalleryIntent,
+    },
+    /// What a finger asks of the feed: its rows, its two edges, and the band a swipe uncovers.
+    List(ListIntent),
     /// What a finger asks of the device's own record rather than of a page.
     Settings(SettingsIntent),
     /// One light surface and the verb it is asked for; the instance is routing, not part of the verb.
@@ -155,9 +163,12 @@ pub enum MenuIntent {
     Choose {
         page: u8,
     },
-    /// A finger landed in the box: a glide in the region stops where it is.
+    /// A contact landed in the box; `tag` is the button or chip under it, zero for a gap.
     Press {
-        area: u8,
+        id: u8,
+        tag: u16,
+        x: u16,
+        y: u16,
     },
     Drag {
         id: u8,
@@ -186,6 +197,9 @@ pub enum WidgetsIntent {
     /// A control was pressed; `action` is the one the page drew there.
     Press {
         action: WidgetsAction,
+        id: u8,
+        x: u16,
+        y: u16,
     },
     /// The lift landed on the same control: toggle it.
     Tap {
@@ -232,6 +246,92 @@ pub enum WidgetsIntent {
 pub enum SettingsIntent {
     /// The panel's words from now on; a build names the one it starts in.
     SetLang { lang: Lang },
+}
+
+/// What a finger asks of a demo gallery: the control it touched, or the scroll under it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GalleryIntent {
+    /// A contact landed; `tag` is the control under it, zero for bare canvas.
+    Press {
+        id: u8,
+        tag: u16,
+        x: u16,
+        y: u16,
+    },
+    /// The lift landed on the same control.
+    Tap {
+        tag: u16,
+    },
+    /// A key of the field's keyboard.
+    Key {
+        key: Key,
+        at_ms: u32,
+    },
+    /// One cell of the page's own keypad, `0..12`.
+    Pad {
+        cell: u8,
+    },
+    /// A horizontal drag over a slide control: `dx` is travel from where the finger landed.
+    Slide {
+        id: u8,
+        tag: u16,
+        dx: i16,
+    },
+    /// The slide's lift, with its total travel: the page snaps to the card that travel picks.
+    SlideEnd {
+        id: u8,
+        tag: u16,
+        dx: i16,
+    },
+    /// A finger landed in the gallery's box rather than on a control.
+    Grab {
+        id: u8,
+        area: u8,
+        y: i16,
+    },
+    Drag {
+        id: u8,
+        x: u16,
+        y: u16,
+        at_ms: u32,
+    },
+    /// The lift, with the point it happened at: a list edge reads both.
+    Release {
+        id: u8,
+        area: u8,
+        lines: i8,
+        speed: u16,
+        at_ms: Option<u32>,
+        x: u16,
+        y: u16,
+    },
+    Scroll {
+        area: u8,
+        lines: i8,
+        speed: u16,
+    },
+}
+
+/// What a finger asks of the feed demo: a row, a scroll, or one of the two edges.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ListIntent {
+    /// The finger landed in the list.
+    Press { id: u8, x: u16, y: u16 },
+    /// The finger moved: horizontal travel uncovers an action, vertical travel scrolls.
+    Drag { id: u8, x: u16, y: u16, at_ms: u32 },
+    /// The finger lifted, with a swipe's step and speed when the classifier named one.
+    Release {
+        id: u8,
+        x: u16,
+        y: u16,
+        lines: i8,
+        speed: u16,
+        at_ms: Option<u32>,
+    },
+    /// A wheel or a key stepped the list.
+    Scroll { lines: i8, speed: u16 },
+    /// A lift that the classifier reported as a tap.
+    Tap { x: u16, y: u16 },
 }
 
 /// The lamp's verbs; `Cycle` is the only one that leaves `Off`.

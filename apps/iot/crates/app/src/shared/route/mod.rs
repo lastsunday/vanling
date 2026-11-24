@@ -27,6 +27,16 @@ pub enum PageId {
     Env,
     Text,
     Widgets,
+    /// The advanced-widget gallery: navigation and composed controls.
+    Advanced,
+    /// The feedback-widget gallery: notices, placeholders, busy overlays.
+    Feedback,
+    /// The extended-widget gallery: input fields, chips and the keypad.
+    Extended,
+    /// The data-widget gallery: marks, a sliding row, and overlays.
+    Data,
+    /// The feed demo: pull to refresh, release to load more, swipe to delete.
+    List,
 }
 
 impl PageId {
@@ -177,10 +187,50 @@ static WIDGETS: Route = Route {
     timeout_ms: None,
 };
 
+static ADVANCED: Route = Route {
+    path: "advanced",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
+static FEEDBACK: Route = Route {
+    path: "feedback",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
+static EXTENDED: Route = Route {
+    path: "extended",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
+static DATA: Route = Route {
+    path: "data",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
+static LIST: Route = Route {
+    path: "list",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
 impl PageId {
     /// Every page, in the button's order: the wire code is its index, and [`Self::next_page`]
     /// walks it.
-    pub const ALL: [Self; 11] = [
+    pub const ALL: [Self; 16] = [
         Self::Menu,
         Self::Input,
         Self::Attitude,
@@ -192,6 +242,11 @@ impl PageId {
         Self::Env,
         Self::Text,
         Self::Widgets,
+        Self::Advanced,
+        Self::Feedback,
+        Self::Extended,
+        Self::Data,
+        Self::List,
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
@@ -210,6 +265,11 @@ impl PageId {
             Self::Env => &ENV,
             Self::Text => &TEXT,
             Self::Widgets => &WIDGETS,
+            Self::Advanced => &ADVANCED,
+            Self::Feedback => &FEEDBACK,
+            Self::Extended => &EXTENDED,
+            Self::Data => &DATA,
+            Self::List => &LIST,
         }
     }
 
@@ -389,7 +449,17 @@ mod tests {
                 camera,
                 network,
             };
-        let bare = [PageId::Env, PageId::Text, PageId::Widgets, PageId::Menu];
+        let bare = [
+            PageId::Env,
+            PageId::Text,
+            PageId::Widgets,
+            PageId::Advanced,
+            PageId::Feedback,
+            PageId::Extended,
+            PageId::Data,
+            PageId::List,
+            PageId::Menu,
+        ];
         assert_eq!(lap(Backed::NONE), bare);
         assert_eq!(
             lap(board(true, false, false, false, false)),
@@ -398,6 +468,11 @@ mod tests {
                 PageId::Env,
                 PageId::Text,
                 PageId::Widgets,
+                PageId::Advanced,
+                PageId::Feedback,
+                PageId::Extended,
+                PageId::Data,
+                PageId::List,
                 PageId::Menu
             ]
         );
@@ -408,6 +483,11 @@ mod tests {
                 PageId::Env,
                 PageId::Text,
                 PageId::Widgets,
+                PageId::Advanced,
+                PageId::Feedback,
+                PageId::Extended,
+                PageId::Data,
+                PageId::List,
                 PageId::Menu
             ]
         );
@@ -418,6 +498,11 @@ mod tests {
                 PageId::Env,
                 PageId::Text,
                 PageId::Widgets,
+                PageId::Advanced,
+                PageId::Feedback,
+                PageId::Extended,
+                PageId::Data,
+                PageId::List,
                 PageId::Menu
             ]
         );
@@ -428,6 +513,11 @@ mod tests {
                 PageId::Env,
                 PageId::Text,
                 PageId::Widgets,
+                PageId::Advanced,
+                PageId::Feedback,
+                PageId::Extended,
+                PageId::Data,
+                PageId::List,
                 PageId::Menu
             ]
         );
@@ -438,6 +528,11 @@ mod tests {
                 PageId::Env,
                 PageId::Text,
                 PageId::Widgets,
+                PageId::Advanced,
+                PageId::Feedback,
+                PageId::Extended,
+                PageId::Data,
+                PageId::List,
                 PageId::Menu
             ]
         );
@@ -452,6 +547,11 @@ mod tests {
                 PageId::Env,
                 PageId::Text,
                 PageId::Widgets,
+                PageId::Advanced,
+                PageId::Feedback,
+                PageId::Extended,
+                PageId::Data,
+                PageId::List,
                 PageId::Menu
             ]
         );

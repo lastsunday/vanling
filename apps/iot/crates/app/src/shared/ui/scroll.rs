@@ -2,7 +2,7 @@
 //! edge bounce, and the travel a thumb needs. A page measures its regions once, then drives them
 //! with [`ScrollState::scroll`] and advances them with [`ScrollState::tick`].
 
-use iot_core::ui::{ScrollId, ScrollInfo, Ui};
+use iot_core::ui::{Rect, ScrollId, ScrollInfo, Ui};
 
 /// The least release speed that starts a fling, in px/s.
 pub const FLING_MIN_PX_S: u16 = 250;
@@ -24,6 +24,9 @@ pub const LINE_PX: i16 = 12;
 pub struct ScrollConfig {
     pub bounce: bool,
     pub bar: bool,
+    /// How far past the top edge a page reads as a refresh pull, in px. `0` disables the
+    /// gesture, and a region whose content fits stays immovable.
+    pub pull: i16,
 }
 
 impl Default for ScrollConfig {
@@ -31,7 +34,19 @@ impl Default for ScrollConfig {
         Self {
             bounce: true,
             bar: true,
+            pull: 0,
         }
+    }
+}
+
+/// The most a region may be pulled past its top edge: the pull threshold, or a quarter viewport.
+fn top_limit(config: ScrollConfig, viewport: i16, max: i16) -> i32 {
+    if config.pull > 0 {
+        (i32::from(viewport) / 4).max(i32::from(config.pull))
+    } else if config.bounce && max > 0 {
+        i32::from(viewport) / 4
+    } else {
+        0
     }
 }
 
@@ -62,6 +77,22 @@ impl<const N: usize> ScrollState<N> {
     pub fn measure(&mut self, ui: &Ui<'_, '_>, ids: [ScrollId; N], config: ScrollConfig) {
         for (area, id) in self.areas.iter_mut().zip(ids) {
             *area = ui.scroll_info(id).unwrap_or_default();
+        }
+        self.velocity = [0; N];
+        self.config = config;
+    }
+
+    /// Reads one region's box and content extent without a declaration: a page that paints
+    /// its own rows, rather than declaring one node per row.
+    pub fn measure_box(&mut self, rect: Rect, content: i16, config: ScrollConfig) {
+        if let Some(slot) = self.areas.first_mut() {
+            *slot = ScrollInfo {
+                id: ScrollId::new(1),
+                rect,
+                offset: 0,
+                content: content.max(0),
+                viewport: rect.h.max(0) as i16,
+            };
         }
         self.velocity = [0; N];
         self.config = config;
@@ -106,15 +137,16 @@ impl<const N: usize> ScrollState<N> {
         }
         self.held[index] = false;
         let max = i32::from(slot.max());
-        if max == 0 {
+        let limit = top_limit(self.config, slot.viewport, slot.max());
+        if max == 0 && limit == 0 {
             self.areas[index].offset = 0;
             self.velocity[index] = 0;
             return;
         }
-        let limit = self.limit(slot);
+        let bottom = self.bottom_limit(slot);
         let line_px = self.line_px[index];
         let moved = i32::from(slot.offset) + i32::from(lines) * i32::from(line_px);
-        self.areas[index].offset = moved.clamp(-limit, max + limit) as i16;
+        self.areas[index].offset = moved.clamp(-limit, max + bottom) as i16;
         let speed = i16::try_from(speed.min(FLING_MAX_PX_S)).unwrap_or(i16::MAX);
         self.velocity[index] = if speed >= FLING_MIN_PX_S as i16 {
             if lines < 0 { -speed } else { speed }
@@ -136,11 +168,12 @@ impl<const N: usize> ScrollState<N> {
         self.held[index] = true;
         self.velocity[index] = 0;
         let max = i32::from(slot.max());
-        if max == 0 {
+        let top = top_limit(self.config, slot.viewport, slot.max());
+        if max == 0 && top == 0 {
             self.areas[index].offset = 0;
             return;
         }
-        let limit = self.limit(slot);
+        let bottom = self.bottom_limit(slot);
         let offset = i32::from(slot.offset);
         let delta = i32::from(delta);
         let target = offset + delta;
@@ -159,7 +192,7 @@ impl<const N: usize> ScrollState<N> {
         } else {
             target
         };
-        self.areas[index].offset = damped.clamp(-limit, max + limit) as i16;
+        self.areas[index].offset = damped.clamp(-top, max + bottom) as i16;
     }
 
     /// Lets go at `speed` px/s: below the fling threshold the region just comes home.
@@ -186,7 +219,8 @@ impl<const N: usize> ScrollState<N> {
                 continue;
             }
             let max = i32::from(area.max());
-            let limit = self.limit(area);
+            let top = top_limit(self.config, area.viewport, area.max());
+            let bottom = self.bottom_limit(area);
             let mut offset = i32::from(area.offset);
             let mut velocity = i32::from(self.velocity[index]);
 
@@ -199,7 +233,7 @@ impl<const N: usize> ScrollState<N> {
                 if velocity.abs() < i32::from(STOP_PX_S) {
                     velocity = 0;
                 }
-                offset = offset.clamp(-limit, max + limit);
+                offset = offset.clamp(-top, max + bottom);
             }
 
             if velocity == 0 && !(0..=max).contains(&offset) {
@@ -240,8 +274,30 @@ impl<const N: usize> ScrollState<N> {
         self.held = [false; N];
     }
 
-    /// How far past an edge a region may go: a quarter viewport, or zero if it fits or bounce is off.
-    fn limit(&self, area: ScrollInfo) -> i32 {
+    /// Sets a region's content extent after measurement, for a page whose rows grow or
+    /// shrink; the offset comes back inside the new travel.
+    pub fn set_content(&mut self, area: u8, content: i16) {
+        let Some(slot) = self.areas.get_mut(usize::from(area)) else {
+            return;
+        };
+        if slot.id.is_none() {
+            return;
+        }
+        slot.content = content.max(0);
+        let top = top_limit(self.config, slot.viewport, slot.max());
+        slot.offset = i32::from(slot.offset).clamp(-top, i32::from(slot.max())) as i16;
+    }
+
+    /// How far past the top edge a region is pulled, in px; `0` at rest.
+    pub fn pull(&self, area: u8) -> i16 {
+        self.areas
+            .get(usize::from(area))
+            .map_or(0, |slot| (-slot.offset).max(0))
+    }
+
+    /// How far past the bottom edge a region may go: a quarter viewport, or zero if it fits
+    /// or bounce is off.
+    fn bottom_limit(&self, area: ScrollInfo) -> i32 {
         if self.config.bounce && area.max() > 0 {
             i32::from(area.viewport) / 4
         } else {
@@ -257,6 +313,21 @@ pub const MIN_THUMB: i32 = 8;
 /// How long after the last drag sample a lift may still read as a flick. Three touch scans:
 /// past that the finger stopped moving without a new sample, so the tail velocity is stale.
 pub const STILL_GAP_MS: u32 = 30;
+
+/// How far a contact may travel before the arena decides between a tap and a drag: one glyph
+/// cell less a pixel, so the decision follows the face rather than a copied number.
+pub const DRAG_SLOP: i16 = iot_core::ui::panel::GLYPH as i16 - 1;
+
+/// Where a contact landed before the arena knows whether it is a tap or a drag. A tagged
+/// control keeps its press here so the first drag sample can claim the region underneath and
+/// replay the travel the finger already made.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Press {
+    pub id: u8,
+    pub tag: u16,
+    pub x: i16,
+    pub y: i16,
+}
 
 /// One finger's claim on a region: where it pressed, how fast it has moved, and whether it did.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -527,5 +598,80 @@ mod tests {
         state.reset();
         assert_eq!(state.areas()[0].offset, 0);
         assert!(!state.moving());
+    }
+
+    const PULL: ScrollConfig = ScrollConfig {
+        bounce: true,
+        bar: true,
+        pull: 44,
+    };
+
+    #[test]
+    fn a_pull_region_gives_at_the_top_even_when_its_content_fits() {
+        let mut state = state(20, PULL);
+        state.drag(0, -100);
+        assert_eq!(
+            state.areas()[0].offset,
+            -44,
+            "the pull limit, not the quarter"
+        );
+        assert_eq!(state.pull(0), 44);
+        state.fling(0, 0);
+        assert_eq!(settle(&mut state), 0, "a released pull comes home");
+        assert_eq!(state.pull(0), 0);
+    }
+
+    #[test]
+    fn a_pull_limit_is_the_wider_of_the_quarter_and_the_threshold() {
+        let tight = ScrollConfig {
+            bounce: true,
+            bar: true,
+            pull: 8,
+        };
+        let mut tight_state = state(1_000, tight);
+        tight_state.drag(0, -100);
+        assert_eq!(
+            tight_state.areas()[0].offset,
+            -10,
+            "a quarter of the viewport wins"
+        );
+        let mut pulled = state(20, PULL);
+        pulled.drag(0, -100);
+        assert_eq!(
+            pulled.areas()[0].offset,
+            -44,
+            "with no travel, the threshold is all"
+        );
+    }
+
+    #[test]
+    fn a_short_region_without_pull_still_never_moves() {
+        let mut state = state(20, ScrollConfig::default());
+        state.drag(0, -100);
+        assert_eq!(state.areas()[0].offset, 0);
+        assert_eq!(state.pull(0), 0);
+    }
+
+    #[test]
+    fn a_new_content_extent_brings_a_scrolled_region_back_inside_it() {
+        let mut state = state(1_000, ScrollConfig::default());
+        state.scroll(0, 10, 0);
+        assert!(state.areas()[0].offset > 0);
+        state.set_content(0, 20);
+        assert_eq!(
+            state.areas()[0].offset,
+            0,
+            "the old offset is past the new end"
+        );
+        state.set_content(0, 1_000);
+        assert_eq!(state.areas()[0].max(), 960);
+    }
+
+    #[test]
+    fn a_pulled_region_holds_its_pull_when_the_rows_shrink() {
+        let mut state = state(20, PULL);
+        state.drag(0, -100);
+        state.set_content(0, 10);
+        assert_eq!(state.areas()[0].offset, -44);
     }
 }

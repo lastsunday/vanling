@@ -17,7 +17,7 @@ use crate::shared::surface::{finish, headless};
 use crate::shared::ui::keyboard;
 use crate::shared::ui::keyboard::FIELD_BYTES;
 use crate::shared::ui::scroll::{
-    BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
+    BAR, DRAG_SLOP, Drag, Press, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
 };
 use crate::shared::ui::slot::Slot;
 use crate::shared::ui::state::State;
@@ -53,6 +53,7 @@ const SEL_CHIP_B: u8 = 1 << 4;
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
     bar: true,
+    pull: 0,
 };
 
 /// A scroll frame blits the pixels already in the buffer, so it fits the loop's 20 ms cadence.
@@ -63,6 +64,7 @@ const SPIN_MS: u16 = 100;
 pub struct WidgetsPage {
     scroll: ScrollState<1>,
     drag: Option<Drag>,
+    press: Option<Press>,
     tags: TagTable<{ WidgetsAction::ALL.len() }>,
     keyboard: Rect,
     values: WidgetsSnapshot,
@@ -85,6 +87,7 @@ impl Default for WidgetsPage {
         Self {
             scroll,
             drag: None,
+            press: None,
             tags,
             keyboard: ui.rect(id),
             values: WidgetsSnapshot {
@@ -177,8 +180,16 @@ impl super::Service for WidgetsPage {
             return (None, Effects::default());
         };
         match *intent {
-            WidgetsIntent::Press { action } => {
+            WidgetsIntent::Press { action, id, x, y } => {
                 self.values.pressed = action.tag();
+                let x = i16::try_from(x).unwrap_or(i16::MAX);
+                let y = i16::try_from(y).unwrap_or(i16::MAX);
+                self.press = Some(Press {
+                    id,
+                    tag: action.tag(),
+                    x,
+                    y,
+                });
             }
             WidgetsIntent::Tap { action } => {
                 self.values.pressed = 0;
@@ -186,6 +197,7 @@ impl super::Service for WidgetsPage {
             }
             WidgetsIntent::Slide { action, x } => {
                 if action == WidgetsAction::Slider {
+                    self.press = None;
                     self.slide(x);
                 }
             }
@@ -198,18 +210,27 @@ impl super::Service for WidgetsPage {
             }
             WidgetsIntent::Grab { id, area, y } => {
                 self.values.pressed = 0;
+                self.press = None;
                 self.claim(id, area, y, 0);
             }
             WidgetsIntent::Drag { id, x, y, at_ms } => {
                 let y = i16::try_from(y).unwrap_or(i16::MAX);
-                let Some(drag) = self.drag.as_mut().filter(|drag| drag.id == id) else {
-                    if let Some(area) = self.scroll.area_at(i32::from(x), i32::from(y)) {
-                        self.claim(id, area, y, at_ms);
+                if let Some(drag) = self.drag.as_mut().filter(|drag| drag.id == id) {
+                    let delta = drag.step(y, at_ms);
+                    self.scroll.drag(drag.area, delta);
+                } else if let Some(press) = self.press.take().filter(|press| press.id == id) {
+                    self.values.pressed = 0;
+                    if let Some(area) = self.scroll.area_at(i32::from(press.x), i32::from(press.y))
+                    {
+                        self.scroll.drag(area, 0);
+                        let mut drag = Drag::new(id, area, press.y, 0);
+                        let delta = drag.step(y, at_ms);
+                        self.scroll.drag(area, delta);
+                        self.drag = Some(drag);
                     }
-                    return (None, Effects::default());
-                };
-                let delta = drag.step(y, at_ms);
-                self.scroll.drag(drag.area, delta);
+                } else if let Some(area) = self.scroll.area_at(i32::from(x), i32::from(y)) {
+                    self.claim(id, area, y, at_ms);
+                }
             }
             WidgetsIntent::Release {
                 id,
@@ -221,6 +242,7 @@ impl super::Service for WidgetsPage {
                 // The finger is off the glass: whatever it last pressed is no longer held,
                 // and a slider left latched would turn the next drag anywhere into a slide.
                 self.values.pressed = 0;
+                self.press = None;
                 if let Some((area, speed)) = lift(&mut self.drag, id, at_ms) {
                     self.scroll.fling(area, speed);
                 }
@@ -272,7 +294,12 @@ impl super::LocalPage for WidgetsPage {
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
                 let action = WidgetsAction::from_tag(self.tag_at(i32::from(x), i32::from(y)));
                 if let Some(action) = action {
-                    return Some(BusinessIntent::Widgets(WidgetsIntent::Press { action }));
+                    return Some(BusinessIntent::Widgets(WidgetsIntent::Press {
+                        action,
+                        id,
+                        x,
+                        y,
+                    }));
                 }
                 let area = area(x, y)?;
                 Some(BusinessIntent::Widgets(WidgetsIntent::Grab {
@@ -296,11 +323,19 @@ impl super::LocalPage for WidgetsPage {
                         x,
                     }));
                 }
-                let area = area(x, y)?;
-                Some(BusinessIntent::Widgets(WidgetsIntent::Grab {
+                if let Some(press) = self.press.filter(|press| press.id == id) {
+                    let dx = i32::from(x) - i32::from(press.x);
+                    let dy = i32::from(y) - i32::from(press.y);
+                    if dx.abs() < i32::from(DRAG_SLOP) && dy.abs() < i32::from(DRAG_SLOP) {
+                        return None;
+                    }
+                }
+                area(x, y)?;
+                Some(BusinessIntent::Widgets(WidgetsIntent::Drag {
                     id,
-                    area,
-                    y: i16::try_from(y).unwrap_or(i16::MAX),
+                    x,
+                    y,
+                    at_ms,
                 }))
             }
             InputEvent::Gesture(GestureEvent::Swipe {
@@ -374,6 +409,7 @@ impl super::LocalPage for WidgetsPage {
     fn on_hide(&mut self) {
         self.scroll.reset();
         self.drag = None;
+        self.press = None;
         self.values.pressed = 0;
         self.values.focus = false;
     }

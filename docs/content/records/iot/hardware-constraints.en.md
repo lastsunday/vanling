@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "976101d48f568ac6f9027f1a3c5bf7a82a1b0838"
-translated_at = "2026-11-20T00:00:00Z"
+source_file_hash = "1a112360e391ebc406fbd7413b7771775d4e21d8"
+translated_at = "2026-11-23T13:27:19Z"
 +++
 
 <!-- doc-audience: ai -->

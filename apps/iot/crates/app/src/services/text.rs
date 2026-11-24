@@ -33,6 +33,7 @@ const AREAS: [ScrollId; TEXT_AREAS] = [WRAP, GLYPHS];
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
     bar: true,
+    pull: 0,
 };
 
 /// The region header above a box: one 12 px line and the row gap under it.

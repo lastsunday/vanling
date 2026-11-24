@@ -26,6 +26,8 @@ pub struct Theme {
     pub on_accent: Color,
     pub danger: Color,
     pub selection: Color,
+    /// The scrim a page lays under a busy or modal layer.
+    pub overlay: Color,
     pub gap: i16,
 }
 
@@ -39,6 +41,7 @@ impl Theme {
         on_accent: Color::rgb(0x00, 0x00, 0x00),
         danger: Color::rgb(0xFF, 0x5A, 0x5A),
         selection: Color::rgba(0xFF, 0xFF, 0xFF, 0x30),
+        overlay: Color::rgba(0x00, 0x00, 0x00, 0xB0),
         gap: 4,
     };
 

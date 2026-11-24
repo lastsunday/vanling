@@ -1,12 +1,18 @@
 //! The product's services, one vertical slice each: a page or device service and what it owns.
 //! `Service` is what every platform shares; `LocalPage` is what the panel and buttons see.
 
+pub mod advanced;
 pub mod attitude;
 pub mod audio;
 pub mod camera;
+pub mod data;
 pub mod env;
+pub mod extended;
+pub mod feedback;
+pub mod gallery;
 pub mod input;
 pub mod light;
+pub mod list;
 pub mod menu;
 pub mod nav;
 pub mod network;
@@ -29,12 +35,17 @@ use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::Ui;
 
+use self::advanced::AdvancedPage;
 use self::attitude::AttitudePage;
 use self::audio::AudioPage;
 use self::camera::CameraPage;
+use self::data::DataPage;
 use self::env::EnvPage;
+use self::extended::ExtendedPage;
+use self::feedback::FeedbackPage;
 use self::input::InputPage;
 use self::light::LightService;
+use self::list::ListPage;
 use self::menu::MenuPage;
 use self::nav::NavService;
 use self::network::NetworkPage;
@@ -104,6 +115,11 @@ pub struct Services {
     env: EnvPage,
     text: TextPage,
     widgets: WidgetsPage,
+    advanced: AdvancedPage,
+    feedback: FeedbackPage,
+    extended: ExtendedPage,
+    data: DataPage,
+    list: ListPage,
 }
 
 /// The dispatch key: a page the panel can stop on, or one of the device's own services.
@@ -130,6 +146,11 @@ impl Services {
             PageId::Env => &self.env,
             PageId::Text => &self.text,
             PageId::Widgets => &self.widgets,
+            PageId::Advanced => &self.advanced,
+            PageId::Feedback => &self.feedback,
+            PageId::Extended => &self.extended,
+            PageId::Data => &self.data,
+            PageId::List => &self.list,
         }
     }
 
@@ -184,6 +205,13 @@ impl Services {
             BusinessIntent::Widgets(_) => self
                 .service_mut(ServiceId::Page(PageId::Widgets))
                 .apply(intent, state),
+            BusinessIntent::Gallery { wire, .. } => match PageId::from_code(*wire) {
+                Some(page) => self.service_mut(ServiceId::Page(page)).apply(intent, state),
+                None => (None, Effects::default()),
+            },
+            BusinessIntent::List(_) => self
+                .service_mut(ServiceId::Page(PageId::List))
+                .apply(intent, state),
             BusinessIntent::Settings(_) => {
                 self.service_mut(ServiceId::Settings).apply(intent, state)
             }
@@ -204,6 +232,11 @@ impl Services {
             ServiceId::Page(PageId::Env) => &mut self.env,
             ServiceId::Page(PageId::Text) => &mut self.text,
             ServiceId::Page(PageId::Widgets) => &mut self.widgets,
+            ServiceId::Page(PageId::Advanced) => &mut self.advanced,
+            ServiceId::Page(PageId::Feedback) => &mut self.feedback,
+            ServiceId::Page(PageId::Extended) => &mut self.extended,
+            ServiceId::Page(PageId::Data) => &mut self.data,
+            ServiceId::Page(PageId::List) => &mut self.list,
             ServiceId::Navigation => &mut self.nav,
             ServiceId::Light => &mut self.light,
             ServiceId::Settings => &mut self.settings,
@@ -245,6 +278,11 @@ impl Services {
             PageId::Env => &mut self.env,
             PageId::Text => &mut self.text,
             PageId::Widgets => &mut self.widgets,
+            PageId::Advanced => &mut self.advanced,
+            PageId::Feedback => &mut self.feedback,
+            PageId::Extended => &mut self.extended,
+            PageId::Data => &mut self.data,
+            PageId::List => &mut self.list,
         }
     }
 }
@@ -383,6 +421,11 @@ pub fn descriptor(page: PageId) -> Descriptor {
         PageId::Env => EnvPage::descriptor(),
         PageId::Text => TextPage::descriptor(),
         PageId::Widgets => WidgetsPage::descriptor(),
+        PageId::Advanced => AdvancedPage::descriptor(),
+        PageId::Feedback => FeedbackPage::descriptor(),
+        PageId::Extended => ExtendedPage::descriptor(),
+        PageId::Data => DataPage::descriptor(),
+        PageId::List => ListPage::descriptor(),
     }
 }
 

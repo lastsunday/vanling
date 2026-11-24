@@ -5,6 +5,7 @@ use crate::shared::i18n::Lang;
 use crate::shared::model::DeviceState;
 use crate::shared::model::{AudioPhase, Backed, Health, NetworkView};
 use crate::shared::route::PageId;
+use crate::shared::ui::feed::{More, Refresh};
 use crate::shared::ui::keyboard::{FIELD_BYTES, Text};
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
@@ -222,6 +223,79 @@ pub struct WidgetsSnapshot {
     pub text: Text<FIELD_BYTES>,
 }
 
+/// What the Advanced page publishes: its scroll view, the navigation and composed picks, and
+/// the pager's index plus the live drag the finger is making.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct AdvancedSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub nav: u8,
+    pub tab: u8,
+    pub segment: u8,
+    pub step: u8,
+    pub open: bool,
+    pub action: bool,
+    /// The card the pager centres.
+    pub pager: u8,
+    /// The finger's live horizontal travel, in panel pixels.
+    pub drag: i16,
+}
+
+/// What the Feedback page publishes: the three notices the finger can take down or raise.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct FeedbackSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub banner: bool,
+    pub toast: bool,
+    pub skeleton: bool,
+    pub overlay: bool,
+}
+
+/// What the Extended page publishes: the field draft, the chips, and the keypad's last key.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ExtendedSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub focus: bool,
+    pub chips: u8,
+    pub form_error: bool,
+    pub number: u16,
+    pub key: Option<u8>,
+    pub text: Text<FIELD_BYTES>,
+}
+
+/// What the Data page publishes: the marks' picks, the row that slid, and the overlay latches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct DataSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub table: Option<u8>,
+    pub bar: Option<u8>,
+    pub gauge: u8,
+    pub reveal: i16,
+    pub empty_error: bool,
+    pub dialog: bool,
+    pub menu: u8,
+    pub sheet: u8,
+}
+
+/// What the List page publishes: the feed's two edges and the row under the finger.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct ListSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub rows: u16,
+    /// The stub data the painter rebuilds its rows from: the loaded prefix and the deletions.
+    pub loaded: u16,
+    pub removed: u64,
+    pub selected: Option<u16>,
+    pub reveal: Option<(u16, i16)>,
+    pub pull: i16,
+    pub refresh: Refresh,
+    pub more: More,
+}
+
 /// What each page publishes beyond the state it read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PageSnapshot {
@@ -229,6 +303,11 @@ pub struct PageSnapshot {
     pub text: TextSnapshot,
     pub menu: MenuSnapshot,
     pub widgets: WidgetsSnapshot,
+    pub advanced: AdvancedSnapshot,
+    pub feedback: FeedbackSnapshot,
+    pub extended: ExtendedSnapshot,
+    pub data: DataSnapshot,
+    pub list: ListSnapshot,
 }
 
 /// One frame's drawing data, extracted from the state so a renderer holds no reference into
@@ -264,6 +343,11 @@ impl FrameSnapshot {
             PageId::Text => self.pages.text.moving,
             PageId::Menu => self.pages.menu.moving,
             PageId::Widgets => self.pages.widgets.moving || self.pages.widgets.spinning,
+            PageId::Advanced => self.pages.advanced.moving,
+            PageId::Feedback => self.pages.feedback.moving,
+            PageId::Extended => self.pages.extended.moving,
+            PageId::Data => self.pages.data.moving,
+            PageId::List => self.pages.list.moving,
             _ => false,
         }
     }
