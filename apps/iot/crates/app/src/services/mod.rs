@@ -4,6 +4,7 @@
 pub mod advanced;
 pub mod attitude;
 pub mod audio;
+pub mod breath;
 pub mod camera;
 pub mod data;
 pub mod env;
@@ -38,6 +39,7 @@ use iot_core::ui::Ui;
 use self::advanced::AdvancedPage;
 use self::attitude::AttitudePage;
 use self::audio::AudioPage;
+use self::breath::BreathPage;
 use self::camera::CameraPage;
 use self::data::DataPage;
 use self::env::EnvPage;
@@ -120,6 +122,7 @@ pub struct Services {
     extended: ExtendedPage,
     data: DataPage,
     list: ListPage,
+    breath: BreathPage,
 }
 
 /// The dispatch key: a page the panel can stop on, or one of the device's own services.
@@ -151,6 +154,7 @@ impl Services {
             PageId::Extended => &self.extended,
             PageId::Data => &self.data,
             PageId::List => &self.list,
+            PageId::Breath => &self.breath,
         }
     }
 
@@ -212,6 +216,9 @@ impl Services {
             BusinessIntent::List(_) => self
                 .service_mut(ServiceId::Page(PageId::List))
                 .apply(intent, state),
+            BusinessIntent::Breath(_) => self
+                .service_mut(ServiceId::Page(PageId::Breath))
+                .apply(intent, state),
             BusinessIntent::Settings(_) => {
                 self.service_mut(ServiceId::Settings).apply(intent, state)
             }
@@ -237,6 +244,7 @@ impl Services {
             ServiceId::Page(PageId::Extended) => &mut self.extended,
             ServiceId::Page(PageId::Data) => &mut self.data,
             ServiceId::Page(PageId::List) => &mut self.list,
+            ServiceId::Page(PageId::Breath) => &mut self.breath,
             ServiceId::Navigation => &mut self.nav,
             ServiceId::Light => &mut self.light,
             ServiceId::Settings => &mut self.settings,
@@ -283,6 +291,7 @@ impl Services {
             PageId::Extended => &mut self.extended,
             PageId::Data => &mut self.data,
             PageId::List => &mut self.list,
+            PageId::Breath => &mut self.breath,
         }
     }
 }
@@ -426,6 +435,7 @@ pub fn descriptor(page: PageId) -> Descriptor {
         PageId::Extended => ExtendedPage::descriptor(),
         PageId::Data => DataPage::descriptor(),
         PageId::List => ListPage::descriptor(),
+        PageId::Breath => BreathPage::descriptor(),
     }
 }
 

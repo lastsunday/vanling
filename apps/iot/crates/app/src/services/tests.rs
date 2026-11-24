@@ -92,7 +92,7 @@ fn fingerprint(frame: &[u8]) -> u32 {
 }
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
-const GOLDEN: [(&str, bool, u32); 32] = [
+const GOLDEN: [(&str, bool, u32); 34] = [
     ("menu", false, 0x3ca9_d77c),
     ("menu", true, 0x64ef_df2c),
     ("input", false, 0xc18e_7dc5),
@@ -125,6 +125,8 @@ const GOLDEN: [(&str, bool, u32); 32] = [
     ("data", true, 0xd8a5_9ddb),
     ("list", false, 0x9e17_da2d),
     ("list", true, 0x5dc1_73dd),
+    ("breath", false, 0xffa0_b1e2),
+    ("breath", true, 0xc881_2392),
 ];
 
 /// The one path the board takes that the golden table does not: every page through a real glyph
@@ -190,6 +192,7 @@ fn a_language_switch_reaches_the_ink() {
         PageId::Extended,
         PageId::Data,
         PageId::List,
+        PageId::Breath,
     ];
     for page in speaking {
         let ink = |lang| {

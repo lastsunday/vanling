@@ -74,6 +74,8 @@ pub enum BusinessIntent {
     List(ListIntent),
     /// What a finger asks of the device's own record rather than of a page.
     Settings(SettingsIntent),
+    /// What a finger asks of the glass-breath demo: a preset, a period step, or every page.
+    Breath(BreathIntent),
     /// One light surface and the verb it is asked for; the instance is routing, not part of the verb.
     Light {
         instance: u8,
@@ -248,6 +250,36 @@ pub enum SettingsIntent {
     SetLang { lang: Lang },
 }
 
+/// What a finger asks of the glass-breath demo. The discriminant is the wire tag, so the
+/// view, the hit test and the handler cannot drift apart.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+pub enum BreathIntent {
+    Calm = 1,
+    Alert,
+    Slower,
+    Faster,
+    Everywhere,
+}
+
+impl BreathIntent {
+    pub const ALL: [Self; 5] = [
+        Self::Calm,
+        Self::Alert,
+        Self::Slower,
+        Self::Faster,
+        Self::Everywhere,
+    ];
+
+    pub const fn tag(self) -> u16 {
+        self as u16
+    }
+
+    pub fn from_tag(tag: u16) -> Option<Self> {
+        Self::ALL.into_iter().find(|intent| intent.tag() == tag)
+    }
+}
+
 /// What a finger asks of a demo gallery: the control it touched, or the scroll under it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GalleryIntent {
@@ -394,6 +426,19 @@ pub fn recognize(event: InputEvent, source: u8) -> InputIntent {
 mod tests {
     use super::*;
     use iot_core::drivers::input::{ButtonEvent, GestureEvent};
+
+    #[test]
+    fn the_breath_tags_are_dense_and_read_back() {
+        for (index, intent) in BreathIntent::ALL.iter().enumerate() {
+            assert_eq!(intent.tag(), index as u16 + 1);
+            assert_eq!(BreathIntent::from_tag(intent.tag()), Some(*intent));
+        }
+        assert_eq!(BreathIntent::from_tag(0), None);
+        assert_eq!(
+            BreathIntent::from_tag(BreathIntent::ALL.len() as u16 + 1),
+            None
+        );
+    }
 
     #[test]
     fn wraps_event_and_source() {

@@ -3,7 +3,7 @@
 
 use crate::shared::i18n::Lang;
 use crate::shared::model::DeviceState;
-use crate::shared::model::{AudioPhase, Backed, Health, NetworkView};
+use crate::shared::model::{AudioPhase, Backed, GlassBreath, Health, NetworkView};
 use crate::shared::route::PageId;
 use crate::shared::ui::feed::{More, Refresh};
 use crate::shared::ui::keyboard::{FIELD_BYTES, Text};
@@ -312,6 +312,8 @@ pub struct PageSnapshot {
     pub extended: ExtendedSnapshot,
     pub data: DataSnapshot,
     pub list: ListSnapshot,
+    /// The Breath page's own choice: the glass breathes these parameters while that page is up.
+    pub breath: Option<GlassBreath>,
 }
 
 /// One frame's drawing data, extracted from the state so a renderer holds no reference into
@@ -321,6 +323,8 @@ pub struct FrameSnapshot {
     pub touch: TouchSnapshot,
     pub demand: EffectiveDemand,
     pub lights: [LightSnapshot; MAX_LIGHTS],
+    /// The breath the glass should draw: the alarm's, else the page's own, else none.
+    pub glass_breath: Option<GlassBreath>,
     pub page: PageId,
     /// What the board wired, for pages that list or gate on it.
     pub backed: Backed,

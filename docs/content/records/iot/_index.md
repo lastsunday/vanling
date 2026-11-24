@@ -33,6 +33,8 @@ Vanling 自有 ESP32 固件（`apps/iot`）的实现判断记录。**AI 产出�
 | 进页空窗 | 约 192 ms 无法缩短，用过渡帧 `CAMERA WAIT` 缓解 | 5.2 fps ⇒ ~192 ms |
 | 面板读回 | **面板没有 MISO**，寄存器读回全是 `0x00`，只能目视验证 | — |
 | 帧缓冲持有者 | `FrameOwner` 三变体，第四种组合不可表示（曾用两个标志导致永久卡死） | 153,600 B |
+| 面板双缓冲 | **否决**。PSRAM 暂存区一帧拷 13 ms，帧率 +16% 但核心占用 40%→84%，Wi-Fi 关联窗口出现 674 ms 一帧；内部 DRAM 只剩 16,760 B，快内存放不下两块 | 24→28 fps；见 `panel-buffering.md` |
+| 呼吸重绘 | **已解耦**。整屏重绘的触发者是灯呼吸而不是页面；呼吸改为显式 `GlassBreath`（全局报警 + 页面私有），普通页不再重绘 | 40% → 0–1%；示例页 ≈12 fps / 9–14% |
 
 ### 音频（ES7210 + ZTS6216）
 
@@ -187,6 +189,7 @@ IOT_PORT=/dev/cu.usbmodem14401 moon run iot:flash-probe-wifi-c6
 | [放音实现记录](@/records/iot/playback.md) | `Cp0Disabled` 调查、被否方案、feed 节拍归属、ISR 拆分、音效配方 |
 | [硬件约束记录](@/records/iot/hardware-constraints.md) | 共享 MCLK、时钟源锁与 PM 的先后顺序、麦克风前端写序与标定、栈容量由来 |
 | [摄像头实现记录](@/records/iot/camera.md) | GC2145 视野算术、bins 与标量实测、PSRAM 不可用由来、面板接线、反复进出导致链重建后停滞 |
+| [面板双缓冲记录](@/records/iot/panel-buffering.md) | PSRAM 暂存区实测、+16% 帧率换 84% 核心占用、Wi-Fi 关联窗口 674 ms、为什么双缓冲只能放内部 DRAM、呼吸重绘从灯里解耦与 `GlassBreath` 示例页 |
 | [音频实现记录](@/records/iot/audio.md) | 静音判定、执行器边际代价实测、采集链只有一处能停、标定走查受需求门控、积压深度、dBA 与原始列、量化噪声底噪 |
 | [Wi-Fi 实现记录](@/records/iot/wifi.md) | 本世代没有 lwIP 只有 esp-radio+embassy-net、「连上」= 拿到地址、连接默认值抄自参考固件的三条、DRAM 预算怎么凑出来的、PHY 标定 `todo!()` 与分区表的规避手段 |
 | [运动实现记录](@/records/iot/motion.md) | 敲击判定的被否方案、门限来源、No-Motion 是电平不是事件 |

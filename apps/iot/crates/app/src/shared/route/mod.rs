@@ -37,6 +37,8 @@ pub enum PageId {
     Data,
     /// The feed demo: pull to refresh, release to load more, swipe to delete.
     List,
+    /// The glass-breath demo: the one page that lets a breath reach the pixels.
+    Breath,
 }
 
 impl PageId {
@@ -227,10 +229,18 @@ static LIST: Route = Route {
     timeout_ms: None,
 };
 
+static BREATH: Route = Route {
+    path: "breath",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
 impl PageId {
     /// Every page, in the button's order: the wire code is its index, and [`Self::next_page`]
     /// walks it.
-    pub const ALL: [Self; 16] = [
+    pub const ALL: [Self; 17] = [
         Self::Menu,
         Self::Input,
         Self::Attitude,
@@ -247,6 +257,7 @@ impl PageId {
         Self::Extended,
         Self::Data,
         Self::List,
+        Self::Breath,
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
@@ -270,6 +281,7 @@ impl PageId {
             Self::Extended => &EXTENDED,
             Self::Data => &DATA,
             Self::List => &LIST,
+            Self::Breath => &BREATH,
         }
     }
 
@@ -458,6 +470,7 @@ mod tests {
             PageId::Extended,
             PageId::Data,
             PageId::List,
+            PageId::Breath,
             PageId::Menu,
         ];
         assert_eq!(lap(Backed::NONE), bare);
@@ -473,6 +486,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
+                PageId::Breath,
                 PageId::Menu
             ]
         );
@@ -488,6 +502,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
+                PageId::Breath,
                 PageId::Menu
             ]
         );
@@ -503,6 +518,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
+                PageId::Breath,
                 PageId::Menu
             ]
         );
@@ -518,6 +534,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
+                PageId::Breath,
                 PageId::Menu
             ]
         );
@@ -533,6 +550,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
+                PageId::Breath,
                 PageId::Menu
             ]
         );
@@ -552,6 +570,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
+                PageId::Breath,
                 PageId::Menu
             ]
         );

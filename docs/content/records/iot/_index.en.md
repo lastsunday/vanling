@@ -3,8 +3,8 @@ title = "IoT Implementation Records"
 weight = 10
 sort_by = "weight"
 [extra]
-source_file_hash = "30fe6fec5f06467e2194e1261a09adbd7c9746fe"
-translated_at = "2026-11-08T00:00:00Z"
+source_file_hash = "2a1933c230c6e7b6f763762591a2dab6a5c2fd0d"
+translated_at = "2026-11-24T13:19:07Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -36,6 +36,8 @@ The system description lives in [development docs / IoT firmware](@/development/
 | The blank window on entry | ~192 ms, not shortenable; a `CAMERA WAIT` transition frame mitigates it | 5.2 fps ⇒ ~192 ms |
 | Panel read-back | **The panel has no MISO**, so every register reads `0x00` and verification is visual only | — |
 | Frame-buffer owner | `FrameOwner` with three variants makes the fourth combination unrepresentable (two flags once deadlocked permanently) | 153,600 B |
+| Panel double buffering | **Rejected.** A PSRAM staging copy costs 13 ms per frame and lifts frames 16%, but the core goes 40% → 84% and the Wi-Fi association window contains a 674 ms frame; internal DRAM has 16,760 B left, not room for two | 24 → 28 fps; see `panel-buffering.en.md` |
+| Breath repaints | **Decoupled.** The lamp's breath, not the page, was repainting the whole panel; the breath is now an explicit `GlassBreath` (global alarm plus page-private), and steady pages no longer repaint | 40% → 0–1%; demo page ≈12 fps / 9–14% |
 
 ### Audio (ES7210 + ZTS6216)
 
@@ -193,6 +195,7 @@ Read on for derivations, the full list of rejected alternatives, and reproductio
 | [Playback record](@/records/iot/playback.en.md) | `Cp0Disabled` investigation, rejected approaches, feed-tick ownership, ISR split, sound recipes |
 | [Hardware constraints record](@/records/iot/hardware-constraints.en.md) | Shared MCLK, clock-source lock vs PM ordering, microphone front-end write order and calibration, where the stack size comes from |
 | [Camera record](@/records/iot/camera.en.md) | GC2145 field-of-view arithmetic, bins and scalar measurements, why PSRAM is unusable, panel wiring, repeated page cycling rebuilding and stalling the chain |
+| [Panel double-buffering record](@/records/iot/panel-buffering.en.md) | The PSRAM staging measurement, +16% frames against 84% core, the 674 ms Wi-Fi association window, why double buffering only fits internal DRAM, and decoupling breath repaints from the lamp with the `GlassBreath` demo page |
 | [Audio record](@/records/iot/audio.en.md) | Silence detection, measured marginal executor cost, only one place the capture chain can stop, calibration walk gated by demand, backlog depth, dBA against the raw table, quantisation noise floor |
 | [Motion record](@/records/iot/motion.en.md) | Rejected tap approaches, where the thresholds come from, No-Motion is a level not an event |
 | [Input and touch record](@/records/iot/input.en.md) | Page cycle measured on hardware, 2 s windows cannot show page order, only one of four polled sources may be switched off |

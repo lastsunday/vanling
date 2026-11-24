@@ -14,12 +14,13 @@ use core::pin::Pin;
 use crate::render::engine::{ColorOutput, Shown};
 use crate::render::{Appearance, Drive, LightAppearance, Renderer, Topic};
 use crate::services::descriptor;
-use crate::shared::model::LightState;
+use crate::shared::model::{GlassBreath, LightState};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::demand::{DemandKey, Mode};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::surface::{ScreenPainter, ScreenSurface};
+use iot_core::light::Rgb;
 
 pub struct ScreenRenderer {
     instance: u8,
@@ -27,6 +28,8 @@ pub struct ScreenRenderer {
     topics: [Topic; 2],
     color: ColorOutput,
     declared: Option<LightAppearance>,
+    /// The breath the glass draws, from the frame's composition: an alarm's or the page's.
+    breath: Option<GlassBreath>,
     page: Option<PageId>,
     painter: Box<dyn ScreenPainter>,
     overlay: bool,
@@ -56,6 +59,7 @@ impl ScreenRenderer {
             topics: [Topic::Surface(instance), Topic::Frame],
             color: ColorOutput::new(),
             declared: None,
+            breath: None,
             page: None,
             painter,
             overlay,
@@ -82,13 +86,32 @@ impl ScreenRenderer {
             self.surface.set_backlight(100);
             return;
         }
-        let now_ms = if self.steady { 0 } else { now_ms };
-        let shown = self.color.show(&mut *self.surface, step, declared, now_ms);
-        self.surface.set_backlight(panel_level(
-            shown,
-            LightState::BACKLIGHT_FLOOR_PCT,
-            self.steady,
-        ));
+        // A still page freezes the light where it was; an alarm's breath outranks stillness.
+        let held = self.steady && self.breath.is_none();
+        let at_ms = if held { 0 } else { now_ms };
+        let (color, shown) = match self.breath {
+            Some(breath) => {
+                let sample = breath.at(at_ms);
+                (sample.color, Shown::Breathing(sample))
+            }
+            None => match declared {
+                LightAppearance::Off => (Rgb(0, 0, 0), Shown::Off),
+                LightAppearance::Color(color) => (color, Shown::Solid),
+                LightAppearance::Breathing(breath) => (breath.sample(at_ms).color, Shown::Solid),
+            },
+        };
+        self.color.ground(&mut *self.surface, step, color);
+        self.surface
+            .set_backlight(panel_level(shown, LightState::BACKLIGHT_FLOOR_PCT, held));
+    }
+
+    /// Whether the glass still has a breath to step.
+    fn drive(&self) -> Drive {
+        if self.breath.is_some() {
+            Drive::TimeDriven
+        } else {
+            Drive::Idle
+        }
     }
 
     fn paint_last(&mut self, now_ms: u32) {
@@ -138,7 +161,9 @@ impl ScreenRenderer {
 
     fn on_frame(&mut self, frame: &FrameSnapshot, now_ms: u32) -> Drive {
         let page_changed = self.page != Some(frame.page);
+        let breath_changed = self.breath != frame.glass_breath;
         self.steady = frame.steady;
+        self.breath = frame.glass_breath;
         let camera = frame.demand.claim(DemandKey::CAMERA);
         self.camera_period_ms = camera.period_ms;
         // Handing the buffer back belongs to this side of the boundary: a chain left
@@ -149,8 +174,11 @@ impl ScreenRenderer {
         }
         self.last_snapshot = Some(*frame);
         self.page = Some(frame.page);
+        let was = self.color.demand();
         self.color
             .set_demand(frame.demand.claim(DemandKey::DISPLAY).mode);
+        // A demand that starts collecting again owes the glass the frame the dark swallowed.
+        let woke = was.is_collecting() != self.color.demand().is_collecting();
         match self.color.demand() {
             Mode::Off => {
                 self.surface.set_backlight_ceiling(0);
@@ -162,7 +190,7 @@ impl ScreenRenderer {
                 .set_backlight_ceiling(LightState::BACKLIGHT_FLOOR_PCT),
             Mode::Continuous => self.surface.set_backlight_ceiling(100),
         }
-        if page_changed {
+        if page_changed || breath_changed || woke {
             self.color.forget_color();
             self.present(now_ms);
         }
@@ -170,10 +198,10 @@ impl ScreenRenderer {
         if self.is_camera_page() || frame.animating() || self.owed() {
             return Drive::TimeDriven;
         }
-        if self.steady {
+        if self.steady && self.breath.is_none() {
             return Drive::Idle;
         }
-        self.color.drive()
+        self.drive()
     }
 }
 
@@ -218,7 +246,7 @@ impl Renderer for ScreenRenderer {
                 self.declared = Some(light);
                 self.present(now_ms);
                 self.paint_last(now_ms);
-                self.color.drive()
+                self.drive()
             }
             Appearance::Demand(_) => {
                 debug_assert!(false, "the screen reads the demand from its frame");
@@ -243,7 +271,7 @@ impl Renderer for ScreenRenderer {
         // A frame the floor turned away is owed to the glass, and no later diff will offer it.
         self.paint_due(now_ms, false);
         let owed = self.owed();
-        if self.steady {
+        if self.steady && self.breath.is_none() {
             // A still page still advances its own scroll; only the light is held.
             return if owed
                 || self
@@ -257,13 +285,17 @@ impl Renderer for ScreenRenderer {
             };
         }
         let step = self.surface.repaint_step();
-        let shown = self.color.step(&mut *self.surface, step, now_ms);
+        let shown = match self.breath {
+            Some(breath) => {
+                let sample = breath.at(now_ms);
+                self.color.ground(&mut *self.surface, step, sample.color);
+                Some(Shown::Breathing(sample))
+            }
+            None => None,
+        };
         if let Some(shown) = shown {
-            self.surface.set_backlight(panel_level(
-                shown,
-                LightState::BACKLIGHT_FLOOR_PCT,
-                self.steady,
-            ));
+            self.surface
+                .set_backlight(panel_level(shown, LightState::BACKLIGHT_FLOOR_PCT, false));
             self.paint_last(now_ms);
         }
         if owed
@@ -274,11 +306,7 @@ impl Renderer for ScreenRenderer {
         {
             return Drive::TimeDriven;
         }
-        if shown.is_some() {
-            Drive::TimeDriven
-        } else {
-            Drive::Idle
-        }
+        self.drive()
     }
 }
 
@@ -449,6 +477,13 @@ mod tests {
         }
     }
 
+    fn frame_with_breath(page: PageId, breath: Option<GlassBreath>) -> FrameSnapshot {
+        FrameSnapshot {
+            glass_breath: breath,
+            ..frame_on(page, Mode::Continuous)
+        }
+    }
+
     fn input_breath(instance: u8) -> Appearance<'static> {
         Appearance::Surface {
             instance,
@@ -466,17 +501,76 @@ mod tests {
     }
 
     #[test]
-    fn a_lit_screen_keeps_breathing_on_a_page_that_never_settles() {
+    fn a_lit_screen_holds_still_under_a_breathing_light() {
         let (mut r, screen) = renderer();
         assert_eq!(
             r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 0),
             Drive::Idle,
             "the first appearance only tells the screen what it is for"
         );
-        assert_eq!(r.on_appearance(input_breath(0), 0), Drive::TimeDriven);
-        r.step(1_000);
+        assert_eq!(
+            r.on_appearance(input_breath(0), 0),
+            Drive::Idle,
+            "the light's breath is not the glass's"
+        );
+        let fills = screen.borrow().fills;
+        assert_eq!(r.step(1_000), Drive::Idle);
         r.step(1_100);
-        assert!(screen.borrow().fills > 0, "a lit screen keeps painting");
+        assert_eq!(
+            screen.borrow().fills,
+            fills,
+            "a still glass does not follow the light"
+        );
+    }
+
+    #[test]
+    fn a_glass_breath_reaches_the_pixels_and_steps() {
+        let (mut r, screen) = renderer();
+        let breath = Some(GlassBreath::CALM);
+        r.on_appearance(
+            Appearance::Frame(&frame_with_breath(PageId::Breath, breath)),
+            0,
+        );
+        r.on_appearance(input_breath(0), 0);
+        let fills = screen.borrow().fills;
+        assert_eq!(r.step(1_000), Drive::TimeDriven);
+        assert!(
+            screen.borrow().fills > fills,
+            "the breath the page asked for is painted"
+        );
+    }
+
+    #[test]
+    fn an_alarm_breath_outranks_a_steady_page() {
+        let (mut r, screen) = renderer();
+        let mut frame = frame_with_breath(PageId::Text, Some(GlassBreath::ALERT));
+        frame.steady = true;
+        assert_eq!(
+            r.on_appearance(Appearance::Frame(&frame), 0),
+            Drive::TimeDriven
+        );
+        let fills = screen.borrow().fills;
+        assert_eq!(r.step(1_000), Drive::TimeDriven);
+        assert!(
+            screen.borrow().fills > fills,
+            "an alarm is not silenced by a page that holds the light still"
+        );
+    }
+
+    #[test]
+    fn clearing_the_breath_holds_the_last_frame() {
+        let (mut r, screen) = renderer();
+        r.on_appearance(
+            Appearance::Frame(&frame_with_breath(PageId::Env, Some(GlassBreath::CALM))),
+            0,
+        );
+        r.on_appearance(
+            Appearance::Frame(&frame_with_breath(PageId::Env, None)),
+            100,
+        );
+        let fills = screen.borrow().fills;
+        assert_eq!(r.step(1_000), Drive::Idle);
+        assert_eq!(screen.borrow().fills, fills);
     }
 
     #[test]
@@ -574,19 +668,19 @@ mod tests {
     }
 
     #[test]
-    fn a_dimmed_screen_is_brightness_only_and_keeps_its_cadence() {
+    fn a_dimmed_screen_is_brightness_only_and_holds_still() {
         let (mut r, screen) = renderer();
         r.on_appearance(Appearance::Frame(&frame_asked(Mode::OnChange)), 0);
         assert_eq!(screen.borrow().ceiling, LightState::BACKLIGHT_FLOOR_PCT);
 
-        r.on_appearance(input_breath(0), 0);
         assert_eq!(
             r.on_appearance(input_breath(0), 0),
-            Drive::TimeDriven,
+            Drive::Idle,
             "dimming is a brightness, not a rate"
         );
-        r.step(1_000);
-        assert!(screen.borrow().fills > 0);
+        let fills = screen.borrow().fills;
+        assert_eq!(r.step(1_000), Drive::Idle);
+        assert_eq!(screen.borrow().fills, fills);
     }
 
     #[test]
@@ -714,8 +808,8 @@ mod tests {
 
         assert_eq!(
             r.on_appearance(Appearance::Frame(&frame_asked(Mode::Continuous)), 100),
-            Drive::TimeDriven,
-            "the breathing the page was hiding resumes"
+            Drive::Idle,
+            "the light returns, held where the page found it"
         );
         let LightAppearance::Breathing(breath) = light_appearance(LightState::boot()) else {
             panic!("the boot light breathes");

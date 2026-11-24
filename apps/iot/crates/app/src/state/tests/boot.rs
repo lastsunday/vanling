@@ -102,6 +102,7 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
         PageId::Extended,
         PageId::Data,
         PageId::List,
+        PageId::Breath,
         PageId::Menu,
     ] {
         feed_input(&mut manager, triple_click());

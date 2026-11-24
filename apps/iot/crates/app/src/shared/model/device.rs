@@ -9,8 +9,8 @@ use iot_core::drivers::input::SwipeDirection;
 use iot_core::drivers::network::{LinkPhase, SetupHost};
 
 use super::{
-    AudioState, Backed, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice, NoticeKind,
-    PlaybackState, SurfaceRole, TouchState,
+    AudioState, Backed, GlassBreath, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice,
+    NoticeKind, PlaybackState, SurfaceRole, TouchState,
 };
 
 /// All state owned by the device manager: one record per domain, each living in the module
@@ -26,6 +26,9 @@ pub struct DeviceState {
     /// link hears it once as `SplashOver`.
     pub setup_requested: bool,
     pub lights: [LightState; MAX_LIGHTS],
+    /// A breath raised over every page, for an alarm or the demo's "every page" switch. `None`
+    /// leaves the glass to the page that is up.
+    pub glass_breath: Option<GlassBreath>,
     /// What each slot's surface is for, fixed by the wiring rather than by the current
     /// appearance. Not part of `backed`: presence and role answer different questions.
     pub surface_roles: [SurfaceRole; MAX_LIGHTS],

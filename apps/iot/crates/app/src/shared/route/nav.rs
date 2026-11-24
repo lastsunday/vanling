@@ -198,6 +198,7 @@ mod tests {
         );
         assert_eq!(nav.advance(bare), PageId::Data, "then the data bench");
         assert_eq!(nav.advance(bare), PageId::List, "then the feed");
+        assert_eq!(nav.advance(bare), PageId::Breath, "then the breath demo");
         assert_eq!(nav.advance(bare), PageId::Menu, "then home");
         assert_eq!(nav.advance(bare), PageId::Input, "and the lap comes round");
         assert_eq!(nav.depth, 1);

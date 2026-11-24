@@ -43,6 +43,77 @@ impl Breath {
     }
 }
 
+/// A breath drawn on the glass: the lamp's envelope with its own colour and pace. A page or an
+/// alarm raises one; every other page holds the glass still.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct GlassBreath {
+    pub period_ms: u16,
+    pub hue: u8,
+    pub saturation: u8,
+    pub min_value: u8,
+    pub max_value: u8,
+}
+
+impl GlassBreath {
+    /// A slow warm glow: the demo's default and a calm ambient cue.
+    pub const CALM: Self = Self {
+        period_ms: 3_000,
+        hue: 28,
+        saturation: 160,
+        min_value: 32,
+        max_value: 255,
+    };
+
+    /// A fast red pulse for an alarm.
+    pub const ALERT: Self = Self {
+        period_ms: 800,
+        hue: 0,
+        saturation: 255,
+        min_value: 10,
+        max_value: 255,
+    };
+
+    pub const STEP_MS: u16 = 500;
+    pub const FASTEST_MS: u16 = 500;
+    pub const SLOWEST_MS: u16 = 5_000;
+
+    pub fn slower(self) -> Self {
+        Self {
+            period_ms: self
+                .period_ms
+                .saturating_add(Self::STEP_MS)
+                .min(Self::SLOWEST_MS),
+            ..self
+        }
+    }
+
+    pub fn faster(self) -> Self {
+        Self {
+            period_ms: self
+                .period_ms
+                .saturating_sub(Self::STEP_MS)
+                .max(Self::FASTEST_MS),
+            ..self
+        }
+    }
+
+    /// The colour at `now_ms` and its position in the envelope.
+    pub fn at(self, now_ms: u32) -> Sample {
+        iot_core::light::sample(
+            now_ms,
+            u32::from(self.period_ms),
+            0,
+            0,
+            self.min_value,
+            self.max_value,
+            self.saturation,
+            self.hue,
+            [0; GROUP_CAPACITY],
+            0,
+        )
+    }
+}
+
 /// The solid-mode palette, in the order a step walks it.
 pub const PALETTE: [Rgb; 7] = [
     Rgb(255, 64, 48),
@@ -419,6 +490,33 @@ impl Default for LightState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_glass_breath_rides_its_own_envelope_and_holds_one_hue() {
+        for breath in [GlassBreath::CALM, GlassBreath::ALERT] {
+            let period = u32::from(breath.period_ms);
+            assert_eq!(breath.at(0).phase, 0, "the period starts at the trough");
+            assert_eq!(breath.at(period / 2).phase, 255, "and peaks halfway");
+            assert_eq!(breath.at(period / 2).color, breath.at(period * 3 / 2).color);
+            assert_eq!(
+                iot_core::light::brightness_of(breath.at(period / 2).color),
+                breath.max_value
+            );
+        }
+    }
+
+    #[test]
+    fn a_glass_breath_period_steps_inside_its_bounds() {
+        let mut breath = GlassBreath::CALM;
+        for _ in 0..20 {
+            breath = breath.slower();
+        }
+        assert_eq!(breath.period_ms, GlassBreath::SLOWEST_MS);
+        for _ in 0..20 {
+            breath = breath.faster();
+        }
+        assert_eq!(breath.period_ms, GlassBreath::FASTEST_MS);
+    }
 
     #[test]
     fn the_status_modes_differ_in_pace_but_share_the_setup_blue() {

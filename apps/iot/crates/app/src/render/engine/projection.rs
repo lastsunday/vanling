@@ -1,6 +1,7 @@
 //! State → the values a renderer draws from.
 
 use crate::shared::model::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::route::PageId;
 use crate::shared::snapshot::{
     BreathSnapshot, FrameSnapshot, LightSnapshot, PageSnapshot, TouchSnapshot,
 };
@@ -80,6 +81,12 @@ pub(super) fn frame_snapshot(
     pages: PageSnapshot,
     demand: &EffectiveDemand,
 ) -> FrameSnapshot {
+    // The page's own breath only applies while it is up; an alarm's applies everywhere.
+    let page_breath = if state.page() == PageId::Breath {
+        pages.breath
+    } else {
+        None
+    };
     FrameSnapshot {
         demand: *demand,
         touch: TouchSnapshot {
@@ -101,6 +108,7 @@ pub(super) fn frame_snapshot(
             held_ms: state.touch.view.held_ms,
         },
         lights: state.lights.map(light_snapshot),
+        glass_breath: state.glass_breath.or(page_breath),
         page: state.page(),
         backed: state.backed,
         lang: state.lang,
@@ -205,6 +213,7 @@ mod tests {
                 nav: _,
                 setup_requested: _,
                 lights: _,
+                glass_breath: _,
                 surface_roles: _,
                 notice: _,
                 motion: _,

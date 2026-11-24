@@ -403,6 +403,7 @@ fn page_name(page: PageId) -> Msg {
         PageId::Extended => Msg::PageExtended,
         PageId::Data => Msg::PageData,
         PageId::List => Msg::PageList,
+        PageId::Breath => Msg::PageBreath,
     }
 }
 
@@ -529,30 +530,41 @@ mod tests {
         );
         assert_eq!(page_at(&page, area.x - 1, area.y), None);
 
+        // The grid is `COLUMNS` wide, so the last row is as long as `COUNT` leaves it.
+        let rest = COUNT % COLUMNS;
+        let last_row = if rest == 0 { COLUMNS } else { rest };
+        let first = COUNT - last_row;
         let last = page
             .tags
-            .rect(entry(COUNT - 2).expect("a page").code() as u16 + 1)
+            .rect(entry(first).expect("a page").code() as u16 + 1)
             .expect("the last row is laid out");
         scroll_to(&mut page, last.y + last.h / 2);
         let area = page.scroll.areas()[0].rect;
+        let column = |index: usize| area.x + i32::from(BUTTON_W + GAP) * index as i32;
         assert_eq!(
             page_at(&page, area.x, area.bottom() - 1),
-            entry(COUNT - 2),
+            entry(first),
             "the last row starts under the first column"
         );
-        assert_eq!(
-            page_at(
-                &page,
-                area.x + i32::from(BUTTON_W) + i32::from(GAP),
-                area.bottom() - 1
-            ),
-            entry(COUNT - 1),
-            "the last button sits under the second column"
-        );
+        for index in 1..COLUMNS {
+            assert_eq!(
+                page_at(&page, column(index), area.bottom() - 1),
+                if index < last_row {
+                    entry(first + index)
+                } else {
+                    None
+                },
+                "column {index} of the last row"
+            );
+        }
         assert_eq!(
             page_at(&page, area.right() - 1, area.bottom() - 1),
-            None,
-            "the last row has two buttons, not three"
+            if last_row == COLUMNS {
+                entry(COUNT - 1)
+            } else {
+                None
+            },
+            "the last row holds only the buttons it has"
         );
     }
 
