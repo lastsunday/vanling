@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/iot/architecture">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link active">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link active leaf">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;widgets&#x2F;" class="sidebar-link">UI 组件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;panel-buffering&#x2F;" class="sidebar-link">面板双缓冲：测过，否决</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;widgets&#x2F;" class="sidebar-link">高级组件与 Feed</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/iot/architecture/#架构">架构</a></li>
+    
+  </ul>
+  
+  <h1 id="架构">架构</h1>
+<h2 id="概览">概览</h2>
+<p>以意图(Intent)为触发点、按帧推进的状态机</p>
+<h3 id="流程">流程</h3>
+<ol>
+<li>初始化芯片获取外围设备(总线和引脚),日志,堆(射频，其他),堆剩余容量调用钩子</li>
+<li>根据总线和引脚进行接线创建板子,获取板子对象,定时源,软中断
+<ol>
+<li>获取持久化仓库</li>
+</ol>
+</li>
+<li>根据定时源，软中断创建和启动RTOS</li>
+<li>合并产品运行和网络运行到同一任务里
+<ol>
+<li>产品运行
+<ol>
+<li>从板子获取输出表面列表</li>
+<li>从板子获取输入事件列表</li>
+<li>从板子获取姿态传感事件,开启状态,能力</li>
+<li>从板子获取声音事件,开启状态</li>
+<li>记录各个特性的需求</li>
+<li>从板子获取喇叭对象,开启状态</li>
+<li>从板子获取摄像头对象,开启状态</li>
+<li>创建渲染器</li>
+<li>遍历表面,按角色建灯渲染器或屏幕渲染器,把摄像头交给屏幕</li>
+<li>创建设备管理器,将各个特性和需求,参数,覆盖参数传入设备管理器</li>
+<li>创建配置器,喇叭共享对象,需求共享对象</li>
+<li>根据喇叭共享对象，需求共享对象来启动主流程
+<ol>
+<li>有喇叭共享对象和软中断
+<ol>
+<li>定时运转的声音播放引擎</li>
+<li>输入事件引擎</li>
+<li>渲染引擎</li>
+</ol>
+</li>
+<li>有喇叭共享对象,没有软中断</li>
+<li>没有喇叭共享对象</li>
+</ol>
+</li>
+</ol>
+</li>
+<li>网络运行</li>
+</ol>
+</li>
+</ol>
+<h2 id="分层">分层</h2>
+<p><code>iot-core(纯逻辑、驱动接缝与像素/字形) → iot-chip-esp(esp 家族运行时) → iot-bsp-esp(每板接线) → iot-app(产品页面与状态机)</code></p>
+<ul>
+<li><strong>接线只出现在 <code>bsp/</code> 板模块</strong>：<code>Board::new(Peripherals)</code> 内固定引脚；业务代码禁止出现引脚号</li>
+<li><strong>bsp-esp 内部分两层元件</strong>：<code>components/</code> 是实际元件（芯片驱动，参数化总线与引脚，不认板）；<code>virtual_components/</code> 是抽象元件（由实际元件组装而成的虚拟器件，如 <code>Screen</code> 把 ST7789 面板、背光与帧缓冲组装成 <code>ScreenSurface</code>）。板模块只做选引脚与装配，元件本身跨板通用</li>
+<li><strong><code>core::ui</code> 只认像素与字形</strong>：<code>Canvas</code> 只持有帧缓冲、尺寸与 ground；<code>font</code> 只做字模，<code>typeset</code> 做禁则与换行，<code>layout</code> 是 Flutter 词汇的盒模型（flex/wrap/stack/scroll），<code>panel</code> 是从字面推出的面板度量。它不认页面、快照、网络、产品或芯片；页面壳（<code>shared::surface::Panel</code>）与版式（<code>shared::page</code>）、页面视图与网络几何都在 <code>iot-app</code>，因此仍可在宿主机测试而不依赖屏幕</li>
+<li><strong>bsp 只送去画，不认页面</strong>：<code>bsp-esp</code> 持有帧缓冲、DMA、面板与相机采样，经 <code>core</code> 的 <code>ScreenPainter</code> 接缝把 <code>ScreenTarget</code>/<code>ScreenContext</code> 交给 app；页面状态与重绘门控在 app，bsp 不知道 <code>FrameSnapshot</code> 或任何页面类型</li>
+<li><strong>元件独立 feature</strong>：每个元件一个 feature，在 <code>components/</code> 的 <code>mod</code> 处门控一次，off 即文件不存在；板 feature = 元件聚合清单（见 <a href="https://lastsunday.github.io/vanling/development/iot/features/">features.md</a> 模块轴）</li>
+<li><strong>iot-chip-esp</strong>：芯片初始化、日志、RTOS、panic 定义；应用层入口宏 <code>#[esp_rtos::main]</code> 留在 app 的 bin 入口（<code>main.rs</code>、<code>bin/*.rs</code>）</li>
+<li><strong>iot-bsp-esp</strong>：板差异收敛在 <code>type Board</code> 别名、<code>HEAP_BYTES</code>/<code>SETUP_HOST</code> 常量与每芯片的 <code>start_executors</code>（feed 落点 <code>Feed::Interrupt</code>/<code>Inline</code>），前者每板一个 <code>#[cfg(feature)]</code>、后者每芯片一个；开机流程本身共用且不含 <code>#[cfg]</code></li>
+<li><strong>iot-app</strong>：应用层，产品名 <code>vanling</code>；业务零芯片依赖；flash 与 RAM 容量走链接与分区，不进类型系统</li>
+<li><strong>命名约定</strong>：板层用板名、应用层用产品名，不重复</li>
+<li><strong>纯逻辑但只有 bsp 内部用的模块留在 bsp</strong>：<code>hardware.rs</code>（启动清单）不认板也不认芯片，宿主机可测。声音目录（哪个 <code>Sound</code> 是哪个 <code>.mid</code>、以及它怎么变成一帧）在 <code>iot-app</code>：板子的 <code>Speaker::play</code> 收的是 <code>Box&lt;dyn SampleSource&gt;</code>，帧而不是名字。字模、排版与布局在 <code>iot-core::ui</code>；页面壳、视图层与网络词在 <code>iot-app</code>。<code>core</code> 里留下 <code>geometry</code>/<code>light</code>（含 RGB565 打包与反色），因为页面与 <code>intent</code> 两边都要读；键盘属于 Network 页，术语在 <code>app::shared::intent</code>、几何在 <code>app::services::network::shape</code></li>
+<li><strong>main 入口</strong>：产品二进制入口（<code>bin/*-probe.rs</code> 是各自的探针入口）；芯片 init、堆、执行器与 <code>Wiring</code> 都在 <code>main.rs</code>，芯片族分支留在 <code>start_executors</code>。产品与面板 bench 共用这条启动路径，<code>panel-bench</code> feature 只决定最后调 <code>lib::run</code> 还是 <code>bench::run</code></li>
+<li><strong>iot-tool 在这条链之外</strong>：唯一不属于设备的 crate，读写本仓的源文件（目前只有 <code>midi</code>，生成声音目录的 <code>.mid</code>）。<strong>零依赖</strong>——固件一改不该把生成固件资产的那个东西改坏。裸金属的 <code>--workspace</code> 只剩 <code>lefthook.yml</code> 里那一条，已 <code>--exclude iot-tool</code>；<code>moon</code> 各任务都显式带 <code>-p</code>，本来就不碰它。入口是 <code>moon run iot:test-tool</code> 与 <code>moon run iot:gen-midi-assets</code></li>
+</ul>
+<h3 id="状态词汇：四道问题，各归一处">状态词汇：四道问题，各归一处</h3>
+<p>一次启动里「还好吗」有四种问法，存活期不同；混用会把持久事实当成运行期结论。</p>
+<table><thead><tr><th>问题</th><th>类型</th><th>归属</th><th>存活期</th></tr></thead><tbody>
+<tr><td>这块板焊出来了吗</td><td><code>Backed</code></td><td><code>app::shared::model</code></td><td>组合点一次决定，运行期不变</td></tr>
+<tr><td>启动时这个件答了吗</td><td><code>Presence</code> / <code>Evidence</code></td><td><code>bsp-esp::hardware</code></td><td>启动一次</td></tr>
+<tr><td>这次启动算数吗（跨复位）</td><td><code>ResetRecord</code> / <code>BootMode</code></td><td>规则 <code>core::boot</code>，寄存器 <code>chip-esp::boot</code></td><td>RTC，跨复位</td></tr>
+<tr><td>这次启动证明过自己吗</td><td><code>Readiness</code></td><td><code>core::boot</code></td><td>RAM，复位即失</td></tr>
+<tr><td>现在这个件答不答</td><td><code>Health</code></td><td><code>app::shared::model</code></td><td>运行期</td></tr>
+</tbody></table>
+<p><code>Readiness</code> 是 RAM 里那半边：首帧在每块有线屏上 <code>flush</code> 完、网络栈就绪（或这个构建本来没有 radio）两半都到，喂狗任务才调一次 <code>mark_healthy()</code> 清掉计数——时间不是证据。</p>
+<p>命名跟着做的事走：一次性上报用 <code>*_reported</code>（<code>first_frame_reported</code>、<code>health_reported</code>、<code>chain_reported</code>），收下一个事实用 <code>note_*</code>，发出去用 <code>report_*</code>，盖持久标记用 <code>mark_*</code>。</p>
+<h2 id="iot-app_内部分区">iot-app 内部分区</h2>
+<p><code>app/src/</code> 按垂直切片组织：页面各自成片（小页一个文件，大页一个目录），跨页真相与词汇收在 <code>shared/</code>，组合根与表示层各自独立，接线只发生在组合根。</p>
+<p>页面是设备当前的目的地，不是屏幕上的画面：<code>Route.needs</code> 只看板子接了什么能力，屏的存在由 <code>SurfaceRole::Screen</code> 单独回答；无面板的板子照样有当前页，灯带、demand 与网络 setup 都只是这个目的地的其他消费者。</p>
+<table><thead><tr><th>路径</th><th>职责</th></tr></thead><tbody>
+<tr><td><code>lib.rs</code></td><td>组合根：取剩余能力、建 <code>DeviceManager</code>、启动全部应用工作者、等待协调者；<code>run</code> 是产品入口，<code>run_with</code> 多收一个由调用方装箱的系统，只有 <code>bench::run</code> 用它</td></tr>
+<tr><td><code>main.rs</code></td><td>产品入口：芯片初始化、堆、执行器与 <code>Wiring</code>，最后按 <code>panel-bench</code> 选 <code>lib::run</code> / <code>bench::run</code></td></tr>
+<tr><td><code>services/</code></td><td>产品服务（页面与设备自己的 <code>nav</code>/<code>light</code>/<code>settings</code>），一个服务一个垂直切片：小页一个文件，大页一个目录（<code>model</code> / <code>controller</code> / <code>shape</code> / <code>view</code> 按需拆）；<code>mod.rs</code> 定义各平台共用的 <code>Service</code>（<code>apply</code>）与本地平台面的 <code>LocalPage: Service</code>（<code>bind</code>/<code>publish</code>/<code>view</code>/<code>descriptor</code>/<code>tick</code>/<code>on_show</code>/<code>on_hide</code>）、持有全部服务的 <code>Services</code> 与它那一张分派表（私有 <code>ServiceId</code>：<code>Page(PageId)</code> 或设备自己的 <code>Navigation</code>/<code>Light</code>/<code>Settings</code>），以及 <code>PageId → Descriptor</code> 的唯一映射；<code>Services::bind</code> 是输入边界：瞬态页直接问页；否则按钮长按先交导航（回 Menu），页拿不到；其余事件页先认领，页不认领的按钮单击才落到导航兜底（翻页）；页自己的输入契约在它的 <code>tests.rs</code> 或文件尾，跨页的黄金像素表在 <code>services/tests.rs</code></td></tr>
+<tr><td><code>services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs</code></td><td>只有一块画布的单文件页：页面类型上的 <code>view</code> 直接声明整页；<code>text</code> 另持两段独立滚动区，<code>menu</code>/<code>widgets</code>/<code>lighting</code> 用 <code>TagTable</code> 反查命中；<code>headless</code> 没有 <code>view</code>，只绑按钮与灯珠</td></tr>
+<tr><td><code>services/settings.rs</code></td><td>设备自己的记录：面板语言 <code>DeviceState.lang</code> 与调色板 <code>DeviceState.theme</code>，只有页面报 <code>SettingsIntent</code> 能写</td></tr>
+<tr><td><code>services/audio/{mod,tests}.rs</code>、<code>services/speaker/{mod,tests}.rs</code></td><td>翻译与绘制都在 <code>mod.rs</code>；<code>AudioState</code>/<code>PlaybackState</code> 这类被多个消费者读的记录留在 <code>shared/model</code></td></tr>
+<tr><td><code>services/network/</code></td><td>手势与控件都在 <code>controller/</code>：<code>mod.rs</code> 是手势翻译、动作条与命中；<code>shape.rs</code> 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；<code>view/</code> 按带拆（<code>header</code> / <code>content</code> / <code>overlay</code>，词在 <code>text.rs</code>），带之间的层序由 <code>shape::Band</code> 决定；<code>NetworkView</code> 在 <code>shared/model/network_view/</code>（快照要能命名它）</td></tr>
+<tr><td><code>shared/</code></td><td>跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子</td></tr>
+<tr><td><code>shared/model/</code></td><td>工作者写入、渲染循环读取的记录，一域一文件；<code>device.rs</code> 是聚合体 <code>DeviceState</code>，<code>shared/snapshot.rs</code> 持有 <code>FrameSnapshot</code> 与页面发布的 <code>PageSnapshot</code>，<code>network_view/</code> 是 Network 页的视图（页面拥有、快照复制、链路不读）</td></tr>
+<tr><td><code>shared/route/{mod,nav}.rs</code></td><td>路由表与 <code>Navigator</code>：<code>PageId</code> 是目的地，<code>route()</code> 是穷尽 <code>match</code>，<code>ALL</code> 是唯一次序（按钮也照它走）</td></tr>
+<tr><td><code>shared/intent/</code></td><td>入站消息：<code>InputIntent</code>/<code>BusinessIntent</code> 与各页问句，含跨页的 <code>Confirm</code>；灯光动词 <code>LightAction</code> 与 <code>BusinessIntent::Light { instance, action }</code> 在这里定义；<code>keyboard.rs</code> 是 Network 页敲字用的键位词汇（<code>Key</code>/<code>Layer</code>/<code>Cycling</code>、多击窗口、每层候选字符表）</td></tr>
+<tr><td><code>shared/model/light.rs</code></td><td>灯光记录：模式、时间类效果表与调色板；<code>LightState::apply</code> 把 <code>LightAction</code> 落到新模式，<code>can</code> 说明该模式认不认这个动词；<code>Effect</code>（<code>Steady</code> / <code>Breath</code> / <code>Cycle</code> / <code>Aurora</code> / <code>Candle</code> / <code>Pulse</code> / <code>Heartbeat</code> / <code>Lightning</code> / <code>Sparkle</code> / <code>Strobe</code> / <code>Police</code> / <code>Sos</code>）由 <code>iot-core::light</code> 的同一个采样器画，<code>GlowScope</code> 定呼吸能铺到哪些页，<code>Backlight</code> 是屏幕背光的唯一来源</td></tr>
+<tr><td><code>shared/snapshot.rs</code></td><td>产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 <code>PageSnapshot</code></td></tr>
+<tr><td><code>shared/i18n/</code></td><td>面板文案：<code>Lang</code>、<code>Msg</code> 与不翻译的固定词；叶子，只依赖 <code>core</code></td></tr>
+<tr><td><code>shared/ui/</code></td><td>组件与交互词汇：<code>State</code>/<code>Theme</code>/<code>Slot</code>、滚动状态、键盘、命中表与 <code>widgets/</code>；不读快照</td></tr>
+<tr><td><code>shared/page.rs</code></td><td>页面版式：页边距、行距、<code>body</code>/<code>title</code>/<code>scroller</code> 与读数行</td></tr>
+<tr><td><code>shared/surface.rs</code></td><td>落墨面 <code>Panel</code>：声明 → 布局 → 绘制的调度；只认快照</td></tr>
+<tr><td><code>state/manager/mod.rs</code></td><td>读侧：<code>DeviceState</code> 的所有权与构造（<code>Boot</code>、<code>DeviceManager::boot</code>）、持有 <code>Services</code>、按页派生的 <code>DemandPolicy</code>，以及协调者与渲染循环读的口</td></tr>
+<tr><td><code>state/manager/write.rs</code></td><td>写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动</td></tr>
+<tr><td><code>state/env.rs</code></td><td>构建期配置（<code>IOT_BOOT_PAGE</code>、<code>IOT_LANG</code>、<code>IOT_THEME</code> 与覆盖项）</td></tr>
+<tr><td><code>render/engine/</code></td><td>与 surface 无关：<code>Differ</code> 决定<em>显示什么</em>（<code>differ.rs</code>），状态→外观在 <code>projection.rs</code>，<code>appearance.rs</code> 定义 <code>Topic</code>/<code>Appearance</code>，<code>color.rs</code> 步进颜色，<code>set.rs</code> 把外观交给认领它的 renderer</td></tr>
+<tr><td><code>render/screen/</code></td><td>屏幕（<code>SurfaceRole::Screen</code>）：<code>ScreenRenderer</code>（<code>mod.rs</code>）、<code>painter.rs</code> 调 <code>services::paint</code>、<code>repaint.rs</code>（帧漂移与重绘步长）</td></tr>
+<tr><td><code>render/lamp/</code></td><td>灯带（<code>SurfaceRole::Lamp</code>）：<code>LampRenderer</code>，只有一个颜色，没有屏幕会叠上去的东西</td></tr>
+<tr><td><code>render/wire.rs</code></td><td>接线：<code>wire()</code> 把板子的 surface 变成 <code>ScreenRenderer</code>/<code>LampRenderer</code>，<code>RenderSet</code> 就是这一层交出去的句柄</td></tr>
+<tr><td><code>runtime/</code></td><td>模型旁边的任务：协调者、<code>feature/</code> 里的功能工作者，以及它们共享的 <code>workers/</code> 句柄</td></tr>
+<tr><td><code>runtime/system.rs</code></td><td><code>System</code> 契约：<code>tick</code> 收 <code>&amp;mut DeviceManager</code> 与时钟，<code>intent</code> 只读意图已写入的状态；worker 句柄由系统自己持有</td></tr>
+<tr><td><code>runtime/coordinator/{mod,pacing}.rs</code>、<code>coordinator/systems/*.rs</code></td><td>协调者 <code>run_loop</code>：一帧四段（取意图 → 走系统 → 呈现 → 等待）；<code>pacing.rs</code> 持帧时间与下一帧截止点</td></tr>
+<tr><td><code>runtime/workers/{mod,inbox,input,playback,network}.rs</code></td><td>协调者 ↔ 工作者的全部句柄与协议；<code>mod.rs</code> 只有再导出，句柄唯一的家是 <code>runtime/mod.rs</code> 的 <code>Runtime</code>；网络命令词汇表在 <code>shared/model/network.rs</code></td></tr>
+<tr><td><code>runtime/feature/{mod,input}.rs</code></td><td>功能工作者；<code>mod.rs</code> 是唯一的 <code>wifi</code> 门控点。输入工作者：轮询、demand 调度、手势识别</td></tr>
+<tr><td><code>runtime/feature/playback/{mod,sounds/}</code></td><td>播放工作者与声音目录；状态→命令在 <code>coordinator/systems/playback.rs</code></td></tr>
+<tr><td><code>runtime/feature/network/{mod,link,setup,provision,scan,store,watch}.rs</code></td><td><code>#[cfg(feature = "wifi")]</code>：网络工作者，协议栈、链路、面板侧 setup、AP 服务、扫描、凭据</td></tr>
+<tr><td><code>assets/</code></td><td>设置侧自己的字节：<code>vanling-</code> 热点前缀与 setup portal 的 HTML/SVG（协议仍在 <code>core</code>）</td></tr>
+<tr><td><code>bench/{probe,replay}/</code>、<code>bin/</code></td><td>bench 专用驱动与入口：<code>probe/</code> 只被 <code>bin/*-probe.rs</code> 引用；<code>replay/</code> 是面板回放与把文本敲进键盘的 tap 脚本（<code>point.rs</code> 只放落点坐标），只被 <code>main.rs</code> 在 <code>panel-bench</code> feature 下经 <code>bench::run</code> 引用，宿主测试也编译它。产品入口与帧循环都不认识 <code>bench</code>；<code>IOT_PANEL_BENCH</code> 与构建凭据的取舍在 <code>state::env</code></td></tr>
+</tbody></table>
+<p>方向由 <code>iot-tool/tests/module_boundaries.rs</code> 的几条诚实规则守着（编译器不查 crate 内模块环），不是逐条边的地图：</p>
+<p>分层是 <code>lib → runtime → {render, state} → services → shared</code>；<code>assets</code> 是 <code>services</code>/<code>runtime</code> 共用的叶子。</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>lib               → { render, state, runtime }</span></span>
+<span class="giallo-l"><span>services/&lt;page&gt;   → { assets, shared::{i18n, intent, model, page, route, snapshot, surface, ui} }</span></span>
+<span class="giallo-l"><span>services          → { services::&lt;page&gt;::controller, shared::{i18n, intent, model, page, route, snapshot, surface, ui} }</span></span>
+<span class="giallo-l"><span>state             → { services::Services, shared::{intent, model, route} }</span></span>
+<span class="giallo-l"><span>render            → { services::{descriptor, paint}, shared::{model, route, snapshot, surface} }</span></span>
+<span class="giallo-l"><span>runtime::coordinator → { render, state, runtime::{feature::input, system, workers} }</span></span>
+<span class="giallo-l"><span>runtime::system       → { state, runtime::feature::input }</span></span>
+<span class="giallo-l"><span>runtime::feature::input    → { shared::{intent, model}, runtime::workers }</span></span>
+<span class="giallo-l"><span>runtime::feature::network  → { assets, shared::intent, state, runtime::{feature::input, workers} }</span></span>
+<span class="giallo-l"><span>runtime::feature::playback → { shared::model, runtime::{feature::input, workers} }</span></span>
+<span class="giallo-l"><span>runtime::workers           → { shared::model }</span></span>
+<span class="giallo-l"><span>bench             → { lib::run_with, services::network::{controller, shape}, shared::{intent, model}, state, runtime::{feature::{input, playback}, system} }</span></span></code></pre>
+<ul>
+<li><strong>页面之间不互相 import</strong>：页面只读 <code>shared</code>（含 <code>DeviceState</code>）；页面需要另一页的东西时，那份东西就属于 <code>shared</code></li>
+<li><strong><code>services</code> 是唯一认识所有服务的模块</strong>：每页一个具体类型（<code>InputPage</code>…<code>NetworkPage</code>），<code>Services::apply</code> 是唯一的业务分派表，一条 <code>BusinessIntent</code> 组一条臂；<code>state</code> 只经 <code>Services::bind</code>/<code>apply</code>/<code>snapshot</code>/<code>enter</code>/<code>leave</code> 提问，<code>render</code> 只经 <code>services::paint</code> 与 <code>services::descriptor(page)</code> 上的读取取答案；页面只读 <code>shared</code>（含 <code>DeviceState</code>、<code>FrameSnapshot</code>），不认识 <code>state</code>/<code>render</code>，<code>PageId</code> 等词汇来自 <code>shared::route</code></li>
+<li><strong><code>shared/ui</code> 与 <code>shared/page</code> 不认页面</strong>：<code>surface::Panel</code> 把页面的声明布局成盒子再落墨，<code>page</code> 只提供跨页共用的边距、行距与读数行，<code>ui</code> 只认组件状态；哪个页面声明什么由 <code>services::descriptor(page).view</code> 决定，页面自己画的槽由 <code>descriptor(page).custom</code> 决定</li>
+<li><code>shared</code> 是叶子：不依赖 <code>state</code>/<code>services</code>/<code>render</code>/<code>runtime</code>。<code>DeviceState</code>、<code>PageSnapshot</code> 与 <code>NetworkView</code> 放在这里，就是为了让页面、快照和渲染都只朝下看</li>
+<li><code>shared</code> 八个桶各有一个变更理由：<code>model</code>（记录）/<code>route</code>（目的地）/<code>intent</code>（入站消息）/<code>i18n</code>（文案，叶子）/<code>ui</code>（组件与交互）/<code>page</code>（页面版式）/<code>surface</code>（落墨面）/<code>snapshot</code>（帧与页面视图）；<code>every_shared_bucket_has_two_product_readers</code> 守着“只有一个读者就不是共享”，<code>the_shared_buckets_are_the_eight_the_taxonomy_names</code> 守着桶的集合</li>
+<li><strong>测试跟着断言对象走</strong>：一个测试放在它断言的模块的文件里，或该模块自己的 <code>tests.rs</code>；<code>state/tests/</code> 是唯一按主题分文件的测试树，夹具只有一份，在 <code>state/tests/support.rs</code>（<code>state::test_support</code> 只是它的再导出）。测试不算模块图的一条边，<code>module_boundaries.rs</code> 因此不扫 <code>tests/</code>、<code>tests.rs</code> 与 <code>test_support.rs</code></li>
+<li><code>runtime::workers</code> 不带 <code>wifi</code> 门控：host 构建照样持有 <code>Network</code>，只是没人应答</li>
+<li><code>runtime::workers</code> 不反向依赖任何工作者：它只认识 <code>core</code> 的类型，这样 <code>playback</code>/<code>network</code>/<code>input</code> 才能单向引用它</li>
+<li><code>runtime::feature::network</code> 不依赖 <code>services</code>/<code>render</code>/<code>runtime::coordinator</code>：网络工作者读 <code>workers</code> 的页面与命令，不读设备状态</li>
+</ul>
+<h3 id="页面模型">页面模型</h3>
+<p>每个页面是一个具体类型，分两层回答。<code>Service</code> 是各操作平台共用的一面：<code>apply(&amp;mut self, &amp;BusinessIntent, &amp;mut DeviceState) -&gt; (Option&lt;Command&gt;, Effects)</code>——自己那条记录先落地，返回设备还欠的事与要出核心的命令，一条意图恰好调到它的一个所有者。<code>LocalPage: Service</code> 是本地平台面：<code>bind</code> 把一个本地手势译成业务意图（<code>Option</code>，含义什么都没有时是 <code>None</code>），<code>publish</code> 把页面私有的本地 UI 状态交给帧快照（口令草稿、键位、确认框，远程平台看不到），<code>view</code> 声明整页（<code>&amp;FrameSnapshot, &amp;mut Ui</code>，不取 <code>self</code>），<code>descriptor</code> 描述它怎么占屏，<code>tick</code> 推进页面自己的时钟，<code>on_show</code>/<code>on_hide</code> 默认空实现。<code>view</code> 与 <code>descriptor</code> 的 <code>where Self: Sized</code> 让 <code>&amp;dyn LocalPage</code> 仍是本地手势表要的 trait 对象。</p>
+<p><code>Descriptor</code> 是一页的面板答案：声明函数指针、自绘槽函数指针、底色、是否相机帧、重绘步长、触发条件与纯滚动判据。构建器默认「无自绘槽、无底色、非相机帧、<code>REPAINT_FLOOR_MS</code>、<code>Never</code>、不认滚动」，各页只写自己那条差异。重绘判据是 <code>Repaint::{Never, Always, Overlay, When(fn), WhenOrOverlay(fn)}</code> 之一，而不是一段带空形参的函数。</p>
+<p>渲染答案分两层：<code>LocalPage::view</code> 用 <code>Ui</code> 的 <code>row</code>/<code>column</code>/<code>stack</code>/<code>wrap</code>/<code>scroll</code>/<code>text</code>/<code>custom</code> 声明整页，<code>services::paint</code> 取 <code>descriptor(page).view</code> 交给 <code>Panel</code>（布局一次、画字与盒子、再按槽调 <code>descriptor(page).custom</code>），最后盖角标；其余五个答案都是 <code>descriptor(page)</code> 上的读取（<code>ground()</code>/<code>camera_frames()</code>/<code>repaint_step_ms()</code>/<code>repaints_on()</code>/<code>scroll_shift()</code>）。</p>
+<p>长内容页把滚动留在页面：<code>Style::scroll_area(id)</code> 给滚动盒命名，布局沿轴累加子节点（含 <code>gap</code>）并把矩形与可滚动距离记进 <code>Tree</code>，<code>Ui::scroll_info(id)</code> 读回；<code>shared::ui::scroll::ScrollState&lt;N&gt;</code> 持每个区的偏移、速度、是否被手指按住与两个开关（回弹、滚动条）。<code>measure</code> 用页面将要画的那份声明跑一次 headless 布局——面板尺寸与内容都是静态的，所以这一次就是运行时那次。手指按下后 <code>GestureEvent::Drag</code> 每移动 2 px 报一次，页面用 <code>drag</code> 直接改偏移（越界半程阻尼），抬手用 <code>fling</code> 接手：速度带符号、阈值以下只回弹。被按住的区 <code>tick</code> 不弹回，其他区照常滑行；布局从不夹偏移，边界只在页面里。滚动页的重绘判据是 <code>Repaint::WhenOrOverlay</code>，<code>FrameSnapshot::animating()</code> 为真时渲染器保持 <code>TimeDriven</code>；<code>PageSystem</code> 在 <code>schedule.tick</code> 里把墙钟增量（首帧 0，夹到 <code>MAX_CATCH_UP_MS</code>）交给 <code>DeviceManager::tick_pages</code>，偏移因此与快照同帧，也不会因某帧光栅化慢而按固定步长少走。</p>
+<p><code>text</code> 页在构造时断行一次：<code>typeset::wrap</code> 的每行按字节范围与宽度存进快照，声明时各是一个 <code>nowrap</code> + 显式宽度的文本节点；<code>layout_text</code> 对 nowrap 且宽度已定的节点跳过 <code>max_content</code>，一帧不再逐字查字模表。<code>\n</code>、<code>\r</code>、<code>\r\n</code> 都按硬换行处理。</p>
+<p>文字只有一张面：12 px 点阵 Fusion Pixel（<code>Face</code>），GB2312 + Big5 共 15,466 字形；<code>Metrics</code> 只按整倍放大给步进与行高，字号因此只有 12 / 24 / 36 三档，<code>13..=24</code> 取 24。<code>text</code> 页正文、页标题与按钮标签用 24 px，其余用 12 px，缺字画 □（<code>MISSING</code>）。<code>Style::font_size(Length)</code> 定尺寸：<code>Px</code> 精确、<code>Dp</code> 是 5/4 px（2.0" 320×240 = 200 dpi 的 DPR）、<code>Rem</code> 是根字号 12 px 的百分之一；字重、装饰线与斜体压在 <code>Style::text_flags</code> 的一个 <code>u16</code> 里。颜色是 ARGB32：<code>Style</code>/<code>RunStyle</code> 存 16 槽调色板的 <code>ColorId</code>（声明期去重），<code>Canvas</code> 按覆盖率把字墨 src-over 混合到 RGB565；<code>Ui::span</code> 最多 8 条，只改颜色、装饰线与底色，不改行度量。<code>every_word_the_panel_prints_has_a_bitmap_glyph</code> 把 <code>Msg::ALL</code> × <code>Lang::ALL</code> 的每个字钉在 <code>Face::has</code> 上；新文案缺字先重跑 <code>iot-tool font --merge &lt;bdf&gt; --chars &lt;list&gt;</code>。</p>
+<p>页面可以用 <code>PageId::steady()</code> 声明稳态：<code>FrameSnapshot::steady</code> 让灯带停在声明颜色的相位 0 不再呼吸；屏幕背光不再跟着它走，只取 <code>Backlight</code> 的设置。页面自己的滚动仍按 <code>animating()</code> 保持 <code>TimeDriven</code>。今天的稳态集只有 <code>text</code>，<code>only_the_reading_page_holds_the_light_still</code> 钉住这一点。</p>
+<p><code>Lighting</code> 页是灯效的唯一入口：<code>GlowScope { Off, Page, Everywhere }</code>（默认 <code>Page</code>）存在 <code>DeviceState.glow</code>，投影成 <code>FrameSnapshot.glow</code>；效果 <code>Effect { Steady, Breath, Cycle, Aurora, Candle, Pulse, Heartbeat, Lightning, Sparkle, Strobe, Police, Sos }</code> 与参数由页面私有的 <code>LightingView.breath</code> 发布，玻璃和灯珠都走 <code>Breath::sample</code> 的同一条采样路径。<code>Off</code> 不铺，<code>Page</code> 只在 <code>Lighting</code> 页铺，<code>Everywhere</code> 在所有页铺。<code>Backlight { pct }</code>（默认 100）独立于灯效，<code>level() = pct</code> 是屏幕背光的唯一来源，0 即全黑。无屏板落在 <code>PageId::Headless</code>：单击换灯效（12 档后接关）、长按调亮度（30/50/70/90/100% 后接关，暗灯长按回到首档）、双击换颜色、三击加亮度（多击默认关闭，运行时用 <code>SettingsIntent::SetClicks</code> 开启），开机时按住越过 splash 请求配网；它不进 <code>PageId::ALL</code>、不进菜单，只把按钮与灯珠接起来；有屏时请求 <code>Headless</code> 退回 <code>Input</code>。灯与玻璃的默认开机效果是 <code>Aurora</code>。<code>PageId::from_code</code> 仍认它的 wire code，供开机与宿主机走查使用。</p>
+<h3 id="渲染管线：声明一次，布局一次，落墨一次">渲染管线：声明一次，布局一次，落墨一次</h3>
+<p>页面不持有控件树，也不自己算坐标：<code>view</code> 跑完就留下一份声明，<code>Ui</code> 把它布局成整数矩形，然后画字与盒子。命中测试用同一份声明跑 <code>Ui::headless</code>，不建画布。</p>
+<table><thead><tr><th>层</th><th>做什么</th><th>词汇</th></tr></thead><tbody>
+<tr><td><code>ui::layout</code></td><td>1/64 px 定点布局；测量自上而下，容器把去掉内边距后的约束交给子节点；最终边按像素取整，相邻盒子的共享边落在同一像素</td><td><code>BoxConstraints</code>、<code>Length</code>（px / dp / rem / %）、<code>Style</code>、<code>Flow</code>、<code>Flex</code>（grow/shrink/basis）、<code>Wrap</code> 多 run、<code>Stack</code> 绝对定位、<code>Scroll</code> 裁剪、<code>Align</code>/<code>Justify</code>/<code>TextAlign</code></td></tr>
+<tr><td><code>ui::declare</code></td><td><code>Ui</code> 的声明构建器与落墨驱动：<code>view</code> 期间攒树，结束后布局一次、按槽回调，再画字与盒子</td><td><code>Ui::{row, column, stack, wrap, scroll, text, span, custom, paint, headless, rects}</code></td></tr>
+<tr><td><code>ui::paint</code></td><td>每个已布局节点的墨：文字 run（按 span 换色与装饰线）、自绘槽、底色与裁剪；单行不换行的 run 直接画</td><td><code>NodeKind</code>、<code>RunStyle</code>、<code>draw_text</code></td></tr>
+<tr><td><code>ui::typeset</code></td><td>UAX #14 子集 + CLReq 禁则：行首不落 <code>。</code>、行尾不留 <code>「</code>；测量与绘制共用同一个断行器，<code>…</code> 截断</td><td><code>Paragraph { lines, count, truncated }</code>、<code>wrap</code>、<code>next_char</code></td></tr>
+<tr><td><code>ui::font</code></td><td>12 px 点阵 Fusion Pixel，GB2312 + Big5（15,466 字形），整倍放大到 24 / 36 px。<code>Metrics</code> 按字号给行高与步进；ASCII 步进 6 px、汉字 12 px，升部 10 行</td><td><code>Face</code>、<code>Metrics</code></td></tr>
+<tr><td><code>ui::panel</code></td><td>从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距</td><td><code>PANEL_COLUMNS</code>、<code>CONTENT_BOTTOM</code>、<code>LINE</code>、<code>ROW_PITCH</code>、<code>TOUCH_MIN</code></td></tr>
+<tr><td><code>ui::canvas</code></td><td>像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，点阵按整倍放大落墨，重墨与左移一列合并后只落一次；RGB565 打包与反色也在这里</td><td><code>Canvas::{fill_rect, stroke_rect, draw_char_at, draw_char_heavy_at, draw_text_at, push_clip}</code></td></tr>
+</tbody></table>
+<p>页面组合有两条硬规矩：读数行一律走 <code>page::reading</code>（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 <code>grow</code>——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 <code>stack</code>，用 <code>absolute().right/bottom</code> 贴边，声明在文字之后（z 序在上）。</p>
+<p>自绘叶子（波形、刻度盘、网络带）走槽派发：<code>Ui::custom(style, slot)</code> 只记槽号，<code>Ui::paint</code> 布局后按槽回调页面的 <code>Custom</code>。页面的 <code>view</code> 与自绘函数都不认识帧缓冲以外的世界，<code>Panel</code> 只认识一块 <code>Canvas</code> 与它属于哪块屏幕。</p>
+<p>布局是纯函数，但一帧里同一节点会被问很多次：flex 先测量再摆放，<code>grow</code> 级联还会换一组约束再问。<code>Tree</code> 因此在每个节点上记 <code>measured_at</code>（<code>enforce</code> 之后的四条约束压进一个 <code>u64</code>）与对应的 <code>measured</code>，同约束第二次问直接返回，约束变了才重测（高度单独变化也算）；新声明拿 <code>Node::default()</code> 的哨兵键，上一帧的尺寸不会冒充这一帧。像素层按「一次求边界、整段写」组织：glyph 按行取位图、空字节跳过八个像素，<code>fill_rect</code> 每行只求一次裁剪交集，<code>Start</code> 且单行的 <code>draw_text</code> 不跑断行器，<code>Screen::fill</code> 一次写两个像素。这些只改路径不改画面，整页黄金哈希守着。</p>
+<p>滚动帧不重画整页：页面用 <code>Descriptor::with_scroll</code> 交出纯滚动判据——只比较两个滚动区的偏移（其余字段必须相同），<code>AppPainter</code> 留上一帧快照，命中后把已有像素原地 <code>memmove</code> 上移或下移，然后给出两份 <code>FrameDamage</code>（各最多 7 块，含底部徽标带）。<strong>落墨集</strong>只含进入视口的窄条、头部读数与 thumb，<code>Canvas</code> 按它裁剪落墨；<strong>上屏集</strong>含整个滚动框与 header、thumb，<code>St7789</code> 用 <code>CASET</code>/<code>RASET</code> 把这些交给面板——GRAM 不会自己搬像素，只写窄条会让框里其余行停在拖动开始时的内容上。底色改变、换页与相机帧退回整帧；overlay 只把底部 320×12 徽标带加进两份集合，不再让整页重绘。<code>ScreenPainter::reset</code> 负责让画布忘掉上一帧。</p>
+<p>重绘地板挡住的那一帧不会再出现：<code>Differ</code> 对一次变化只报一次，所以 <code>ScreenRenderer</code> 另存「玻璃上真正有的那一帧」（<code>shown</code>），每次拿它跟最新帧比，地板到点就把欠下的那一帧补画；<code>owed()</code> 让循环保持 <code>TimeDriven</code>，不会在玻璃还欠一帧时 park。</p>
+<p><code>Services</code> 持有十八个页面，外加设备自己的三件事：<code>NavService</code>（页栈）、<code>LightService</code>（灯）与 <code>SettingsService</code>（面板语言）。公开 <code>bind</code>/<code>get</code>/<code>apply</code>/<code>snapshot</code>/<code>enter</code>/<code>leave</code>，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 <code>LinkIntent::Scan</code> 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。<code>Services::apply</code> 是唯一的业务分派表：一个 <code>BusinessIntent</code> 组一条臂：<code>Link</code> 写 <code>NetworkState</code>、<code>Network</code> 写 <code>NetworkView</code>，两条记录同属 <code>NetworkPage</code>，所以合成一条，其余各组各归一个；表是穷尽 <code>match</code>，加一组不编译。新增页面＝建 <code>services/&lt;page&gt;/</code>、在 <code>Services</code> 加一个字段、在 <code>get</code>/<code>get_mut</code>、<code>service_mut</code> 与 <code>descriptor(page)</code> 的 <code>match</code> 里各加一条臂，再写 <code>bind</code> 与 <code>descriptor</code>（认领意图的页再写 <code>apply</code>）；漏一条编译不过，<code>iot-tool/tests/page_table.rs</code> 守着这条模板。新增一个不是页面的服务＝加字段、加一条 <code>ServiceId</code> 变体、写 <code>apply</code>，再让 <code>Services::apply</code> 指向它。</p>
+<p>生命周期由 <code>state/manager/write.rs</code> 在一次业务意图落完状态后比较 <code>state.page()</code>：变了就先 <code>leave(旧页)</code> 再 <code>enter(新页)</code>，启动时 <code>Splash</code> 也算一次 <code>enter</code>。钩子与 <code>has_screen()</code> 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 <code>on_hide</code> 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。</p>
+<p><code>PageSnapshot</code> 是页面对外唯一的视图（<code>shared/snapshot.rs</code>），渲染层只拿它，不认 <code>crate::services</code>；<code>NetworkView</code> 因此也放在 <code>shared/model/network_view/</code>。</p>
+<ul>
+<li><code>bench</code> 是入口/夹具，不是层：<code>probe</code> 只被 <code>bin/*-probe.rs</code> 引用，<code>replay</code> 只被 <code>main.rs</code> 在 <code>panel-bench</code> feature 下经 <code>bench::run</code> 引用（宿主测试另编译 <code>replay</code>）；<code>lib</code> 与 <code>runtime</code> 都不认 <code>bench</code>，<code>module_boundaries.rs</code> 的 <code>the_bench_is_reached_only_by_its_own_entry</code> 守着。构建期开关 <code>BENCH</code>/<code>build_credentials</code> 在 <code>state::env</code>，网络工作者取凭据因此不会反向指向 harness</li>
+<li><code>core</code> 不认识 <code>iot_app</code></li>
+</ul>
+<p><code>main</code> 是产品二进制 crate 根（<code>bin/*-probe.rs</code> 各有自己的根），经 <code>iot_app::</code> 取 <code>lib::run</code> / <code>bench::run</code> 与 <code>runtime::feature::network</code> 的入口，不在这张模块图内；板级 bring-up 就在 <code>main.rs</code>，芯片族入口在这里把 <code>second_core_peak</code> 这类能力注入 <code>Wiring</code>，库内不再出现 <code>#[cfg(feature = "esp32*")]</code>。</p>
+<h3 id="远程界面不是页面">远程界面不是页面</h3>
+<p>三种「把界面放到别处」的形态，判据是<strong>谁算显示</strong>：</p>
+<table><thead><tr><th>形态</th><th>谁算显示</th><th>线上传什么</th><th>复用 <code>services</code></th></tr></thead><tbody>
+<tr><td>WebUI</td><td>浏览器</td><td>语义事实（链路、配置、电平、健康）</td><td>只复用 <code>Service</code></td></tr>
+<tr><td>远程显示</td><td>设备（<code>LocalPage</code> + <code>Panel</code>）</td><td>画面</td><td>不（画完才发）</td></tr>
+<tr><td>远程控制</td><td>设备</td><td>命令</td><td>只复用 <code>Service::apply</code></td></tr>
+</tbody></table>
+<p>把 <code>FrameSnapshot</code> 发出去就是远程显示，不是 WebUI。<code>Descriptor</code>（底图、相机帧、重绘节流）与 <code>PageSnapshot</code>（例如正在输入的口令草稿）是设备内概念，任何远程形态都不该看到。</p>
+<p>WebUI 的传输是适配层：语义 API（资源 + 动作）定一次，传输按代价爬阶梯 REST + JSON → 长轮询 → SSE → WebSocket → BLE / NFC → ESP-NOW → MQTT，够用就停。设备现有的 HTTP 服务（<code>core/src/provision/</code>，keep-alive 已实现，响应体只有定长静态内容）直接承载 REST + JSON，长轮询不用动协议；SSE 要先补 chunked 响应体。WebSocket 只在双向低延迟（远程控制）时才值，握手与每连接常驻 socket 都要算栈和镜像。BLE / NFC 是配网与配对通道（浏览器侧只有 Chromium 可达），ESP-NOW 是设备间链路、浏览器永远到不了，MQTT 适合上行遥测。局域网内的 WebUI 还要令牌（roadmap 的 <code>device_key</code>）；setup AP 的开放是配网设计，不是 UI 授权。</p>
+<h2 id="组合（三轴正交）">组合（三轴正交）</h2>
+<p>硬件（板 feature）⊥ 模块（模块 feature）⊥ 能力（<code>iot-core</code> trait）。模块只见能力、板只供能力。</p>
+<ul>
+<li><strong>组合点 = bin 板清单</strong>：能力 move 注入、对能力泛型、同能力板共享一份；启用缺能力的模块 = 编译错，不静默</li>
+<li><strong>产品档 = feature 别名</strong>：档定模块集、板定支持集，交点编译期裁剪校验</li>
+<li><strong>模块可配置</strong> = feature 开关 + const 参数</li>
+<li><strong>渲染层运行时可插拔</strong>：app 里一个零分配的中央 <code>Differ</code> 做 diff（闭包回调；先按 topic 选出各自该显示什么，只对选中项变化的 topic 通知，最后一次性写回快照），以及一个堆上的 <code>RenderSet</code> 注册表（<code>embedded-alloc</code> 堆：S3 512 KiB PSRAM，C6 64 KiB 内部 DRAM）。renderer 在启动时随各自 surface 注册，之后一起进入 render task；没有跨任务总线。每个 renderer 只声明它认领的 <code>Topic</code>（<code>Surface(instance)</code> / <code>Frame</code> / <code>Demand</code>），灯带因此从不接触约 2 KB 的帧；<code>Appearance</code> 借用帧，只有屏幕留副本</li>
+<li><strong>稳态页的光不参与呼吸</strong>：<code>FrameSnapshot::steady</code> 来自 <code>PageId::steady()</code>（见上文），<code>LampRenderer</code> 因此在相位 0 答 <code>Idle</code>，页面自己的动画仍由 <code>animating()</code> 驱动 <code>TimeDriven</code></li>
+</ul>
+<h2 id="需求模型（要什么_/_多频繁_/_多敏感）">需求模型（要什么 / 多频繁 / 多敏感）</h2>
+<p>当前固件是<strong>板级接入验证</strong>，不是产品；结构要能容纳后续应用把任一元件提升为主要交互或运算，且那条路径允许开到该元件的最大能力。</p>
+<p>一个需求是三句独立的话，必须分开表达：</p>
+<table><thead><tr><th>维度</th><th>问的问题</th><th>类型</th><th>决定什么</th></tr></thead><tbody>
+<tr><td><strong>模式</strong></td><td>产不产</td><td><code>Mode</code>：<code>Off</code> / <code>OnChange</code> / <code>Continuous</code></td><td>轮询是否发生、是否按时钟产</td></tr>
+<tr><td><strong>节奏</strong></td><td>多频繁</td><td><code>Claim::period_ms</code>（0 = 板级节奏）</td><td>轮询周期的下限</td></tr>
+<tr><td><strong>优先级</strong></td><td>谁在问</td><td><code>Priority</code>：<code>Primary</code> / <code>Secondary</code> / <code>Background</code></td><td>本板不据此改节奏（见下），只在快照与日志里标明</td></tr>
+</tbody></table>
+<p>而「怎么取」——寄存器组、FIFO、片上引擎、传输——是采集配置（<code>MotionConfig</code> 等），由驱动选定，页面永远不点名。</p>
+<p>这条分离让「低保真 + 高成本」不可表达：页面根本没有办法要求一个更差的画面来省资源。</p>
+<p>把两者合成一个「档位」序数，等于同时编码「要什么」和「怎么取」。降档既像降保真、又像省资源，而降档并不等于省资源。</p>
+<p><code>Priority</code> 在本板改不动任何节奏，这是硬件决定的。Android 的 <code>max_report_latency</code> 前提是事件按时钟采集、只在上报前压在 FIFO 里，所以「采得勤、报得晚」是两句独立的话。本板 IMU 没有 FIFO，报得晚只能换成采得稀，而那正是 <code>period_ms</code> 已经说出口的话。</p>
+<p>所以「priority → 毫秒」那层查表在本板不可兑现：它只会把 <code>period_ms</code> 乘一个系数再取 max。</p>
+<p>Android 那一侧给的两条形状照抄过来：</p>
+<ul>
+<li>
+<p>每个传感器的 <code>minDelay</code> 对 on-change 必须是 0、one-shot 必须是 −1。「多频繁」不是每种上报模式都问得到的。</p>
+<p>运动设备在本板虽然名字像 on-change，实际是持续轮询加器件内的 No-Motion 引擎产出变化事件：<code>Mode::OnChange</code> 与 <code>Mode::Continuous</code> 由 <code>MotionConfig::for_mode</code> 映射到同一个 <code>PolledRegisters</code>。</p>
+<p>这不是把两个模式并成一个——消费者要的东西在时间上确实不同（一个只要变化、一个按时钟），只是产出它们的接线相同。「怎么取」是器件的答案，不是需求的字段。</p>
+<p><code>WakeDetector</code> 仍在配置集合里，但那是驱动按器件能力明确拒绝的一档，不是 <code>OnChange</code> 的落点。别的元件要先问一句上报模式。</p>
+</li>
+<li>
+<p><code>power</code> 几乎总高于器件手册，且「多传感器同时开启的功耗增量不超过各自之和」是可加性假设。本板没有电流表，这条无法验证——所以固件里不带任何功耗数字，只报执行器占用。</p>
+</li>
+</ul>
+<h3 id="仲裁取最大值，不取优先级">仲裁取最大值，不取优先级</h3>
+<p>多个消费者声明同一个元件时，最大需求胜出，不是各自决定。</p>
+<p>这是 Android sensor stack 的规则（"If one application requests one sensor with a maximum reporting latency of 0, all applications will receive the events from this sensor in continuous mode"），也是 ESP-IDF 的 PM lock 形状。</p>
+<p>优先级仲裁是例外场景才需要的复杂度，不做。</p>
+<h3 id="换配置必须无损，且有独立_flush">换配置必须无损，且有独立 flush</h3>
+<p>Android 的硬约束："A sensor must be able to be reconfigured at any time using <code>batch()</code> without the loss of sensor data"。</p>
+<p>落在本仓库：<code>ACCEL_LSB_PER_G</code> 与 <code>GYRO_LSB_PER_DPS</code> 是 <code>const</code>，全量程或 ODR 一变，core 侧换算就错，所以它们必须转运行期值。</p>
+<p>切换瞬间「新 scale + 旧样本」的那一拍必须作废，而不是折算。</p>
+<p>换配置前还需 <code>flush()</code> 把已积累的数据排空，否则丢掉的是有效样本。</p>
+<p>non-wake-up 语义下允许丢样本（Android："The non wake-up sensors need to overwrite their FIFOs when they're full till the AP wakes up"），但必须有界且报出来，不能静默。</p>
+<h3 id="需求与已有的_phase_是三件事">需求与已有的 phase 是三件事</h3>
+<p><code>AudioPhase</code>（<code>Idle</code>/<code>Recording</code>/<code>Stopped</code>）与 <code>PlaybackPhase</code>（<code>Idle</code>/<code>Playing</code>）是 UI 语义。<code>AudioPhase</code> 的注释说它决定 "which envelope the panel draws"。</p>
+<p>它们不是模式也不是节奏：同一模式可以有不同 UI 语义，同一 UI 语义可以有不同模式。三者用注释互相指认，不合并。</p>
+<h2 id="需求的更改与传输">需求的更改与传输</h2>
+<h3 id="更改：复用现有意图路径">更改：复用现有意图路径</h3>
+<p><code>apply_intent</code> 是状态变化的唯一公开入口（输入先写进记录再翻译），内部仍只经 <code>apply_business</code> 落状态；worker 上报另走 <code>apply_scan</code>/<code>apply_capture</code>，时钟走 <code>tick_notice</code>，三个入口各自带着无法装进意图的大载荷。<code>apply_input</code> 与 <code>apply_business</code> 是流水线两半，crate 内可见——外部不能只写记录不翻译；手势改页只有 <code>BusinessIntent::Navigation(NavigationIntent::NextPage)</code>，<code>SplashOver</code> 只在启动页结束时落到 build 的页。</p>
+<p>新增场景 = 新增一个 <code>BusinessIntent</code> 变体；运行期换节奏 = 再一个变体。<code>apply_business</code> 之后由 <code>settle_demand()</code> 重新求 <code>EffectiveDemand</code>。不新造机制。</p>
+<p>需要规则的能力（多步转移、不变量、跨字段边沿）放自己的模块。<code>BusinessIntent</code> 按它写的记录分组为 <code>Navigation</code>/<code>Link</code>/<code>Network</code>/<code>Audio</code>/<code>Playback</code>/<code>Light</code>，<code>Services::apply</code> 是唯一的索引表；每个所有者在自己的模块里穷尽 <code>match</code> 本组变体，新增变体只在那里加一条臂，漏接是编译错。跨域动作（响一声、灯上报一句）由所有者返回 <code>Effects</code>、门面执行，所有者之间不互相调用。</p>
+<p>一条链，五个词：<code>Event → Intent → Action → State → Hardware</code> —— <code>Event</code> 是设备听到的事（手指、按钮、worker 的回报、启动的决定），<code>Intent</code> 是设备被告知了什么，<code>Action</code> 是它决定做什么（记录自己的动作表；动词只有一个的域，意图本身就是那张表），<code>State</code> 是它现在是什么样（RAM），<code>Hardware</code> 是它的身体（屏、灯、射频、喇叭、存储）。</p>
+<p><strong>硬件只由 State 驱动，State 只由 Action 改，Action 只由 Intent 触发，Intent 只由 Event 产生。</strong></p>
+<p><code>shared/model/</code> 的文件布局见上表；这里只补一条硬规矩：领域文件显式 import，禁止 <code>use super::*</code>（测试除外），预导入会让新增符号静默穿过模块边界。<code>DeviceManager</code> 与手势→意图的分派在 <code>state/</code>，<code>DeviceManager::apply_intent</code> 定义在 <code>state/manager/write.rs</code>，按当前页走 <code>Services::bind</code>，先写记录再翻译。</p>
+<p>业务状态与页面状态分开放，且<strong>谁写的就归谁</strong>：<code>NetworkState</code> 只装射频报上来的东西（<code>link</code>/<code>mac</code>/<code>aps</code>/<code>outage_announced</code>），只有 <code>LinkIntent</code> 写它；<code>NetworkView</code> 只装页面正在做的事（选中的行、草稿、按键、确认框、列表滚动位置），由 <code>NetworkPage::apply</code> 响应手指的 <code>NetworkIntent</code> 与扫描落地的 <code>LinkIntent::Scan</code> 写它，不在 <code>DeviceState</code> 里。页面读 <code>&amp;NetworkState</code>，链路从不读写页面字段，于是「工作者的报告落进页面字段」和「页面编辑改掉射频读数」都不再可能。其余领域保留 <code>view</code> 子记录（<code>AudioView</code>、<code>PlaybackView</code>、<code>TouchView</code>），语义相同：只装页面正在做的事，通知与渲染只读它。链路自身的形状也收成值：<code>LinkStatus.mode</code> 是 <code>NetworkMode</code>（<code>Link</code>/<code>Browsing</code>/<code>Setup { host, cancellable }</code>），不再用四个并列 bool 表示「页面在做什么」。</p>
+<p>命令的出处也随这条边界走：页面域的 <code>apply</code> 直接返回 <code>Option&lt;NetworkCommand&gt;</code>，<code>Effects</code> 只装设备内的回声与提示，不留发件箱——从意图到工作者只有一条路径。</p>
+<p>跨边界的写法按语义选，两个方向各两种：</p>
+<ul>
+<li><strong>回报</strong>：可能引出命令的（<code>Link(Status)</code>、<code>Playback(Finished)</code>、<code>SplashOver</code>）走总线意图；纯闩锁（扫描列表、采集窗口）在系统的 <code>tick</code> 里直接写。</li>
+<li><strong>请求</strong>：在状态里推不出来的（重复 <code>ScanNow</code>、「要删」而非「已删」、<code>SplashOver{setup}</code>）走 <code>Command</code>；能由状态边沿推出来的（静音、播放相位）在 <code>tick</code> 里 diff。</li>
+</ul>
+<h3 id="传输：协调者与工作者">传输：协调者与工作者</h3>
+<p><code>run_loop</code> 是<strong>协调者</strong>：它只做不阻塞的事，一帧四段——取意图、让系统各走一步、呈现、等下一帧。任何会等驱动、等 I2C、等协议栈的工作都属于<strong>工作者</strong>：</p>
+<table><thead><tr><th>工作者</th><th>拥有的东西</th><th>executor</th><th>句柄</th></tr></thead><tbody>
+<tr><td>渲染层 / 摄像头</td><td>surface、camera</td><td>协作</td><td><code>Render</code> / <code>FrameSnapshot</code></td></tr>
+<tr><td><code>input_task</code></td><td>输入器件与音频采集</td><td>协作（S3：第二个核）</td><td><code>Input { to, from }</code></td></tr>
+<tr><td><code>control_loop</code></td><td>编解码器、DMA</td><td>协作（S3：第二个核）</td><td><code>Speaker { to }</code>（完成回报走 intent 总线）</td></tr>
+<tr><td><code>network::serve</code></td><td>协议栈、链路、AP 服务</td><td>协作（core 0 上的任务）</td><td><code>Network { commands, page, scan }</code></td></tr>
+<tr><td><code>feed_task</code></td><td>麦克风时钟</td><td><strong>Priority2 中断，独立 executor</strong></td><td>⚠️ <strong>故意无依赖，不能加</strong></td></tr>
+<tr><td><code>panel_service</code></td><td>面板总线（帧传输）</td><td><strong>第二个 APP core</strong></td><td>无句柄：<code>Screen</code> 只持通道（<code>Panel::write</code>）</td></tr>
+</tbody></table>
+<p><code>panel_service</code> 与驱动半边（<code>input_task</code>、<code>control_loop</code>）跑在第二个核上：帧传输是阻塞 DMA，采集折叠每 20 ms 忙等 7 ms，两者都会整段占住所在执行器。协调者把画完的帧投成票据等回执；驱动半边整体交给 <code>IoPlacement::Elsewhere</code> 的槽位，由核上的 <code>run_io_from</code> 取走。只有核上确实起了第二个执行器时才走这条路——没起（单核 C6、S3 无面板）时是 <code>IoPlacement::Inline</code>，同一份任务照旧跑在协调者的执行器上，所以 placement 由 <code>start_executors</code> 决定，那是有没有第二个核这件事唯一的知情处。<code>esp_rtos::start_second_core</code> 固定用 <code>FROM_CPU_INTR1</code>，因此 <code>feed_task</code> 用 <code>FROM_CPU_INTR2</code>。</p>
+<p><strong>工作者由拥有其驱动的组合点启动。</strong> 驱动半边由 <code>run</code> 用 <code>Wiring.spawner</code> 起（<code>IoPlacement::Inline</code>）或交给第二核（<code>Elsewhere</code>）。网络工作者的驱动类型只有入口认识，所以入口把 station 与 store 取走后就地建出 <code>Wifi::Worker(NetworkWorker)</code>——一个只接收 <code>Spawner</code> 的闭包；<code>run</code> 在 <code>run_loop</code> 之前执行它，既不认识射频，也不持有 worker 清单。加一个工作者仍是组合点的一行闭包，而不是多一种交给 <code>run</code> 的形状。<code>main</code> 因此不 <code>join</code> 任何工作者，<code>run_loop</code> 是它唯一 <code>await</code> 的协调者。<code>feed_task</code> 与 <code>panel_service</code> 仍由 <code>start_executors</code> 起——只有那里知道中断执行器与第二个核。<code>network::serve</code> 用本地 <code>Spawner</code> 起成任务，future 不必 <code>Send</code>：它留在 core 0 的执行器上，跨核的只有 <code>Io</code> 束。</p>
+<p>句柄由各自的系统持有，组合根在 <code>register</code> 时交给它：一个工作者一个系统，加第二个协议只加一个文件与一行 <code>register</code>，不改共享结构体。方向名只用角色（<code>to</code> 给工作者、<code>from</code> 给协调者），peer 名留在 peer 结构体里。停帧时等三条就绪线（意图环、采集窗口、扫描列表），谁发布了谁自然叫醒循环，主循环因此不点名任何 worker。</p>
+<p><strong>句柄只从入口流下去，不从模块路径摸上来。</strong> 组合根有一份 <code>static RUNTIME: Runtime</code>（<code>runtime/mod.rs</code>），里面是跨层要用的全部存储：意图环、采集窗口、网络与播放的队列、喂数唤醒、<code>Readiness</code>。往下传的永远是具体句柄或一个内聚的旁值，不传整个 <code>Runtime</code>：<code>Io</code> 是驱动半边跨核要带走的那一束，网络工作者拿到的是 <code>NetCtx { bus, network, readiness, heap_free }</code>（<code>readiness</code> 与堆读数只有组合点知道）。意图环自己数它拒掉的意图（<code>IntentBus::dropped_count()</code>），所以那个计数没有第二根句柄。函数签名因此就是它的输入清单，测试可以自己造一份而不用抢全局单例。</p>
+<p>旁值只在边界上产生：组合根（<code>Wiring</code>、<code>NetCtx</code>）、板层（<code>ScreenContext</code>）、任务/会话起点（<code>BootFacts</code>）。协调者、渲染、页面、状态不得就地拼包——那是被删掉的 <code>Frame</code> 的形状。判据与两条栅栏见 <code>records/iot/layering.md</code>。</p>
+<p><code>Playback</code>、<code>Network</code>、<code>CaptureWindow</code> 都自己拥有通道（<code>const fn new()</code>），不再是「static 通道 + 指向它的句柄」：跨核锁只在确有必要时出现，<code>LinkWatch</code> 的「上次报告」与「未送出的 MAC」因此在任务自己的栈上，用普通 <code>Cell</code>。</p>
+<p>三种形状按语义选，不按方便选：</p>
+<ul>
+<li><strong>命令</strong>走 <code>Inbox</code>（<code>Network.commands</code>）：每个工作者一条入场队列。不等的发布者用 <code>publish</code>，满时让最旧的一条让位——协调者每帧只能走这条；不能丢的发布者用 <code>send().await</code>，等到有空位才入队（手机侧那条 <code>Join</code> 就是这样，它发完就停在自己的页面上）。队列深度取一帧最大的命令数（8 条意图），所以正常路径一条不丢，丢只发生在工作者落后一整帧以上。</li>
+<li><strong>保留值</strong>走 <code>PageWatch</code>/<code>Retained</code>（<code>Network.page</code>、<code>Scan</code> 的列表）：写入替换旧值，读走之后仍然在，所以面板与手机页面读的是同一份。启动页的结论不是保留值而是<strong>一次性命令</strong>：它走 <code>NetworkCommand::SplashOver { setup }</code>，与面板的其余请求同一条队列，工作者不必再看页面演进到哪一步。</li>
+<li><strong>最新窗口</strong>走 <code>Input.from</code>：1.7 KB 的采集样本只留最新一份，覆盖而不是排队。</li>
+</ul>
+<p>输入侧每个 tick 把该源本轮产生的事件全部取走（<code>PollEntry::poll_all</code> → <code>EventAggregator::drain</code>），每拍最多投递 <code>EVENT_BATCH = 5</code> 条：一次采样里两根手指同时移动会产出两个 <code>Drag</code>，只放行一个会让另一根手指永远落后一帧。<code>Press</code>/<code>Tap</code>/<code>Swipe</code>/<code>LongPress</code> 这类离散意图仍走 <code>send().await</code> 等空位，<code>Drag</code>/<code>Touch</code> 可被拒、下一次采样补上。</p>
+<p><code>NetworkCommand</code> 的词汇表留在 <code>app/src/shared/model/network.rs</code>，句柄只负责搬运。命令由 <code>DeviceManager::apply_intent()</code>（定义在 <code>state/manager/write.rs</code>）作为 <code>Command</code> 返回，<code>Schedule::process_intents</code> 按 <code>Command::type_id()</code> 查注册表，交给声明了 <code>System::takes</code> 的那个系统，<code>NetworkSystem</code> 取走 <code>Command::Network</code> 那一支后 <code>publish</code>，不逐个变体翻译、也不在状态里留发件箱；队列满时让最旧的一条让位，所以协调者不会为一条命令停一帧。setup 类命令带上发出时的 <code>SetupHost</code>，工作者据此丢弃上一轮留下的请求。</p>
+<p><strong>每帧逻辑按边界拆成系统。</strong> <code>coordinator/systems/*.rs</code> 一个文件一个 <code>System</code>，它持有自己那条边界的 worker 句柄与跨帧记忆（上一条播报状态、上一页、governor），共享状态与时钟由 <code>tick</code> 的参数交给它；系统之间不互相调用。共享协作者不超过两个时用显式参数，达到三个或集合在编译期说不清时才收成一个 <code>Context</code>；bus 由循环持有，每帧显式传给 <code>process_intents</code>。加一个特性 = 加一个文件 + 在组合根 <code>Schedule::register</code> 一行（句柄在那里交给系统），注册顺序就是执行顺序，改顺序就是改语义。意图那一侧也走 <code>System</code>：每条意图应用后，模型留下的 <code>Command</code> 按类型查注册表，交给声明了 <code>System::takes</code> 的那个系统；同一帧的两条命令不会合并，没人取走则在 release 里打一条 <code>[COORD]</code> 错误日志（调试构建另有断言）。</p>
+<p><strong>渲染层零成本</strong>：<code>FrameSnapshot</code> 已经是「融合所有子系统状态的单快照」，含 <code>page</code>/<code>motion</code>/<code>audio</code>/<code>playback</code>；<code>Appearance::Frame</code> 就是「状态进消费者」的通道。摄像头那条链已端到端跑通：</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>DeviceState.page → frame_snapshot() → Appearance::Frame</span></span>
+<span class="giallo-l"><span>  → Differ::diff → ScreenRenderer::on_appearance</span></span>
+<span class="giallo-l"><span>  → surface.release_camera()</span></span></code></pre>
+<p>所以 <code>Demand</code> 只需长在同一快照上，display 与 camera 部分零新增。</p>
+<p><strong>需求是共享状态，不是消息。</strong> 需求是幂等的聚合状态而非事件，只有最新那一份有意义。用通道装它，就得补上一格深队列、写方变化检测与失败重试——三套机制都只为「通道存不住一个值」而存在。</p>
+<p>共享槽的形状跟着这个约束来：embassy 的 blocking mutex 是共享只读的（<code>RawMutex::lock(f)</code> 的闭包拿不到 <code>&amp;mut</code>），所以槽内还要一层 <code>RefCell</code>。</p>
+<p><code>Intent</code> 是相反的情形——事件——所以仍走总线。</p>
+<p>采集窗口是第三种形状：它是<strong>窗口</strong>不是事件（只有最新一份有意义），但也不是共享状态（不是谁去改公共槽，而是板子在 poll 里把驱动刚折好的一帧交出来）。于是它走一条单槽通道：<code>HasAudio::take_audio(&amp;'static dyn CaptureSink)</code> 把目的地交给板子，<code>input_task</code> 的 poll 往里发布，<code>run_loop</code> 在 intent 之后取走。</p>
+<p>第二个理由是宽度：<code>Channel&lt;T, N&gt;</code> 的每个槽按 <code>size_of::&lt;T&gt;()</code> 分配，槽宽由最宽的事件变体决定 —— 带 envelope 的采集事件（1.76 KB）会把 8 槽的意图环（<code>Runtime.bus</code>）定成 14,184 B 内部 DRAM，而面板每次只读最新那一帧。变体删掉之后意图环是 896 B，窗口自己 1,824 B（记在 <a href="https://lastsunday.github.io/vanling/records/iot/wifi/">Wi-Fi 实现记录</a>）。</p>
+<p>顺序是顺带的：<code>input_task</code> 按接线序 poll，采集排最后，所以同一个 tick 里按下录制键闩住的是上一帧画过的那一张。</p>
+<p>句柄由组合点造并注入（复用 <code>playback::share()</code> 的形状），满足 <code>input.rs</code> 的约定：句柄传进去，没有消费者按名字摸全局。</p>
+<h3 id="feed_task_是时钟声明方，不是需求消费者">feed_task 是时钟声明方，不是需求消费者</h3>
+<p>这条最容易搞反。</p>
+<p>麦克风的 BCLK 与 WS 由 I2S TX 单元产生，RX 从属它（板模块里 RX 不接 BCLK 与 WS）。feed 的存在本身就是麦克风时钟的来源——silence 也是一种 voice，ring 永远被喂满。</p>
+<p>所以 <code>feed_task</code> 持有一个永不释放的时钟 claim，需求不流向它。</p>
+<p>需求只决定采集侧折叠的节奏，而折叠在 <code>input_task</code> 里。麦克风时钟因此永远在，折叠可按需降频，不需要动时钟拓扑。</p>
+<p>代价与耦合：ring 是 <code>BYTES_PER_POLL * 3</code>（约 60 ms），最多约 60 ms 不 drain 就开始丢样本。</p>
+<p>更要紧的是 drain 不只影响丢样本：环满之后 I2S 引擎自行停机。于是 poll 变稀不是「读数变旧」而是「时钟停摆」。</p>
+<p>实测把 capture 批到 30 s 之后，环在 60 ms 内撞满、<code>capture ring 10842 B deep</code> 报警，90 s 里 <code>CaptureWatchdog</code> 只在第 91 秒才通过 <code>restart</code> 把链接回来一次。</p>
+<p>所以采集路径不接受任何慢于板级 cadence 的 poll：<code>Es7210Rx::accepts_slower_poll()</code> 答 <code>false</code>。</p>
+<p><code>CaptureWatchdog</code> 靠「有没有进度」判停滞这件事因此不是问题——它根本没有机会看到一次故意的长间隔，间隔不存在。</p>
+<h3 id="时序">时序</h3>
+<p><code>run_loop</code> 写槽 → <code>input_task</code> 下一个 <code>INPUT_BASE_MS</code> tick 读到。「场景切换 → 需求生效」是一个 tick 加上 <code>run_loop</code> 被持有的时间。</p>
+<h4 id="上限是单次最长持有，不是百分比">上限是单次最长持有，不是百分比</h4>
+<p>Liu &amp; Layland、CFS、RT group 的利用率界约束的都是抢占式调度器跑任务的时间份额。</p>
+<p>协作式执行器不在这个模型里：每次 poll 公平，没有任务被份额饿死。它不能做的是打断。</p>
+<p>一次不让步的 poll 会占住整个最坏执行时间。所以要界定的是单次持有。</p>
+<p>界定对象是整个 tick，不是其中最大的那个源。input tick 里所有源跑在同一个不让步的循环里，面板写不在其中。</p>
+<p>实测（S3，8 个 5 秒窗口）单次 tick 17–25 ms。<code>MAX_SINGLE_HOLD_MS = 30</code>，留一个 poll 周期的余量。<code>[INPUT]</code> 每窗口打印 <code>worst single hold N ms (bound 30 ms)</code>，越界直接可见。</p>
+<p>这组 17–25 ms 是在 <strong>80 MHz</strong> 下测的。产品 S3 现在由 <code>chip_init_for_product()</code> 以 240 MHz 启动（<code>chip_init_at(CpuClock::_240MHz)</code>），<code>chip_init()</code> 仍是 80 MHz 的探针入口；这组 tick 没有在 240 MHz 下重跑，240 下只会更短，但上面的数字仍应按 80 MHz 的量级读。240 MHz 的验证与代价见 <a href="https://lastsunday.github.io/vanling/records/iot/clock/">运行期改 CPU 频率</a>。</p>
+<p>总量不是风险项：Input 花掉 94.8% 且一切正常。一次 25 ms 的阻塞才是。播放喂数跑在独立的高优先级 executor 上、由 DMA 驱动，碰不到这种阻塞。</p>
+<h4 id="两种配置拒绝实现，返回_UnsupportedConfig_而不是写一个像样的字节">两种配置拒绝实现，返回 <code>UnsupportedConfig</code> 而不是写一个像样的字节</h4>
+<table><thead><tr><th>配置</th><th>缺什么</th></tr></thead><tbody>
+<tr><td><code>WakeDetector</code></td><td>单加速度计同时改变 CTRL7 功耗域和「用哪张 ODR 表」；datasheet 给了两张表的频率但没给各自索引，引擎窗口按该索引换算，猜错就正好错这么多</td></tr>
+<tr><td><code>Fifo</code></td><td>FIFO 寄存器从 <code>0x0B</code> 起，与本驱动写运动标定的地址重叠——重叠正是 CTRL9 命令协议存在的原因，所以这不是一次寄存器写而是排序问题</td></tr>
+</tbody></table>
+<p>每一条都是「打开寄存器表补一个编码」的可达路径。</p>
+<p><code>Off</code> 不是配置而是模式，由消费者不轮询兑现。</p>
+<p>驱动的具体接线与寄存器细节在 <a href="https://lastsunday.github.io/vanling/development/iot/motion/">motion.md</a>。</p>
+<h4 id="配置器、仲裁与接线">配置器、仲裁与接线</h4>
+<p>配置器是模式与寄存器之间唯一的一道翻译。<code>Configurator::configuration_for</code> 把需求变成各器件「必须被配置成什么」，映射在 core 的 <code>MotionConfig::for_mode</code>，器件能力由板子在装配点交给 <code>Configurator::new</code>。</p>
+<p>分工是硬的：哪个模式要哪个配置是产品的话，这块硅片上有什么是板子的话。</p>
+<p>拒绝是返回类型的一部分。走不进去时返回 <code>Unreachable { key, mode, config }</code>，三者齐全，调用方拿不到「悄悄降级」的选项。</p>
+<p>拒绝会被写进需求：被点名的设备从「设备承诺」里去掉（<code>EffectiveDemand::without</code>），下游读到的需求不再声称一件器件做不到的事。</p>
+<p><code>Off</code> 不在此列，它由「不采集」兑现，返回 <code>None</code> 而非 <code>Err</code>。交互通道永不受影响。</p>
+<p>图上 Logic 分别调 Render 与 Configurator。但器件在 <code>input_task</code> 里，<code>run_loop</code> 够不着，所以配置器也放在持有器件的一侧：它要板子声明的能力来翻译模式，拒绝也该对着真正拒绝的那个器件报告。</p>
+<p>配置器随需求一起兑现，<code>[DEMAND]</code> 报的是这次排程的结果。</p>
+<p>需求按设备索引，不按字段枚举。<code>EffectiveDemand</code> 是 <code>BTreeMap&lt;DemandKey, Claim&gt;</code>，键是「器件类型 + 第几个」，所以 <code>claim</code> 与 <code>Override::apply</code> 全是查表，新增一个传感器不需要改动需求机械的任何一行。</p>
+<p>两个同型号器件可以分开提需求（<code>DemandKey::instance(Audio, 0)</code> 与 <code>…, 1</code>）。</p>
+<p>设备清单由板子给。<code>PageId::demand(&amp;self, keys)</code> 遍历板子声明的设备表调 <code>claim_for</code>。这个 match 是穷尽的，所以页面不可能漏掉一个设备然后继承一份没人选过的需求。</p>
+<p>板子没声明的设备不出现在需求里，读作 <code>Off</code>，不需要再用四个布尔开关夹一次。</p>
+<p>需求状态是被持有的，不是现算的。<code>DeviceManager</code> 持有一份 <code>EffectiveDemand</code>，与它来自的页一起放在 <code>DemandPolicy</code> 里。派生的唯一出处是 <code>DemandPolicy::settle</code>（<code>apply_business</code> 末尾经 <code>settle_demand()</code> 调用）：缓存键只有页，<code>keys</code> 与 <code>overrides</code> 自 boot 起不再变，所以页没换就不重算。</p>
+<p>下游读的始终是这份提案。输入任务遇到某个器件无法兑现时只记一条告警，并让该器件停在原来的配置；提案本身不回写。当前树里 <code>MotionConfig::for_mode</code> 只返回 <code>PolledRegisters</code>，所有接线动件的驱动都支持它，所以这条告警路径不可达。</p>
+<p>仲裁由 <code>resolve_speed</code> 在采集设备上取最高要求，测试断言它按设备取最高速，而不是整表一个常量。</p>
+<p>接线：</p>
+<table><thead><tr><th>消费者</th><th>怎么拿到需求</th></tr></thead><tbody>
+<tr><td><code>input_task</code></td><td>共享需求，每个 tick 在临界区内借用一次，按 <code>PollEntry.key()</code> 排程（cadence 还要问驱动 <code>accepts_slower_poll</code>）</td></tr>
+<tr><td><code>run_loop</code></td><td>写入方。页面就是产品的声明，所以写在这里而不是让每个消费者各自推导</td></tr>
+<tr><td>摄像头</td><td><code>Appearance::Frame</code>（已有通道），门控条件从「页面变了」改成「需求不再要求画面」</td></tr>
+<tr><td><code>feed_task</code></td><td>刻意不注入。它的存在本身供给麦克风时钟，所以它是音频路径时钟的来源而不是它需求的消费者</td></tr>
+</tbody></table>
+<p>轮询节奏只向外走：板级 cadence 是抖动窗口的量度下限，需求没有资格改短。地板与当前节奏分两个字段（<code>board_cadence_ms</code> 与 <code>cadence_ms</code>），否则一次拉长就再也收不回来。</p>
+<p>有些源连向外都不许。<code>accepts_slower_poll()</code> 默认 <code>true</code>，<code>Es7210Rx</code> 答 <code>false</code>。采集环只有 <code>sample()</code> 会排空，被批到 30 s 就是环撞满、I2S 引擎停机。把这个判断交给驱动，而不是让 core 猜哪个外设需要它。</p>
+<p>audio 的 codec 那一半仍未接。<code>Off</code> 在消费端已接（<code>set_collecting</code> 把 I2S 链 park 掉），但 ES7210 的寄存器级模拟电源关闭位没有落进代码。板上没有引脚级 mic 电源控制，而只关 ADC 不降低折叠成本（DMA 照跑，折叠零串与真数据同价），那只会造出「低保真 + 高成本」这个象限。</p>
+<h4 id="探针报什么、不报什么">探针报什么、不报什么</h4>
+<p><code>aec-probe</code> 是唯一不接外设的探针：回声消除是两路数据的算术，bring-up 只会往测量里加噪声。它报的是「CPU 代价只与抽头数和时钟有关」，因而可以先把时间预留进预算再接线。报首/均/最坏 tick、占 20 ms 的比例，以及延迟搜索、滤波、计量器分开计时——三者的代价不同，能换的东西也不同：延迟搜索是一个常数换精度，抽头是精度同时换另外两者。</p>
+<p>它的 tick 是连续跑的而不是按 20 ms 调度，所以读到的是<strong>下限</strong>而不是带载值。房间缓冲区放在堆上：10 KB 的局部量会占掉 main 任务的栈，而栈正是本文记账的那份共享资源。</p>
+<p><code>echo-probe</code> 正好是它的对照：<strong>唯一接外设的 AEC 探针</strong>，因为它要回答的恰恰是 <code>aec-probe</code> 答不了的那件事——接线对不对。扬声器在放、麦克风在听、取消器喂两路，走产品自己的喂入与采集轮询。报 ERLE、delay、抽头峰值、配对数、参考日志深度与最坏持有时间。</p>
+<p><strong>这些数字必须捆在一起读</strong>：配对数为零时 ERLE 恒为 0（日志不动就不测量），而参考日志 lap 过时 ERLE 可以看着正常。两者输出的是同一个零。<code>EchoReport</code> 把它们捆在一起就是为了不让调用方拆开读。</p>
+<p>它还报一条 <code>aec-probe</code> 结构上不可能报的东西：<strong>延迟锁在哪</strong>。板上的延迟搜索曾在一个 64 样本窗口里乱跳（<code>None → 16 → 50 → 6</code>），而滤波器被拖着每 256 ms 换一次窗，64 个抽头没有一次朝同一个房间收敛。加上锁之后两次实测 delay 全程只动一次。至于消除量本身，<code>aec-probe</code> 和 <code>echo-probe</code> 都还没有在板上出过数——见<a href="https://lastsunday.github.io/vanling/records/iot/aec/">回声消除实现记录</a>。</p>
+<h4 id="回声消除这一层的接线">回声消除这一层的接线</h4>
+<p><code>Canceller</code> 是两路进一路出，而把这两路配成「同一个瞬间」不是它的问题。两个 DMA 共用一个时钟、各自按自己的节奏排空，参考信号还要被发射环的跑道拖住。所以配对这一层是独立的：</p>
+<table><thead><tr><th>类型</th><th>归哪</th><th>是什么</th></tr></thead><tbody>
+<tr><td><code>ReferenceLog</code></td><td>core</td><td>按放音游标而不是写入指针保存参考样本，并报 lap —— 配对读到的必须是已经播出去的那一段</td></tr>
+<tr><td><code>Decimator</code></td><td>core</td><td>抽取器带<strong>相位</strong>，两路各自报自己的，供配对方对齐而不是各猜各的</td></tr>
+<tr><td><code>EchoStage</code></td><td>core</td><td>采集 × 参考的配对与抵消，产出 <code>EchoOutcome</code></td></tr>
+</tbody></table>
+<p>相位是这套里唯一会静默错一抽的东西：发端比收端先 arm 时两边取 0，<strong>换一块先 arm 麦克风的板子必须同时把偏移报给两边</strong>，差的部分由延迟搜索兜，那不是自动的。</p>
+<p><code>demand-probe</code> 遍历运动设备的（配置 × 节奏）矩阵，每个格子先 settle 再测量，报三个数：驱动自己计数器给出的总线事务/秒、窗口内 poll 的执行器占用墙钟占比、以及测量的 poll 数（好让前两个互相校验）。</p>
+<p>它报不了电流——那需要板子上接表，别人的数据手册数字不是对这块板的测量。所以固件里不报电流。</p>
+<p>驱动没有寄存器编码的格子按「不可达」打印而不是跳过，日志对「没测到的」和「测到的」一样响。</p>
+<p>配套两件事：<code>SUPPORTED_CONFIGS</code> 只列驱动能把芯片配成的样子（有测试断言它与 <code>config_for</code> 一致）；<code>Board::new_motion_only()</code> 提供隔离 bring-up——一个在别的设备还在跑的格子里测出来的东西是关于错的东西的证据。</p>
+<p>各设备的实测数字与它们的口径限制，在<a href="https://lastsunday.github.io/vanling/records/iot/">实现记录索引</a>。</p>
+<h4 id="执行器占用的数字不可相加">执行器占用的数字不可相加</h4>
+<p>同一批协作执行器，谁醒着谁拿时间：把 motion 批到 30 s 后 input 侧从 49.5% 降到 35.5%，面板侧同时从 45.3% 升到 58.5%。</p>
+<p>面板那一侧是残差不是增量。把它和被轮询设备的数字相加，等于把同一批微秒数数两遍，加出来会超过一个核的 100%。</p>
+<p>同理，设备独自在板上跑测到的数（探针）与两个整机构建相减测到的数不是同一个口径。混在一起相加得到的和是下界不是总量（三个设备隔离相加读作 43.2%，同一构建实测 51.0%）。</p>
+<p>要贵的那一侧：设备的代价随旁侧运行的东西上升，便宜的读数正是最先失效的那个。</p>
+<p>由此有一条测量方法上的硬规矩：<strong>要问节流对最坏阻塞的作用，测法是只改节奏不动模式。</strong> 两者同时改时，省下的部分可能来自关掉整个设备而不是来自节流。</p>
+<h2 id="页面：路由表_+_导航栈">页面：路由表 + 导航栈</h2>
+<p><code>app/src/shared/route/mod.rs</code> 只写一份路由表：枚举 <code>PageId</code> 是目的地，每个目的地一个 <code>static &lt;PAGE&gt;: Route</code>（名字、能力、claim、是否可启动、生存期），<code>route()</code> 是穷尽 <code>match</code>——新增变体没有路由就编译不过。<code>ALL</code> 是全部的次序（wire code 就是它的下标），按钮也照它走：从本页之后取第一个本板支持、又不是瞬态的页，走到末尾回绕，于是「表里有」与「按得出来」不会成为两份会漂移的清单。页面自己的答案在另一处、也只有一处：<code>app/src/services/mod.rs</code> 里 <code>Services::apply</code> 的业务分派表与一张 <code>descriptor(page)</code> 表（画法、底色、是否出帧、重绘节奏），业务在 <code>Service</code>，本地手势/视图/画/生命周期在 <code>LocalPage</code>。<code>crates/tool/tests/page_table.rs</code> 守着 <code>ALL</code> 漏页，以及每个页面的类型、分派分支与 <code>app/src/services/&lt;path&gt;</code> 下的视图模块（<code>match</code> 本身由编译器穷尽检查）。</p>
+<p><code>app/src/shared/route/nav.rs</code> 的 <code>Navigator</code> 是页面位置的唯一来源：固定容量（<code>MAX_DEPTH</code>）的栈，<code>current</code>/<code>root</code>/<code>entries</code> 读它，<code>go</code> 原地换页（按钮的循环是 tab，不堆历史），<code>push</code> 把瞬态压在当前页之上，<code>pop</code> 弹掉栈顶且根永远保留。<code>DeviceState::page()</code> 就是 <code>nav.current()</code>，所以「当前页」只有一处可写。启动时根是 <code>Boot::boot_page</code> 判过能力的落地页，splash 以 <code>push</code> 压上去；<code>SplashOver</code> 弹栈，按住请求过 setup 则 <code>go(Network)</code>。<code>next_page</code> 从本页之后按 <code>ALL</code> 走一圈、跳过瞬态、取第一个本板能力支持的页、走到末尾回绕；瞬态停在原页直到 <code>timeout_ms</code> 到期（<code>input.rs</code> 的定时器直接读这条路由属性）。</p>
+<p>能力判定是每条路由自己的一列（<code>Route::needs</code>，<code>is_backed</code> 只做查表），问的是同一个 <code>Backed</code> 记录——运动、音频、回放、相机、链路五项接线事实在组合点一次写进 <code>Boot</code> 的 <code>backed</code> 字段。前四个来自板子的 <code>take_*</code>，链路来自入口点（station 要在调度器起来之后才启动，<code>run</code> 拿到板子时射频已经被取走）——所以入口交进来的是 <code>Wifi</code>（<code>Absent</code> / <code>Unattended</code> / <code>Worker</code>），<code>run</code> 在组合 <code>Backed</code> 时用 <code>wifi.wired()</code> 落成那个 <code>bool</code>：是<strong>接线事实的参数</strong>，不是 <code>run</code> 里回头去问板子。表面同理：<code>HasSurface::take_surfaces()</code> 交出的每个 <code>WiredSurface</code> 自带角色（<code>Pages</code> 或 <code>Lamp</code>），入口点取出后连同 <code>clock</code>/<code>feed</code>/<code>wifi</code> 一起交给 <code>run</code>，<code>render::wire</code> 在同一趟里既建 renderer 又落下 <code>surface_roles</code>——没有哪个表面会被回头问「你画不画页面」，空槽位也不在句柄里出现，渲染器数超过槽位数只有那一处断言。</p>
+<p>这条规约是修一个缺陷写下来的。</p>
+<p><code>next_page</code> 曾是 18 个手写跳转分支，<code>Camera</code> 的离开分支返回「第一个本板能显示的页」（<code>Attitude</code>）而非起点，于是 <code>Input</code> 被永久跳过：实测全能力下走一圈是 <code>[Attitude, Attitude, Audio, Speaker, Camera]</code>，<code>Input</code> 消失、<code>Attitude</code> 出现两次。</p>
+<p>跳着写会漏掉闭环的那一页，走一张表再回绕不会。</p>
+<p><code>iot-app</code> 里有一条测试遍历能力组合 × 起点断言这一点（<code>every_page_the_board_can_back_is_shown_on_the_way_round</code>），把旧的 <code>Camera → Attitude</code> 放回去它会失败并打出上面那串。</p>
+<h3 id="页面缺席_=_没接线；件坏了_=_页面在">页面缺席 = 没接线；件坏了 = 页面在</h3>
+<p><code>Backed</code> 回答的是<strong>板子有没有把这件东西焊出来</strong>，在组合点一次决定、运行期不变：S3 的 <code>take_*</code> 总是交出扬声器、麦克风和相机的驱动对象（探针失败也给），C6 没有这条产品路径就不交。于是页面消失只有一种解释：这块板没接这件东西。</p>
+<p>器件答不答是另一回事，归<strong>运行期健康</strong>：回放/采集的 <code>Health::Down(reason)</code>、相机的 <code>FrameSource::fault()</code> 都落在页面上，写成 <code>NO OUT</code> / <code>NO IN</code> / <code>NO CAM</code> 加一行原因；页面不消失，指纹与计数只是停更。</p>
+<p>恢复发生在<strong>用它的地方</strong>，不在启动循环里：扬声器在第一次轻点时 <code>ensure_started()</code>（两个地址都试、记住应答的那个），麦克风在轮询里最多每 1 s 重试并丢弃旧样本，相机在页面打开期间每 5 s 重试 <code>receive</code> 与传感器 bring-up。重试有界、有间隔，失败只把原因写进健康，不阻塞面板，也不复位。</p>
+<h2 id="日志">日志</h2>
+<p>只用 <code>log</code> façade（<code>log::info!</code> 等）；输出通道由家族 <code>iot-chip-esp</code> 初始化（esp 为 <code>esp_println::logger</code>）；业务代码禁止 <code>println!</code> / <code>esp_println::println!</code></p>
+<p>一个日志行要能被相信的前提是它报的是<strong>正在运行的那个配置</strong>，不是被请求的那一个。<code>[DISPLAY]</code> 的 <code>asked</code> 曾报页面自己的需求而非 override 生效后的，因为快照从 state 取需求而 override 挂在 manager 上。一个报出无人运行之配置的日志比没有日志更糟。</p>
+<h2 id="新增板">新增板</h2>
+<ol>
+<li><code>bsp-esp/</code> 增板模块（Board + HasXxx traits）+ feature 门控；选框上的芯片先在 <code>components/</code> 建实际元件（已有则直接复用，并为新元件声明独立 feature），板 feature 聚合元件清单，板模块内装配</li>
+<li>板模块导出该板的 <code>SETUP_HOST</code>（芯片内存不同再加 <code>HEAP_BYTES</code>）；<code>app/src/main.rs</code> 按芯片分支读取，feed 落点已按芯片分好</li>
+<li>app feature 透传 <code>iot-bsp-esp/&lt;board&gt;</code></li>
+<li><code>reusable-iot-build.yml</code> 的 <code>platforms</code> 默认 JSON 与 <code>iot-dev-release.yml</code> 的 <code>platforms</code> 输入里加该板（xtensa 板需标 <code>use-xtensa-toolchain: true</code>，经 <code>build-s3</code> 任务构建：CI/发布用 espup 原生 <code>esp</code> 1.98.1.0 工具链，macOS Intel 本地用同版本 Docker 镜像）</li>
+<li>验证：<code>cargo build -p iot-app --bin vanling --target riscv32imac-unknown-none-elf --no-default-features --features &lt;board&gt;</code></li>
+</ol>
+<h2 id="新增芯片家族">新增芯片家族</h2>
+<p>esp 家族仓固定为 <code>iot-chip-esp</code>/<code>iot-bsp-esp</code>；新增非 esp 家族：</p>
+<ol>
+<li>新增 <code>iot-chip-&lt;family&gt;</code>/<code>iot-bsp-&lt;family&gt;</code> crate</li>
+<li>app 家族别名 feature 门控该家族 entry deps；<code>app/src/main.rs</code> 的 <code>start_executors</code> 加该家族的板级 bring-up 分支（<code>#[cfg(feature)]</code>）</li>
+<li>工具链目标 + <code>rust-toolchain.toml</code> + <code>reusable-iot-build.yml</code> 的 <code>platforms</code>（<code>target</code>/<code>use-xtensa-toolchain</code>）与 <code>iot-dev-release.yml</code> 的 <code>platforms</code> 输入</li>
+<li><code>moon</code>/<code>lefthook</code> 的 <code>--workspace --target</code> 改按固件作用域；工具链目标经 <code>CARGO_ESP_TARGET</code> 传入 moon 任务（<code>.envrc</code>/CI env 与 workflow inputs 提供，moon 任务以 <code>- '$CARGO_ESP_TARGET'</code> 收入 inputs 保证跨芯片缓存隔离）</li>
+</ol>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

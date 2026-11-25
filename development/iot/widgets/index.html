@@ -1,0 +1,639 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="Vanling 文档">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/en/development/iot/widgets">English</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;" class="sidebar-section-title">用户指南</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">快速开始</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">安装部署</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">用户手册</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;" class="sidebar-section-title">路线图</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">工作项</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">速查</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;" class="sidebar-section-title active">开发文档</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">服务端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">核心架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">组件与模块结构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">统一管道</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD 与回合判定</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">对话流程</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket 通信协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">模型与部署</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">客户端</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">管理后台</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">共享客户端协议</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">页面实现</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link active">IoT 固件</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">架构</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature 判据与内聚</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">固件安装</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">无硬件仿真与回归冒烟</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频计量语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动语义框架</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音语义</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;iot&#x2F;widgets&#x2F;" class="sidebar-link active leaf">UI 组件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">调试</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS 音频质量评估</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR 语音识别</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">相关项目</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">资源</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">资源文件</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">模型下载器</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;" class="sidebar-section-title">设计讨论</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">协议文档三层模型与人机分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">定位与取舍参考</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">依赖候选</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">遥测上行（对外发布）</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;" class="sidebar-section-title">开发记录</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link">IoT 实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">放音实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link">硬件约束记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;panel-buffering&#x2F;" class="sidebar-link">面板双缓冲：测过，否决</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">摄像头实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">音频实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi 实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">运动实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">输入与触摸实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">回声消除实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;widgets&#x2F;" class="sidebar-link">高级组件与 Feed</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">运行期改 CPU 频率</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">检查任务与缓存记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">日志实现记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">应用层分层评审的落地记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">服务端实现记录</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO 分流记录</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS 播放卡顿与音量归一化</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">管道演进记录</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;faq&#x2F;" class="sidebar-section-title">常见问题</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/development/iot/widgets/#UI_组件">UI 组件</a></li>
+    
+  </ul>
+  
+  <h1 id="UI_组件">UI 组件</h1>
+<p>面板的组件词汇：两种形态、状态与主题、圆角、基础组件、Cell 绘制、多语言与预算。</p>
+<blockquote>
+<p>状态：基础组件与 25 个高级组件已落地，由 <code>Widgets</code> 基础页与 <code>Advanced</code> / <code>Feedback</code> / <code>Extended</code> / <code>Data</code> 四个画廊演示；<code>Feed</code> 一个组件同时提供下拉刷新与上拉加载。可选组件仍是清单。</p>
+</blockquote>
+<h2 id="两种形态">两种形态</h2>
+<p>Flutter 的组件树每行一个 Widget，这里不行：<code>Ui</code> 在栈上，一帧只有 60 个节点，<code>ListView</code> 十行就吃掉一半。组件因此分两种：</p>
+<table><thead><tr><th>形态</th><th>是什么</th><th>适合</th><th>节点成本</th></tr></thead><tbody>
+<tr><td><strong>Widget</strong></td><td><code>Ui</code> 声明节点，布局与绘制走同一棵树</td><td>页头、表单、对话框、少量行</td><td>1~5</td></tr>
+<tr><td><strong>Cell</strong></td><td><code>Canvas</code> 直接画，占一个 custom 槽</td><td>长列表、键格、图表、仪表盘、滚动条</td><td>0</td></tr>
+</tbody></table>
+<p>判据是“行数是否随数据增长”。固定几行用 Widget；一到 N 行用 Cell。Cell 的 API 仍照 Flutter 的槽位设计（<code>ListTile</code> 的 <code>leading</code>/<code>title</code>/<code>subtitle</code>/<code>trailing</code>），只是落墨在 <code>Canvas</code>。</p>
+<h2 id="硬约束">硬约束</h2>
+<table><thead><tr><th>常量</th><th>值</th><th>出处</th></tr></thead><tbody>
+<tr><td>面板</td><td>320×240，内容底 228</td><td><code>ui::panel</code></td></tr>
+<tr><td>节点</td><td><code>MAX_NODES = 60</code></td><td><code>ui::layout</code></td></tr>
+<tr><td>文本</td><td><code>TEXT_BYTES = 2048</code></td><td><code>ui::declare</code></td></tr>
+<tr><td>颜色</td><td><code>MAX_COLORS = 16</code> / 声明</td><td><code>ui::color</code></td></tr>
+<tr><td>custom 槽</td><td><code>PAINTS = 8</code></td><td><code>ui::declare</code></td></tr>
+<tr><td>滚动区</td><td><code>MAX_SCROLL_AREAS = 4</code></td><td><code>ui::layout</code></td></tr>
+<tr><td>触控下限</td><td><code>TOUCH_MIN = 44</code></td><td><code>ui::panel</code></td></tr>
+<tr><td>行高 / 行距</td><td><code>LINE = 12</code> / <code>ROW_PITCH = 13</code></td><td><code>ui::panel</code></td></tr>
+<tr><td>边距</td><td><code>MARGIN = 10</code></td><td><code>ui::panel</code></td></tr>
+</tbody></table>
+<p>组件规范里两条硬线：单实例不超过 5 个节点；<code>Theme</code> 的颜色控制在 6~8 个，组件不各自 intern 新色。</p>
+<h2 id="分层">分层</h2>
+<table><thead><tr><th>位置</th><th>内容</th></tr></thead><tbody>
+<tr><td><code>core::ui::widget</code></td><td><code>Widget</code> trait 与 <code>Ui::add</code>，通用词汇，不认页面</td></tr>
+<tr><td><code>app::shared::i18n</code></td><td><code>Lang</code> / <code>Msg</code> 与固定词；只出字，不认像素</td></tr>
+<tr><td><code>app::shared::ui::state</code></td><td><code>State</code> 位集</td></tr>
+<tr><td><code>app::shared::ui::theme</code></td><td><code>Theme::PANEL</code> / <code>Theme::LIGHT</code> 与按钮/输入框的样式解析</td></tr>
+<tr><td><code>app::shared::ui::slot</code></td><td><code>Slot</code> 枚举，替代 <code>Widget?</code></td></tr>
+<tr><td><code>app::shared::ui::widgets</code></td><td>具体组件，一文件一个</td></tr>
+<tr><td><code>app::shared::page</code></td><td>页面版式：边距、行距、标题、滚动体与读数行</td></tr>
+<tr><td><code>app::shared::surface</code></td><td><code>Panel</code>：把声明布局成盒子并落墨</td></tr>
+<tr><td><code>services/&lt;page&gt;</code></td><td>组合组件，绑定意图</td></tr>
+</tbody></table>
+<p>组件只收 props，不读 <code>DeviceState</code>，不拿回调，不内置用户可见文案。页面把快照里的状态翻译成 <code>State</code> 和 <code>&amp;[u8]</code> 再传进来。</p>
+<h2 id="状态">状态</h2>
+<p><code>State</code> 是一位集，取值来自页面每帧派生的快照：</p>
+<table><thead><tr><th>位</th><th>含义</th><th>来源</th></tr></thead><tbody>
+<tr><td><code>PRESSED</code></td><td>手指正按着</td><td>手势</td></tr>
+<tr><td><code>SELECTED</code></td><td>选中 / 开关打开</td><td>页面状态</td></tr>
+<tr><td><code>DISABLED</code></td><td>不可用</td><td>页面状态</td></tr>
+<tr><td><code>ERROR</code></td><td>校验失败</td><td>页面状态</td></tr>
+<tr><td><code>DRAGGED</code></td><td>滑杆拖动中</td><td>手势</td></tr>
+<tr><td><code>FOCUSED</code></td><td>键盘焦点</td><td>按钮 / 键盘导航</td></tr>
+<tr><td><code>SCROLLED_UNDER</code></td><td>被滚动内容压住</td><td>滚动偏移</td></tr>
+</tbody></table>
+<p>对应 Flutter 的 <code>WidgetState</code>，去掉 <code>hovered</code>（没有鼠标）。组件不存状态，状态每帧重新传；<code>SELECTED</code> 之类的持续态放在页面或快照里。</p>
+<p>状态层用半透明覆盖：<code>Color::rgba(..., 0x40)</code> 交给 <code>Canvas</code> 做 source-over，不引入主题引擎。</p>
+<p>不做双向绑定（Slint/QML 的 <code>&lt;=&gt;</code>）。Flutter 的 <code>TextEditingController</code> 也是 controller 加重建，不是绑定；这里快照是 <code>Copy</code>、<code>view</code> 是纯函数，加监听器会把“重绘由快照 diff 决定”变成“谁 notify 谁重绘”。需要编辑态的地方用 controller：<code>ui::scroll::ScrollState</code>、<code>ui::keyboard::Text</code>。</p>
+<h2 id="主题与调色板">主题与调色板</h2>
+<p><code>Theme</code> 存 <code>Color</code>（ARGB32），不存 <code>ColorId</code>。<code>ColorId</code> 是“这一次声明”的调色板索引，由 <code>Ui::color</code> 现场 intern；跨帧保存会指向另一帧的槽。</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub struct</span><span class="z-entity z-name z-type"> Theme</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> ground</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> foreground</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> muted</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> accent</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> accent_pressed</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> on_accent</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> danger</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> selection</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> overlay</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> surface</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Color</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub</span><span class="z-source"> gap</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type z-numeric z-rust"> i16</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword">impl</span><span class="z-entity z-name z-type"> Theme</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">    pub const</span><span class="z-constant z-other z-caps z-rust"> PANEL</span><span class="z-keyword z-operator">:</span><span class="z-variable z-language z-self z-rust"> Self</span><span class="z-keyword z-operator"> =</span><span class="z-variable z-language z-self z-rust"> Self</span><span class="z-punctuation"> {</span><span class="z-comment"> /* 深色，开机默认 */</span><span class="z-punctuation"> };</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">    pub const</span><span class="z-constant z-other z-caps z-rust"> LIGHT</span><span class="z-keyword z-operator">:</span><span class="z-variable z-language z-self z-rust"> Self</span><span class="z-keyword z-operator"> =</span><span class="z-variable z-language z-self z-rust"> Self</span><span class="z-punctuation"> {</span><span class="z-comment"> /* Solarized Light */</span><span class="z-punctuation"> };</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-modifier z-rust">    pub const fn</span><span class="z-entity z-name z-function"> of</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">id</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> ThemeId</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt; &amp;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">static</span><span class="z-variable z-language z-self z-rust"> Self</span><span class="z-punctuation"> {</span><span class="z-comment"> /* ... */</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p><code>ThemeId { Dark, Light }</code> 放在 <code>iot-core::ui::Screen</code>，由 <code>DeviceState.theme</code> 经 <code>FrameSnapshot.theme</code> 投影到绘制层；组件默认 <code>Theme::of(ui.screen().theme)</code>，页面用 <code>Theme::of(snapshot.theme)</code>。<code>.theme(&amp;Theme)</code> 仍可给单个组件覆盖。切换只换常量调色板，不生成颜色：浅色页由 <code>ScreenRenderer::present</code> 用 <code>ground</code> 铺纸，屏幕背光只取 <code>Backlight</code> 的设置（0 即全黑），<code>Network</code> / <code>Camera</code> 仍用各自的黑底，<code>Lighting</code> 与玻璃呼吸期间强制深色。主题和语言一样是运行时状态，不落盘；构建期可用 <code>IOT_THEME=light</code> 改开机值。</p>
+<p>同一颜色重复 intern 是幂等的；<code>MAX_COLORS = 16</code> 是整页共享的上限。新增组件先问“能不能用现有 token”，不能才加色。</p>
+<h2 id="圆角">圆角</h2>
+<p><code>Style::radius(u8)</code> 给节点自己的底与描边切角，<code>0</code> 是方角；半径按短边折半、并以 <code>MAX_RADIUS = 16</code> 封顶，所以 24×24 的 <code>Avatar</code> 直接写 <code>12</code> 就是个圆。绘制走整数判据 <code>(2r-2c-1)² + (2r-2k-1)² &lt;= 4r²</code>，按行填格，不建表、不画弧、不分配。</p>
+<p>只切节点自己的纸：背景、描边；子节点与文字不被裁。圆角半径不跨节点继承，容器要圆就把半径写在容器上。</p>
+<table><thead><tr><th>组件</th><th>半径</th></tr></thead><tbody>
+<tr><td><code>Button</code> / <code>Chip</code> / <code>TextField</code> / <code>Select</code></td><td><code>theme::CORNER = 4</code></td></tr>
+<tr><td><code>Badge</code></td><td>3</td></tr>
+<tr><td><code>Avatar</code></td><td>12（24 px 方框，即半边长）</td></tr>
+<tr><td><code>Indicator</code> 的标记</td><td>点 4（<code>DOT = 8</code>）/ 数字 7（<code>PILL = 14</code>）</td></tr>
+</tbody></table>
+<h2 id="API">API</h2>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub trait</span><span class="z-entity z-name z-type"> Widget</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    fn</span><span class="z-entity z-name z-function"> build</span><span class="z-punctuation">(</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> ui</span><span class="z-keyword z-operator">: &amp;</span><span class="z-storage z-modifier">mut</span><span class="z-entity z-name z-type"> Ui</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">_</span><span class="z-punctuation">, &#39;</span><span class="z-entity z-name z-type z-lifetime">_</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> NodeId</span><span class="z-punctuation">;</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword">impl</span><span class="z-entity z-name z-type"> Ui</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">_</span><span class="z-punctuation">, &#39;</span><span class="z-entity z-name z-type z-lifetime">_</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword">    pub fn</span><span class="z-entity z-name z-function"> add</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">W</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Widget</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-storage z-modifier">mut</span><span class="z-variable z-language z-self z-rust"> self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> widget</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> W</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt;</span><span class="z-entity z-name z-type"> NodeId</span><span class="z-punctuation"> {</span><span class="z-source"> widget</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">build</span><span class="z-punctuation">(</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">) }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>约定：</p>
+<ul>
+<li>组件是值类型，props 用 <code>Copy</code> 字段；文本用 <code>&amp;[u8]</code>，不持有 <code>String</code>。</li>
+<li>builder 方法 <code>const fn</code>，<code>#[must_use]</code>。</li>
+<li>容器用闭包 <code>ui.column(style, |ui| ...)</code>；叶子实现 <code>Widget</code>。</li>
+<li><code>leading</code> / <code>trailing</code> 用 <code>Slot</code>，不用 <code>Option&lt;Box&lt;dyn Widget&gt;&gt;</code>。</li>
+<li>返回 <code>NodeId</code>，不接 <code>onTap</code>；页面用 <code>Style::tag</code> 或 <code>shape</code> 把命中翻成意图。</li>
+</ul>
+<p>Flutter 到这里的映射：</p>
+<table><thead><tr><th>Flutter</th><th>这里</th><th>原因</th></tr></thead><tbody>
+<tr><td><code>Widget</code> / <code>BuildContext</code></td><td><code>Widget</code> / <code>&amp;mut Ui</code></td><td>同构</td></tr>
+<tr><td><code>StatefulWidget</code></td><td>状态留在页面 / 快照</td><td>每帧重建</td></tr>
+<tr><td><code>WidgetState</code></td><td><code>State(u8)</code></td><td>去掉 hover</td></tr>
+<tr><td><code>WidgetStateProperty&lt;T&gt;</code></td><td><code>fn(&amp;Theme, State) -&gt; T</code></td><td>不做属性对象</td></tr>
+<tr><td><code>ButtonStyle</code></td><td><code>Theme</code> 的 <code>button(...)</code></td><td>常量调色板，无样式对象</td></tr>
+<tr><td><code>ThemeData</code></td><td><code>const Theme</code> + <code>ThemeId</code></td><td>切换换常量，不建主题树</td></tr>
+<tr><td><code>child</code> / <code>children</code></td><td>闭包</td><td>没有 <code>List&lt;Widget&gt;</code></td></tr>
+<tr><td><code>leading: Widget?</code></td><td><code>Slot</code></td><td>避免装箱</td></tr>
+<tr><td><code>onTap</code></td><td><code>NodeId</code> + 页面 <code>bind</code></td><td>输入独立管线</td></tr>
+<tr><td><code>ListView.builder</code></td><td>Cell + <code>list_window</code></td><td>节点预算</td></tr>
+<tr><td><code>showDialog</code></td><td><code>stack</code> 覆盖层</td><td>声明式</td></tr>
+<tr><td><code>InheritedWidget</code></td><td>显式 <code>&amp;Theme</code> / 快照</td><td>无隐式树</td></tr>
+<tr><td><code>MediaQuery</code> / <code>Semantics</code></td><td>不做</td><td>固定面板、无读屏</td></tr>
+</tbody></table>
+<h2 id="基础组件">基础组件</h2>
+<p>已落地，全部在 <code>shared/ui/widgets</code>：</p>
+<table><thead><tr><th>组件</th><th>形态</th><th>节点</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Divider</code></td><td>W</td><td>1</td><td>一条 1 px 线</td></tr>
+<tr><td><code>Badge</code></td><td>W</td><td>1</td><td>小字块；<code>Filled</code> / <code>Light</code> / <code>Outline</code> 三变体，<code>Tone</code> 另管颜色</td></tr>
+<tr><td><code>Chip</code></td><td>W</td><td>2</td><td>圆角标签，可带选中态</td></tr>
+<tr><td><code>Button</code></td><td>W</td><td>2</td><td>filled / outlined / text</td></tr>
+<tr><td><code>IconButton</code></td><td>W</td><td>2</td><td>暂用 12 px 字模里的符号，无图标集</td></tr>
+<tr><td><code>Indicator</code></td><td>W</td><td>2</td><td>叠在子元素右上角的角标：默认圆点，<code>label</code> 时带数字</td></tr>
+<tr><td><code>ProgressBar</code></td><td>W</td><td>3</td><td>轨道 + 进度</td></tr>
+<tr><td><code>Spinner</code></td><td>W</td><td>1</td><td><code>|</code> <code>/</code> <code>-</code> <code>\</code> 四帧，由页面给相位</td></tr>
+<tr><td><code>Switch</code></td><td>W</td><td>2</td><td>轨道 + 滑块</td></tr>
+<tr><td><code>Checkbox</code></td><td>W</td><td>2~3</td><td>方框 + 勾</td></tr>
+<tr><td><code>Radio</code></td><td>W</td><td>2~3</td><td>圆圈 + 点</td></tr>
+<tr><td><code>Slider</code></td><td>W</td><td>3</td><td>轨道 + 滑块，值由页面给</td></tr>
+<tr><td><code>TextField</code></td><td>W</td><td>2</td><td>值 + 光标；聚焦后整页交给 <code>ui::keyboard</code></td></tr>
+<tr><td><code>Select</code></td><td>W</td><td>2</td><td>值 + 箭头</td></tr>
+<tr><td><code>Tooltip</code></td><td>W</td><td>2</td><td>锚点 + 浮层</td></tr>
+<tr><td><code>Avatar</code></td><td>W</td><td>1</td><td>首字母或短标记，圆形底</td></tr>
+<tr><td><code>ListTile</code></td><td>C</td><td>0</td><td>列表行，四段文字 + 选中底</td></tr>
+<tr><td><code>Scrollbar</code></td><td>C</td><td>0</td><td>已有 <code>ui::scroll</code></td></tr>
+<tr><td><code>Image</code></td><td>C</td><td>0</td><td>相机帧、RGB565 资源，走 custom 槽</td></tr>
+</tbody></table>
+<p><code>Text</code> / <code>RichText</code> 不需要包装：<code>ui.text</code> 与 <code>ui.span</code> 就是词汇本身。</p>
+<p>字号只有点阵的整倍档：页标题、按钮标签与 <code>Text</code> 页正文 24 px（<code>page::title</code>），其余读数 12 px。<code>Metrics::at(13..=24)</code> 整档跳到 24 px，没有 14 / 20 px；24 px 是两倍字面，<code>ATTITUDE</code> 这类 8 字标签占 96 px，98 px 的按钮内宽装得下。缺字画 □，没有整段回退；<code>every_word_the_panel_prints_has_a_bitmap_glyph</code> 把 <code>Msg::ALL</code> × <code>Lang::ALL</code> 的每个字钉在 <code>Face::has</code> 上，新文案缺字先重跑 <code>iot-tool font --merge &lt;bdf&gt; --chars &lt;list&gt;</code>。</p>
+<p>文本能撑大布局，但只撑得开没写死尺寸的节点：不写 <code>width</code> 时文本节点取整段前进宽度、高度取 <code>line_height</code>（字高 + 行距），于是列跟着变高、行跟着变宽；写了 <code>width</code> 的 <code>nowrap</code> 段按给定宽度裁切，<code>Button</code> 的 98×44 不会因为标签变大而长个，换字号就得同时改布局常量。面板固定 320×240，撑出来的空间先从 <code>grow</code> 节点里扣，扣完就溢出面板，不会整体缩放。</p>
+<p><code>Style::overflow(Overflow)</code> 只管 <code>nowrap</code> 段超出盒子时的处理，对应 Flutter <code>TextOverflow</code> 里这一档能用的部分：<code>Clip</code>（默认）在盒边切断，<code>Ellipsis</code> 切断并以 <code>…</code> 收尾；盒子本身不因此变大。<code>.ellipsis()</code> 是 <code>nowrap + Ellipsis</code> 的简写，<code>Banner</code> / <code>Button</code> / <code>EmptyState</code> / <code>FilterChips</code> / <code>Segmented</code> / <code>Stepper</code> 用它保证一行放不下的标签不出格。多行段不参与，仍按 <code>max_lines</code> 截。</p>
+<p><code>ListTile</code> 的字段照 Flutter：<code>title</code>、<code>subtitle</code>、<code>leading</code>、<code>trailing</code>、<code>state</code>、<code>dense</code>。<code>leading</code> / <code>trailing</code> 是 <code>Slot</code>：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> Slot</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">a</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-type">    None</span><span class="z-punctuation">,</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    Text</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">a</span><span class="z-punctuation"> [</span><span class="z-entity z-name z-type z-numeric z-rust">u8</span><span class="z-punctuation">]),</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    Badge</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">a</span><span class="z-punctuation"> [</span><span class="z-entity z-name z-type z-numeric z-rust">u8</span><span class="z-punctuation">]),</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    Mark</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">a</span><span class="z-punctuation"> [</span><span class="z-entity z-name z-type z-numeric z-rust">u8</span><span class="z-punctuation">]),</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    Glyph</span><span class="z-punctuation">(</span><span class="z-entity z-name z-type">char</span><span class="z-punctuation">),</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><h2 id="页面">页面</h2>
+<table><thead><tr><th>页</th><th>作用</th></tr></thead><tbody>
+<tr><td><code>Menu</code></td><td>3 列按钮网格，列出全部页面；板子撑不起的页灰掉、点击无效；有屏时是默认启动页</td></tr>
+<tr><td><code>Widgets</code></td><td>基础组件画廊：五个分区（操作 / 选择 / 输入 / 显示 / 行）各一行标题，整页滚动；能切换的控件可点</td></tr>
+<tr><td><code>Advanced</code></td><td>导航 / 组合画廊：<code>AppBar</code> / <code>NavigationBar</code> / <code>Tabs</code> / <code>PageIndicator</code> / <code>Pager</code>、<code>Accordion</code> / <code>Segmented</code> / <code>Stepper</code>，整页滚动</td></tr>
+<tr><td><code>Feedback</code></td><td>反馈画廊：<code>Banner</code> / <code>Toast</code> / <code>Skeleton</code> / <code>LoadingOverlay</code>，从横幅拉起 toast，占位条换成内容</td></tr>
+<tr><td><code>Extended</code></td><td>输入画廊：<code>SearchField</code> / <code>FilterChips</code> / <code>FormField</code> / <code>NumberField</code> / <code>Keypad</code>；搜索框聚焦后整页换成键盘</td></tr>
+<tr><td><code>Data</code></td><td>数据 / 浮层画廊：<code>Table</code> / <code>Chart</code> / <code>Gauge</code> / <code>SwipeAction</code> / <code>EmptyState</code>、<code>Dialog</code> / <code>PopupMenu</code> / <code>Sheet</code>；点行、点柱、点表盘共用页面状态</td></tr>
+<tr><td><code>List</code></td><td><code>Feed</code> 演示：下拉刷新、上拉加载、左滑删除、空态</td></tr>
+<tr><td><code>Lighting</code></td><td>灯效页：范围三选一（关闭 / 本页 / 所有页）、样式三行四格（常亮 / 呼吸 / 变色 / 极光；烛光 / 脉冲 / 心跳 / 闪电；星光 / 频闪 / 警灯 / 求救）、周期 / 色相 / 最亮三个滑块，另有一行独立背光（0 即全黑）；页底说明随样式换，常亮时周期禁用。整页强制深色</td></tr>
+<tr><td><code>Headless</code></td><td>无屏板（C6）的落地页：没有画布，只有灯珠与按钮；单击换灯效（12 档后接关）、长按调亮度（30/50/70/90/100% 后接关，暗灯长按回到首档）、双击换颜色、三击加亮度（多击默认关闭，运行时开启才生效），开机时按住越过 splash 进配网；不进菜单，也不占 <code>PageId::ALL</code></td></tr>
+</tbody></table>
+<p>四个画廊的每个样例都带一行说明（<code>page::caption</code>）：名字加这个样例怎么动，例如 <code>TABLE / TAP A ROW</code>，中英各一份 <code>Msg</code>。<code>Advanced</code> / <code>Extended</code> 原先的分区词因此删掉——说明行已经报了名字；<code>Data</code> 的浮层一带仍用 <code>page::section</code>（一条线加名字）隔开。说明行是 muted 的 <code>nowrap</code>，不带 tag，点了不动。</p>
+<p><code>Menu</code> 的按钮区放进 <code>page::scroller</code>：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 <code>PageId::code() + 1</code> 的 tag，构造期用 <code>TagTable::measure</code> 量一次；点击按滚动 offset 反查 tag，再上报 <code>MenuIntent::Choose { page }</code>，由 <code>Services::apply</code> 转成导航。命中不再重算网格常量。一次点击在线上是 <code>Press</code> 后跟 <code>Tap</code>：按钮区只在 <code>Drag</code> 才认领拖动，<code>Press</code> 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 <code>State::DISABLED</code>，点击不导航。无屏的板子启动落在 <code>Headless</code>；有屏时请求 <code>Headless</code> 退回 <code>Input</code>，<code>DeviceState::landed_on</code> 用 <code>surface_roles</code> 里的 <code>Screen</code> 判。标题行高 <code>TOUCH_MIN</code>、下面留一个 <code>GAP</code> 的空白，右侧是 <code>EN</code> / <code>中文</code> / <code>DARK</code> / <code>LIGHT</code> 四个 44×44 chip（<code>the_settings_chips_are_touch_sized</code> 钉住），前两个改 <code>DeviceState.lang</code>，后两个改 <code>DeviceState.theme</code>；按钮区因此下移一整行。15 个入口排成五行，最后一行要滚动才见得到，命中仍按 offset 反查。</p>
+<p><code>Widgets</code> 页的交互值存在页面自己（<code>WidgetsSnapshot</code>）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；<code>Badge</code> 显示 switch 状态，<code>ProgressBar</code> 跟随 slider，<code>Divider</code> 分隔五个分区。分区标题写的是动作而不是名词（<code>TAP TO LATCH</code>、<code>PICK OR TOGGLE</code>、<code>DRAG AND TYPE</code>、<code>LIVE STATE</code>、<code>ROW</code>），<code>LIVE STATE</code> 一行按顺序是 spinner、带 <code>Indicator</code> 数字角标的头像、icon button 和三个 <code>Badge</code> 变体，下面一行 <code>SPINNER AVATAR ICON BADGE</code> 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 <code>ON</code> / <code>OFF</code> 之间换，<code>Filled</code> / <code>Light</code> / <code>Outline</code> 是同一 <code>Tone</code> 的三种纸。输入框印 <code>WidgetsSnapshot::text</code>，只有空着时才显示 <code>VALUE</code> 当占位；列表行的副标题是 <code>SUBTITLE</code>，讲的是行的结构，不是动作。控件根节点带 <code>WidgetsAction::tag()</code>，同一个枚举给出 <code>ALL</code> / <code>from_tag</code>，<code>match</code> 穷尽所以漏一个 handler 编译不过；<code>every_action_is_drawn_once</code> 保证每个控件恰好画一次。构造期用 <code>TagTable::measure</code> 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 <code>the_tags_stay_put_across_languages_and_values</code> 钉住。整页一次声明仍受 <code>the_whole_gallery_fits_one_declaration</code> 的 60 节点 / 2048 字节预算约束。</p>
+<p><code>TextField</code> 聚焦后页面换成 4×4 键盘（<code>ui::keyboard</code>，Canvas，0 节点）：<code>Text</code> 持有 24 字节、多击循环与 shift/layer 状态，<code>OK</code> 键收起键盘。键位、绘制与命中都读同一张 <code>CELLS</code> 表。四层轮转（字母 / 数字 / 符号 / 更多）合起来能打出 <code>0x20..=0x7E</code> 全部可打印 ASCII：字母层带大小写与空格，符号层放 <code>. , : ; ? ! - _ @ #</code>，更多层补齐剩下 22 个标点；层键面按下一层提示（<code>12</code> / <code>#</code> / <code>&amp;</code> / <code>ab</code>）。</p>
+<h2 id="高级组件">高级组件</h2>
+<p>导航、组合、反馈、输入、数据、浮层六类，都在 <code>shared/ui/widgets</code>，一文件一个。演示分四页：<code>Advanced</code> 放导航与组合，<code>Feedback</code> 放反馈，<code>Extended</code> 放输入，<code>Data</code> 放数据与浮层。</p>
+<h3 id="导航">导航</h3>
+<table><thead><tr><th>组件</th><th>形态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>AppBar</code></td><td>W</td><td>标题 + 右端动作，动作带 tag</td></tr>
+<tr><td><code>NavigationBar</code></td><td>W</td><td>三格底部导航：<code>surface</code> 条上内嵌选中胶囊</td></tr>
+<tr><td><code>Tabs</code></td><td>W</td><td>三页签，选中格整格换成 accent 纸</td></tr>
+<tr><td><code>PageIndicator</code></td><td>C</td><td>轮播点，<code>dot_at</code> 在点中心给出 <code>TOUCH_MIN</code> 宽的命中区，<code>fit</code> 收起放不下的点</td></tr>
+<tr><td><code>Pager</code></td><td>W</td><td>横向卡片条：<code>card_width</code> / <code>pitch</code> 从 <code>rect</code> 推，<code>turn</code> 把拖动距离换成索引，<code>page_at</code> 给点按</td></tr>
+</tbody></table>
+<h3 id="组合">组合</h3>
+<table><thead><tr><th>组件</th><th>形态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Accordion</code></td><td>W</td><td>标题 + 展开体（同一张纸内），<code>open</code> 由页面给</td></tr>
+<tr><td><code>Segmented</code></td><td>W</td><td>三段互斥选择</td></tr>
+<tr><td><code>Stepper</code></td><td>W</td><td>三步行进器，<code>current</code> 高亮</td></tr>
+</tbody></table>
+<h3 id="反馈">反馈</h3>
+<table><thead><tr><th>组件</th><th>形态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Banner</code></td><td>W</td><td>消息 + 动作</td></tr>
+<tr><td><code>Toast</code></td><td>W</td><td>单行提示，宽度由页面给</td></tr>
+<tr><td><code>Skeleton</code></td><td>W</td><td>灰条占位</td></tr>
+<tr><td><code>LoadingOverlay</code></td><td>W</td><td>半透明遮罩 + 文案，<code>on</code> 控制显隐</td></tr>
+</tbody></table>
+<h3 id="输入">输入</h3>
+<table><thead><tr><th>组件</th><th>形态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>SearchField</code></td><td>W</td><td>放大镜槽 + 值/占位；点一下把整页交给 <code>ui::keyboard</code></td></tr>
+<tr><td><code>FilterChips</code></td><td>W</td><td>三枚可多选 chip，选中项是位集</td></tr>
+<tr><td><code>FormField</code></td><td>W</td><td>标签 + 值 + 提示；<code>State::ERROR</code> 画错误边</td></tr>
+<tr><td><code>NumberField</code></td><td>W</td><td>数值 + 减/加两个 44 px 热区</td></tr>
+<tr><td><code>Keypad</code></td><td>C</td><td>4×3 电话键盘，<code>key_at</code> 与 <code>draw</code> 共用 <code>KEYS</code></td></tr>
+</tbody></table>
+<h3 id="数据">数据</h3>
+<table><thead><tr><th>组件</th><th>形态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Table</code></td><td>C</td><td>表头 + 四行固定格，列宽均分；行高 <code>LINE × 2 + 4 = 28</code></td></tr>
+<tr><td><code>Chart</code></td><td>C</td><td>柱状条，值 0~100</td></tr>
+<tr><td><code>Gauge</code></td><td>C</td><td>半圆表盘 + 指针</td></tr>
+<tr><td><code>SwipeAction</code></td><td>C</td><td>行左滑露出动作带，<code>REVEAL_MAX</code> 封顶</td></tr>
+<tr><td><code>EmptyState</code></td><td>W</td><td><code>Tone::Empty</code> / <code>Tone::Error</code> 两态的标题 + 提示</td></tr>
+</tbody></table>
+<h3 id="浮层">浮层</h3>
+<table><thead><tr><th>组件</th><th>形态</th><th>说明</th></tr></thead><tbody>
+<tr><td><code>Dialog</code></td><td>C</td><td>不透明遮罩 + 居中卡片，<code>action_at</code> 分确定/取消</td></tr>
+<tr><td><code>PopupMenu</code></td><td>C</td><td>不透明遮罩 + 挂在触发按钮下的三行菜单，<code>item_at</code> 分行，选中行高亮</td></tr>
+<tr><td><code>Sheet</code></td><td>C</td><td>不透明遮罩 + 贴边抽屉（<code>Edge::Bottom</code> / <code>Edge::Left</code>），<code>row_at</code> 分行，演示用底部</td></tr>
+</tbody></table>
+<p>所有可点控件都报 tag：Widget 用 <code>Style::tag</code>，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag，构造期 <code>TagTable::measure</code> 量一次；画廊的 <code>bind</code> 只回 <code>Gallery { wire, intent }</code>，<code>wire</code> 是路由码，<code>shared::intent</code> 不因此引用 <code>shared::route</code>。Canvas 槽的命中用 <code>Ui::paint_rect</code> 量到的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格再按绘制时的同一套等分算子格。浮层项（菜单三行、抽屉两行）不是声明节点，<code>bind</code> 用 <code>item_at</code> / <code>row_at</code> 直接分。</p>
+<p><code>Data</code> 的 Dialog、PopupMenu、Sheet 都是声明在 <code>page::body</code> 之后的根节点：<code>absolute</code>、<code>320 × 228</code>，各占一个槽、常驻声明、按开合绘制，盖住标题与整页内容，所以既不随列表滚走，也不靠半透明遮罩透出底下的控件。菜单锚在触发按钮下边缘（快照里发布 <code>menu_anchor</code>，绘制时夹在内容区内），抽屉从内容区底边升起；浮层打开时 <code>bind</code> 先收 Tap，点项选中并关闭，点遮罩或外部关闭。</p>
+<p><code>Pager</code> 与 <code>PageIndicator</code> 在 <code>Advanced</code> 里共用同一个索引：卡片能拖、能点，圆点能点，三种输入都落到同一张卡片上。卡宽与步距从滚动条带宽度推导，不写死像素。</p>
+<h3 id="点击矩阵">点击矩阵</h3>
+<table><thead><tr><th>页</th><th>可点</th><th>纯装饰</th></tr></thead><tbody>
+<tr><td><code>Advanced</code></td><td><code>AppBar</code> 动作、三个导航格、三个页签、每个圆点、每张卡片、<code>Accordion</code> 头、三段选择、<code>Stepper</code></td><td>当前页签与导航胶囊的高亮本身</td></tr>
+<tr><td><code>Feedback</code></td><td>横幅动作、toast、占位切换按钮、遮罩文案</td><td><code>Skeleton</code> 灰条、<code>Divider</code></td></tr>
+<tr><td><code>Extended</code></td><td>搜索框、三枚 chip、表单、数值加减、12 个键格</td><td>—</td></tr>
+<tr><td><code>Data</code></td><td>四行表格、六根柱、表盘、滑动行、空态、对话框两项、菜单/抽屉的触发按钮与打开后的项</td><td>图表底轴</td></tr>
+</tbody></table>
+<p>判据是“有没有动作”：装饰组件不带 tag，点了不动；带 tag 的控件根节点本身就是热区，页面不需要再猜内部布局。按下与拖动由 <code>services/gallery.rs</code> 的 <code>Scroller</code> 仲裁：先记按下点与 tag，位移不超过 <code>DRAG_SLOP</code> 就是 Tap，超过就由纵向拖动认领滚动区，横向拖动在滑动控件上转成 <code>Slide</code>；首个认领者独占本次手势。Canvas 槽（表格、图表、表盘、键格）也必须带 tag——不带时按下点的 tag 为 0，滚动区直接把这次手势认领成拖动，抬手的 Tap 被当成 <code>Release</code> 吃掉，槽里的行、柱、盘、格就全点不动。拖动后的抬手在线上仍是一枚 <code>Tap</code>，所以页面的 Tap 分支要先问 <code>Scroller::dragging()</code>：<code>Advanced</code> 的卡片、<code>Extended</code> 的键格、<code>Data</code> 的行与柱都在拖动抬手时什么都不选，下一次拖动照常滚。</p>
+<h3 id="尺寸自适应">尺寸自适应</h3>
+<ul>
+<li>可点元素的下限是 <code>TOUCH_MIN = 44</code>：<code>Tabs</code> / <code>Segmented</code> / <code>Stepper</code> / <code>NavigationBar</code> 行高、<code>Accordion</code> 头、<code>Banner</code> 动作、<code>NumberField</code> 加减、<code>Keypad</code> 单格都按它取。</li>
+<li><code>page::scroller</code> 的滚动体是 <code>stretch</code> 的：一行拿到内容宽，所以 <code>grow(1) + basis(0)</code> 的分格能真分到宽度；不拉伸时这类行只按子节点的自然宽度算，<code>basis(0)</code> 让整行塌成 0。</li>
+<li>Canvas 组件从 <code>rect</code> 与文字度量推尺寸：<code>Table</code> 表头 <code>LINE + 4</code>、行高 <code>LINE × 2 + 4 = 28</code>（<code>TABLE_H = 128</code>）；<code>Dialog</code> 动作带 <code>TOUCH_MIN</code>，卡片高由动作带、标题/正文行与 <code>MARGIN</code> 相加；<code>Chart</code> / <code>Gauge</code> / <code>Keypad</code> 随 <code>rect</code> 缩放；<code>SwipeAction</code> 的露出宽度仍以 <code>REVEAL_MAX</code> 封顶。</li>
+<li>页面 custom 槽高度用 <code>page::TOUCH</code> 的整数倍，例如表盘/图表两行、键格四行，不写示例魔法数。</li>
+</ul>
+<h2 id="Feed">Feed</h2>
+<p><code>shared/ui/feed.rs</code> 一个组件做三件事：列表、下拉刷新、上拉加载。两种边缘手势共用一个滚动区，拆成两个组件只会重复 offset 与拖动状态。</p>
+<table><thead><tr><th>项</th><th>约定</th></tr></thead><tbody>
+<tr><td>行</td><td><code>ROW_H = TOUCH_MIN</code> 起，行由 <code>Source</code> 提供，绘制不声明节点</td></tr>
+<tr><td>内容高</td><td><code>content(rows) = rows * ROW_H + FOOTER_H</code>，页脚始终在内容里，<code>max</code> 不跳</td></tr>
+<tr><td>下拉</td><td><code>ScrollConfig.pull &gt; 0</code> 才允许顶端过拉；松手时过 <code>PULL_MIN = 28 px</code> 就刷新</td></tr>
+<tr><td>上拉</td><td>距底 <code>LOAD_AHEAD = 24 px</code> 内松手、且行数与上次请求不同，才请求下一页</td></tr>
+<tr><td>页脚</td><td><code>More::{Idle, Running, End, Failed}</code> 四态，失败后允许再拉</td></tr>
+<tr><td>回答</td><td>页面处理完数据后调 <code>loaded(rows, end)</code>；失败调 <code>failed()</code></td></tr>
+<tr><td>删除</td><td>行左滑露出的动作带由页面自己管，<code>Feed</code> 只收 <code>reveal: Option&lt;(row, px)&gt;</code></td></tr>
+</tbody></table>
+<p><code>Feed</code> 不碰数据：<code>FeedView</code> 收 <code>Source</code>、<code>Words</code>、offset、pull 和两个边缘状态，<code>draw</code> 一次画完可见行与页脚。<code>asked_at</code> 记住上次请求时的行数，同一行数不会连发；<code>reset()</code> 清掉拖动、边缘和请求记录。</p>
+<p><code>List</code> 页是演示：34 行、每页 8 行、每次 600 ms 假工作；下拉把列表重置回第一页，上拉续页直到 <code>End</code>，左滑再点动作带删行，点行本身选中。没有行时居中显示 <code>EMPTY</code>，下拉指示器浮在顶端。</p>
+<h2 id="可选组件">可选组件</h2>
+<table><thead><tr><th>组件</th><th>判断</th></tr></thead><tbody>
+<tr><td><code>Calendar</code> / <code>TimePicker</code></td><td>有日期、定时设置再做</td></tr>
+<tr><td><code>ColorPicker</code> / <code>Rating</code></td><td>灯效、评分场景</td></tr>
+<tr><td><code>TreeView</code> / <code>Timeline</code> / <code>Heatmap</code></td><td>传感器历史</td></tr>
+<tr><td><code>QRCode</code> / <code>Barcode</code></td><td>配网分享、设备标签</td></tr>
+<tr><td><code>PageView</code> / <code>Carousel</code></td><td>多页引导</td></tr>
+<tr><td><code>ReorderableList</code></td><td>排序；<code>PullToRefresh</code> 已并入 <code>Feed</code></td></tr>
+<tr><td><code>RichTextEditor</code></td><td>选区与撤销成本高</td></tr>
+<tr><td>隐式动画 / <code>Hero</code> / <code>Focus</code></td><td>页面 <code>tick</code> 已能驱动，按需</td></tr>
+<tr><td><code>SplitView</code> / <code>Masonry</code></td><td>桌面或多列，不适合本面板</td></tr>
+</tbody></table>
+<p>明确不做：<code>Map</code>、<code>Video</code>、<code>Lottie</code>/<code>Rive</code>、<code>Hover</code>、<code>Mouse</code>、<code>Semantics</code>、<code>RTL</code>、<code>MediaQuery</code>。不是能力不够，是没有输入设备、读屏或多尺寸。</p>
+<h2 id="多语言">多语言</h2>
+<p>两层：文档本身中英双语；面板文案由 <code>shared::i18n</code> 提供。</p>
+<p>词汇是枚举 + 穷尽匹配，漏翻即编译错：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> Lang</span><span class="z-punctuation"> {</span><span class="z-entity z-name z-type"> ZhHans</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> En</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-type z-rust">pub enum</span><span class="z-entity z-name z-type"> Msg</span><span class="z-punctuation"> {</span><span class="z-entity z-name z-type"> CameraTitle</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> NoCam</span><span class="z-punctuation">,</span><span class="z-comment"> /* ... */</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"></span>
+<span class="giallo-l"><span class="z-keyword">impl</span><span class="z-entity z-name z-type"> Msg</span><span class="z-punctuation"> {</span></span>
+<span class="giallo-l"><span class="z-keyword z-storage z-modifier z-rust">    pub const fn</span><span class="z-entity z-name z-function"> bytes</span><span class="z-punctuation">(</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> lang</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Lang</span><span class="z-punctuation">)</span><span class="z-keyword z-operator"> -&gt; &amp;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">static</span><span class="z-punctuation"> [</span><span class="z-entity z-name z-type z-numeric z-rust">u8</span><span class="z-punctuation">] {</span><span class="z-comment"> /* ... */</span><span class="z-punctuation"> }</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre><table><thead><tr><th>层</th><th>入口</th><th>说明</th></tr></thead><tbody>
+<tr><td>构建期</td><td><code>IOT_LANG=en|zh</code></td><td>与 <code>IOT_BOOT_PAGE</code> 同一套 <code>option_env!</code> + 解析</td></tr>
+<tr><td>运行期</td><td><code>SettingsIntent::SetLang</code></td><td><code>Menu</code> 的 <code>EN</code> / <code>中文</code> chip；<code>services::settings</code> 写 <code>DeviceState.lang</code></td></tr>
+<tr><td>快照</td><td><code>FrameSnapshot.lang</code></td><td>页面只读快照</td></tr>
+<tr><td>组件</td><td>只收 <code>&amp;[u8]</code></td><td>翻译在页面完成</td></tr>
+</tbody></table>
+<p><code>lang</code> 变化在 <code>render::screen::repaint_due</code> 里单独触发重绘，所有说话页一起换字；不逐页补条件，新页不会漏。</p>
+<p>默认 <code>en</code>，与现有面板文案一致；<code>IOT_LANG=zh</code> 构建中文面板。</p>
+<p>版面约束：</p>
+<ul>
+<li>读数标签槽 <code>page::LABEL = 24 px</code>，等于 4 个 ASCII 格或 2 个汉字；超长截断，所以标签用短键。</li>
+<li>长文案走 <code>page::title</code>（整行）或 <code>EmptyState</code> 的两行。</li>
+<li><code>text::fit</code> 的 <code>~</code> 是兜底，不是设计；每条读数标签都要有宽度测试。</li>
+<li>点阵 <code>ui12.bin</code> 覆盖 GB2312 + Big5；缺字画 □。新文案要重跑 <code>iot-tool font --merge &lt;bdf&gt; --chars &lt;list&gt;</code>，并让 <code>every_word_the_panel_prints_has_a_bitmap_glyph</code> 通过。</li>
+<li>SSID、MAC、IP、日志是数据，不翻。</li>
+</ul>
+<p>不做：RTL、ICU 复数/性别/插值、locale 数字格式。</p>
+<h2 id="Cell_绘制">Cell 绘制</h2>
+<p><code>ListTile</code> 是最小样板：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword">pub fn</span><span class="z-entity z-name z-function"> draw</span><span class="z-punctuation">(</span><span class="z-keyword z-operator">&amp;</span><span class="z-variable z-language z-self z-rust">self</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> canvas</span><span class="z-keyword z-operator">: &amp;</span><span class="z-storage z-modifier">mut</span><span class="z-entity z-name z-type"> Canvas</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-punctuation">&#39;</span><span class="z-entity z-name z-type z-lifetime">_</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> rect</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Rect</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> theme</span><span class="z-keyword z-operator">: &amp;</span><span class="z-entity z-name z-type">Theme</span><span class="z-punctuation">) {</span></span>
+<span class="giallo-l"><span class="z-punctuation z-definition z-comment z-comment">    // 选中底 + 四段文字，0 个节点</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p>列表只排可见行：</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-keyword">for</span><span class="z-punctuation"> (</span><span class="z-source">band</span><span class="z-punctuation">,</span><span class="z-source"> index</span><span class="z-punctuation">)</span><span class="z-keyword"> in</span><span class="z-entity z-name z-function"> list_window</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">top</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> rows</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> total</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">enumerate</span><span class="z-punctuation">() {</span></span>
+<span class="giallo-l"><span class="z-storage z-type z-rust">    let</span><span class="z-source"> row</span><span class="z-keyword z-operator"> =</span><span class="z-entity z-name z-type"> Rect</span><span class="z-keyword z-operator">::</span><span class="z-entity z-name z-function">new</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">area</span><span class="z-keyword z-operator">.</span><span class="z-meta z-function z-call z-rust">x</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> area</span><span class="z-keyword z-operator">.</span><span class="z-meta z-function z-call z-rust">y </span><span class="z-keyword z-operator">+</span><span class="z-punctuation"> (</span><span class="z-variable z-other z-rust">band</span><span class="z-keyword z-operator"> *</span><span class="z-constant z-other z-caps z-rust"> ROW_H</span><span class="z-punctuation">)</span><span class="z-keyword z-entity z-name z-type z-numeric z-rust"> as i32</span><span class="z-punctuation">,</span><span class="z-source"> area</span><span class="z-keyword z-operator">.</span><span class="z-source">w</span><span class="z-punctuation">,</span><span class="z-constant z-other z-caps z-rust"> ROW_H</span><span class="z-keyword z-entity z-name z-type z-numeric z-rust"> as i32</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">    tile</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">index</span><span class="z-punctuation">)</span><span class="z-keyword z-operator">.</span><span class="z-entity z-name z-function">draw</span><span class="z-punctuation">(</span><span class="z-variable z-other z-rust">canvas</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> row</span><span class="z-punctuation">,</span><span class="z-variable z-other z-rust"> theme</span><span class="z-punctuation">);</span></span>
+<span class="giallo-l"><span class="z-punctuation">}</span></span></code></pre>
+<p><code>Chart</code>、<code>Gauge</code>、<code>Keypad</code>、<code>Scrollbar</code> 与 <code>Feed</code> 同样走 <code>Ui::custom(slot)</code>，一个带一个槽；<code>PAINTS = 8</code> 是整页上限。<code>Feed</code> 只排可见行，行数不换成节点。绘制与命中共用同一份几何：页面的 <code>shape</code> 模块仍是唯一来源。</p>
+<h2 id="命中与事件">命中与事件</h2>
+<ul>
+<li>Widget：<code>Ui::headless</code> 跑同一份声明，<code>Ui::tags()</code> 一次量完，存进 <code>ui::tag::TagTable</code>；可点的组件带 <code>Style::tag</code>，<code>TagTable::at(x, y, offset)</code> 得意图编号。</li>
+<li>画廊：<code>GalleryIntent</code> 带上路由码而不是 <code>PageId</code>，<code>shared::intent</code> 保持不依赖 <code>shared::route</code>；<code>Services::apply</code> 用 <code>PageId::from_code</code> 把它换回页面。</li>
+<li>Cell：页面 <code>shape</code> 常量算矩形，和绘制共用。</li>
+<li><code>NodeId</code> 只在一次声明内有效，不跨帧保存；要稳定标识用 <code>tag</code>。</li>
+<li>浮层用 <code>absolute</code> 子节点声明；flex / wrap / scroll 的盒子都会摆它的出流子节点，根节点上只挂一个 <code>absolute</code> 也能量到尺寸。Toast 之类仍放在 <code>stack</code> 里，可见性由页面决定。</li>
+<li>组件不认 <code>InputEvent</code>；<code>bind</code> 把 <code>InputIntent</code> 翻成 <code>BusinessIntent</code>。</li>
+<li>按住状态是页面自己的 latch（滑块用 <code>values.pressed</code>），每次手势收尾（<code>Release</code>、抬手、按住没变成滑动）都要清零：latch 留着时 2 px 的位移就会被判成拖拽，下一次点按永远变不成 <code>Tap</code>。</li>
+</ul>
+<h2 id="预算与测试">预算与测试</h2>
+<table><thead><tr><th>项</th><th>手段</th></tr></thead><tbody>
+<tr><td>节点</td><td><code>ui.node_count()</code></td></tr>
+<tr><td>文本</td><td><code>ui.text_bytes()</code></td></tr>
+<tr><td>颜色</td><td>整页 <code>MAX_COLORS</code></td></tr>
+<tr><td>黄金图</td><td>页面表一条一页一态；<code>Advanced</code> / <code>Feedback</code> / <code>Extended</code> / <code>Data</code> / <code>List</code> 各两条</td></tr>
+<tr><td>命中</td><td>绘制矩形与 headless 矩形一致</td></tr>
+</tbody></table>
+<p>改完跑：</p>
+<pre class="giallo z-code"><code data-lang="shellscript"><span class="giallo-l"><span class="z-entity z-name z-function">cargo</span><span class="z-string"> test -p iot-app --lib --no-default-features --features host</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:check-s3</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:check-c6</span></span>
+<span class="giallo-l"><span class="z-entity z-name z-function">moon</span><span class="z-string"> run iot:check-host</span></span></code></pre><h2 id="新增组件">新增组件</h2>
+<ol>
+<li>定形态：行数随数据增长就 Cell，否则 Widget。</li>
+<li>props 全 <code>Copy</code>，文本 <code>&amp;[u8]</code>，可选槽用 <code>Slot</code>。</li>
+<li>只用 <code>Theme</code> 现有 token；要新色先改 <code>Theme</code>。</li>
+<li>实现 <code>Widget</code> 或 <code>Cell::draw</code>，单实例 ≤5 节点。</li>
+<li>写黄金图 + 命中测试；更新本文清单。</li>
+<li>不新增 Cargo feature；未引用的模块由链接器丢弃。</li>
+</ol>
+<h2 id="参考">参考</h2>
+<p>Flutter 的 <a rel="external" href="https://api.flutter.dev/flutter/widgets/widgets-library.html">Widget 目录</a>、<a rel="external" href="https://api.flutter.dev/flutter/material/ListTile-class.html"><code>ListTile</code></a>、<a rel="external" href="https://api.flutter.dev/flutter/widgets/WidgetState.html"><code>WidgetState</code></a>、<a rel="external" href="https://api.flutter.dev/flutter/material/ButtonStyle-class.html"><code>ButtonStyle</code></a>；MUI 的组件分类；shadcn/ui 的组件表与 <code>data-state</code>；LVGL 的 parts/states；Rust 生态的 embedded-gui 与 Guillotine 只作 API 对照，不引入依赖。</p>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>

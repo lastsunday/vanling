@@ -1,0 +1,804 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vanling</title>
+<meta name="description" content="">
+<link rel="icon" href="https://lastsunday.github.io/vanling/logo.svg">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/main.css">
+<link rel="stylesheet" href="https://lastsunday.github.io/vanling/giallo.css">
+
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <a href="https://lastsunday.github.io/vanling" class="logo">Vanling</a>
+    <nav class="header-nav">
+      
+    </nav>
+    <div class="header-right">
+      
+      <div class="lang-switcher">
+        
+          <a href="https://lastsunday.github.io/vanling/records/iot/hardware-constraints">中文</a>
+        
+      </div>
+    </div>
+  </div>
+</header>
+<div class="container">
+  <aside class="sidebar">
+    
+    <nav class="sidebar-nav">
+    
+    
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;" class="sidebar-section-title">User Guide</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;quickstart&#x2F;" class="sidebar-link">Quick Start</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;installation&#x2F;" class="sidebar-link">Installation</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;guide&#x2F;user-manual&#x2F;" class="sidebar-link">User Manual</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;roadmap&#x2F;" class="sidebar-section-title">Roadmap</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;roadmap&#x2F;worksheet&#x2F;" class="sidebar-link">Work Items</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;roadmap&#x2F;cheatsheet&#x2F;" class="sidebar-link">Cheat Sheet</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;" class="sidebar-section-title">Development Documentation</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;" class="sidebar-link">Server</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;architecture&#x2F;" class="sidebar-link">Core Architecture</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;components&#x2F;" class="sidebar-link">Components and Module Layout</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;pipeline&#x2F;" class="sidebar-link">Unified Pipeline</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;vad&#x2F;" class="sidebar-link">VAD and Turn Detection</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;dialogue-flow&#x2F;" class="sidebar-link">Dialogue Flow</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;websocket-protocol&#x2F;" class="sidebar-link">WebSocket Communication Protocol</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;server&#x2F;models-and-deployment&#x2F;" class="sidebar-link">Models and Deployment</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;" class="sidebar-link">Clients</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;app&#x2F;" class="sidebar-link">Flutter App</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;server-ui&#x2F;" class="sidebar-link">Admin UI</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;shared-protocol&#x2F;" class="sidebar-link">Shared Client Protocol</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;clients&#x2F;pages&#x2F;" class="sidebar-link">Page Implementation</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;" class="sidebar-link">IoT Firmware</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;architecture&#x2F;" class="sidebar-link">Architecture</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;features&#x2F;" class="sidebar-link">Cargo Feature Criteria and Cohesion</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;flashing&#x2F;" class="sidebar-link">Firmware Installation</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;emulation&#x2F;" class="sidebar-link">Hardware-free Emulation and Regression Smoke</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">Audio Metering Semantics</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">Motion Semantic Framework</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">Playback Semantics</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;iot&#x2F;widgets&#x2F;" class="sidebar-link">UI Widgets</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;" class="sidebar-link">Debugging</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;tts-tools&#x2F;" class="sidebar-link">TTS Audio Quality Evaluation</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;debugging&#x2F;asr-debug&#x2F;" class="sidebar-link">ASR Speech Recognition</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;" class="sidebar-link">Related Projects</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;related-project&#x2F;xiaozhi-esp32-server&#x2F;" class="sidebar-link">xiaozhi-esp32-server</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;resource&#x2F;" class="sidebar-link">Resources</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;resource&#x2F;samples-jfk-wav&#x2F;" class="sidebar-link">Resource Files</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;development&#x2F;downloader&#x2F;" class="sidebar-link">Model Downloader</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;" class="sidebar-section-title">Design Discussions</a>
+        
+        <ul class="sidebar-pages">
+          
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;documentation-style&#x2F;" class="sidebar-link">Protocol Documentation Three-Layer Model and Human-AI分工</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;positioning&#x2F;" class="sidebar-link">Positioning and Trade-off Reference</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;dependency-candidates&#x2F;" class="sidebar-link">Dependency Candidates</a></li>
+          
+            <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;discussions&#x2F;telemetry-uplink&#x2F;" class="sidebar-link">Telemetry Uplink (Publication)</a></li>
+          
+        </ul>
+        
+      </div>
+    
+      
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;" class="sidebar-section-title active">Development Records</a>
+        
+        <ul class="sidebar-pages">
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;" class="sidebar-link active">IoT Implementation Records</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;playback&#x2F;" class="sidebar-link">Playback Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;hardware-constraints&#x2F;" class="sidebar-link active leaf">Hardware Constraint Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;panel-buffering&#x2F;" class="sidebar-link">Panel double buffering: measured, rejected</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;camera&#x2F;" class="sidebar-link">Camera Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;audio&#x2F;" class="sidebar-link">Audio Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;wifi&#x2F;" class="sidebar-link">Wi-Fi Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;motion&#x2F;" class="sidebar-link">Motion Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;input&#x2F;" class="sidebar-link">Input and Touch Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;aec&#x2F;" class="sidebar-link">Echo Cancellation Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;widgets&#x2F;" class="sidebar-link">Advanced widgets and Feed</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;clock&#x2F;" class="sidebar-link">Changing the CPU clock at runtime</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;tasks&#x2F;" class="sidebar-link">Check tasks and caching record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;logging&#x2F;" class="sidebar-link">Logging Implementation Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;iot&#x2F;layering&#x2F;" class="sidebar-link">Layering review of the app crate: what landed</a></li>
+                
+              </ul>
+              
+            </li>
+          
+            
+            <li>
+              <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;server&#x2F;" class="sidebar-link">Server Implementation Records</a>
+              
+              <ul class="sidebar-pages">
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;server&#x2F;todo-triage&#x2F;" class="sidebar-link">TODO Triage Record</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;server&#x2F;audio-debug&#x2F;" class="sidebar-link">TTS Playback Stutter and Loudness Normalisation</a></li>
+                
+                <li><a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;records&#x2F;server&#x2F;pipeline-evolution&#x2F;" class="sidebar-link">Pipeline Evolution Record</a></li>
+                
+              </ul>
+              
+            </li>
+          
+          
+        </ul>
+        
+      </div>
+    
+    
+      <div class="sidebar-section">
+        <a href="https:&#x2F;&#x2F;lastsunday.github.io&#x2F;vanling&#x2F;en&#x2F;faq&#x2F;" class="sidebar-section-title">FAQ</a>
+      </div>
+    
+    </nav>
+    
+  </aside>
+  <main class="content">
+    
+<article class="page">
+  
+  <ul class="toc">
+    
+    <li><a href="https://lastsunday.github.io/vanling/en/records/iot/hardware-constraints/#Hardware_Constraint_Record">Hardware Constraint Record</a></li>
+    
+  </ul>
+  
+  <!-- doc-audience: ai -->
+<h1 id="Hardware_Constraint_Record">Hardware Constraint Record</h1>
+<p>Constraints established against real hardware in <code>apps/iot</code>. <strong>AI-produced, not reviewed by a human</strong> — see the <a href="https://lastsunday.github.io/vanling/en/records/">section above</a>.</p>
+<p>Each judgement is marked with its basis: <strong><code>[test]</code></strong> a unit test backs it, <strong><code>[measured]</code></strong> hardware measurement with a way to reproduce, <strong><code>[reported]</code></strong> not reproduced, kept only for the record.</p>
+<hr />
+<h2 id="No_power_management_yet,_so_no_clock-source_locks_either_—_but_the_order_matters">No power management yet, so no clock-source locks either — but the order matters</h2>
+<p><code>[reported]</code> (not implemented, recorded as a lead) ESP-IDF's <code>esp_pm</code> expresses a component's power requirement with three locks: <code>ESP_PM_CPU_FREQ_MAX</code>, <code>ESP_PM_APB_FREQ_MAX</code> and <code>ESP_PM_NO_LIGHT_SLEEP</code>. Locks are recursive and must be released as many times as they were acquired. Its documentation gives two facts this board will eventually hit:</p>
+<ul>
+<li><strong>In Light-sleep, peripherals are clock gated and no interrupt is generated.</strong> So any driver relying on a peripheral interrupt has to hold <code>NO_LIGHT_SLEEP</code>. This board's DVP capture chain and both I2S chains move their data by DMA and fall under that rule.</li>
+<li>Peripheral clock sources such as <code>REF_TICK</code>, <code>XTAL</code> and <code>RC_FAST</code> (i.e. RTC_8M) <strong>are not influenced by APB frequency</strong>, so downclocking is not a full stop and some clocks survive an APB change.</li>
+</ul>
+<p>The firmware has <strong>no PM configuration at all</strong> — no light-sleep, no <code>esp_pm_configure</code>, no <code>WFI</code>. The feed already runs on its own <code>InterruptExecutor</code> (<code>Feed::Interrupt</code> in <code>lib.rs</code>), so the executor-contention route is settled structurally and needs no lock.</p>
+<p>So <strong>not implementing locks is the right call</strong>: adding two with no holder is dead code, and a deadlock is harder to diagnose than dead code.</p>
+<p>But the order does matter. Before light-sleep there has to be a reference-counted lock set, held at minimum by:</p>
+<table><thead><tr><th>Holder</th><th>Why</th></tr></thead><tbody>
+<tr><td>Playback feed</td><td>its existence is the clock source; stopping it stops the codec's master clock</td></tr>
+<tr><td>The capture chain</td><td>a completed DMA releases the ring, and a gated DMA means the ring is never drained</td></tr>
+<tr><td>The DVP capture chain</td><td>same, and its chain-repair poll lives render-side</td></tr>
+</tbody></table>
+<p><code>InputSource::set_demand_collecting</code> is already this shape (a device that is off cannot learn it from the next poll, so someone has to say it explicitly), so the wiring point is right and only the locks themselves are missing.</p>
+<p>Zephyr's split confirms it: its device runtime PM explicitly <strong>does not manage device dependencies</strong> — "devices can manually get or put their dependencies" — so dependencies are the consumer's job, not something automatic.</p>
+<hr />
+<h2 id="One_shared_MCLK">One shared MCLK</h2>
+<p><code>[measured]</code> Capture and playback hang off the same MCLK / BCLK / LRCK. Were they declared from separate clocks, they could sit a few hertz apart with <strong>nothing reporting it</strong>: the panel would meter the capture correctly while the speaker ran slightly sharp — which sounds like a hardware fault and is not.</p>
+<p><code>[measured]</code> Each fault is quiet, and each reads as the other: a speaker fed a misaligned clock crackles, while a microphone sampled off-clock returns constant full scale that looks like a loud room.</p>
+<p><code>[measured]</code> <strong>Which unit drives that pin pair was tried both ways, and both ways are broken</strong>:</p>
+<table><thead><tr><th>Who drives the pins</th><th>What the transmit side hears</th><th>What the capture side sees</th></tr></thead><tbody>
+<tr><td>The capture unit</td><td>continuous crackle (the transmit unit shifts out on a divider the ES8311 is not being clocked by)</td><td>normal</td></tr>
+<tr><td>The transmit unit</td><td>normal</td><td>a constant full-scale reading and a dead flat waveform (sampling the ES7210 off a divider that is not the one clocking the part)</td></tr>
+</tbody></table>
+<p>The two units run in separate clock domains and neither can own the clock alone, so <strong>the transmit unit drives the pins and the capture is held in slave mode</strong>. The direction is not interchangeable.</p>
+<p>The corresponding constraint in code (<code>shared_tdm_config</code>): <code>with_signal_loopback</code> slaves the receive unit to follow, and <strong>its name is the one misleading thing about it</strong> — it carries no samples across; it shares the clock.</p>
+<p><code>audio::tdm_config</code> and <code>audio_out::shared_tdm_config</code> are <strong>a deliberate second copy</strong>, because the two features are independent (a speaker with no microphone and a microphone with no speaker are both real boards) and neither half may own the shared answer. The capture's copy must leave sharing off — with no transmit unit there is nothing to be master.</p>
+<hr />
+<h2 id="DC-blocking_write_order_in_the_microphone_front_end">DC-blocking write order in the microphone front end</h2>
+<p><code>[test]</code> Each ES7210 input pair's DC-blocking filter occupies two registers differing only in bit 5 (<code>0x0A ^ 0x2A == 0x20</code>), so the corner is the only field the two share. A MockI2c write-order trace test holds that order in place.</p>
+<p>The registers are named for the bit they carry, not for a stage order: no public document supports a stage naming — the datasheet is "Everest Semiconductor Confidential" and defers the bit definitions to an undistributed guide, and the two driver families disagree even on the names (<code>esp-bsp</code> calls <code>0x22</code> HPF2 where <code>esp-audio-dev</code> calls it HPF1).</p>
+<p><code>[measured]</code> Swapping that pair <strong>is not cosmetic</strong>: it lifts the quiet-room floor. So the order follows the reference driver rather than an undocumented stage order.</p>
+<hr />
+<h2 id="0_dBFS_=_102_dB_SPL">0 dBFS = 102 dB SPL</h2>
+<p><code>[reported]</code> Anchored on 2026-09-28 against speech at 30 cm: a 66 dB SPL floor, peaks to 80. Not reproduced in this pass.</p>
+<p>The derivation (in full in the code comment): the ES7210's full scale is AVDD/3.3 Vrms, so under <code>ANALOG_POWER_RUN</code> it is 1.0 Vrms rather than the 2 Vrms "headroom" would suggest; the ZTS6216's −38 dBV/Pa is 12.59 mV/Pa, which through <code>GAIN_30DB</code> is 397.8 mV/Pa at the converter — so full scale is 2.51 Pa, or 101.98 dB against the 20 µPa reference pressure.</p>
+<p><strong>To re-anchor</strong> (when the capsule or a gain step changes): set <code>CAL_SPL_LOG</code> and speak at the same distance.</p>
+<blockquote>
+<p>These numbers live in the code comment because they decide the readout; changing a value here requires changing it there too.</p>
+</blockquote>
+<p>Core-side consumption of this offset (and why <code>spl()</code> takes it as a parameter) is in the <a href="https://lastsunday.github.io/vanling/en/records/iot/audio/">audio implementation record</a>.</p>
+<hr />
+<h2 id="The_QMI8658A_tap_engine_is_unusable">The QMI8658A tap engine is unusable</h2>
+<p><code>[reported]</code> The part's tap engine latched a stuck tap bit and a frozen <code>TAP_NUM</code> at its enable transient and never resolved a real blow, so only No-Motion is armed and knock detection moved to the core-side recognizer (<code>recognizer.rs</code>, with <code>[test]</code> 7 cases covering knocks, turns and the first-knock count). Not reproduced in this pass.</p>
+<p>The full detection rules, where the thresholds came from, and the rejected approaches are in the <a href="https://lastsunday.github.io/vanling/en/records/iot/motion/">motion implementation record</a>.</p>
+<hr />
+<h2 id="Main_task_stack_size">Main task stack size</h2>
+<blockquote>
+<p><code>[measured]</code> <strong>All three numbers below changed when the camera joined the product; these are the current ones</strong> (<code>vanling</code>, read from the ELF symbols after <code>moon run iot:build-s3</code>):</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>_stack_end        = 0x3fcd529c   (was 0x3fcd154c)</span></span>
+<span class="giallo-l"><span>_stack_start_cpu0 = 0x3fce9710   →  83 060 B = 81.1 KB   (was 98 756 B)</span></span></code></pre>
+<p>The panel's frame buffer went from a heap <code>Vec</code> to a board-level static arena shared with the camera ring (see <code>camera.md</code>), so <code>HEAP_MEM</code> dropped from 204,800 to 65,536. Net effect: <code>.bss</code> <strong>grows</strong> by 14,336 B and the stack shrinks by about 15 KB. <code>FRAME_ARENA</code> measured at <code>0x3fcaf900</code>, <code>% 64 == 0</code>.</p>
+</blockquote>
+<p><code>[measured]</code> <code>esp-hal</code>'s own <code>stack.x</code> places the main task's stack top at the end of <code>dram_seg</code>, leaving <code>dram2_seg</code> unclaimed. <code>crates/app/linker/esp32s3-main-stack.x</code> connects it, and the stack becomes contiguous across both regions.</p>
+<p><code>[measured]</code> The real geometry read from the ELF symbols:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>_stack_end        = 0x3fcd154c</span></span>
+<span class="giallo-l"><span>_stack_start_cpu0 = 0x3fce9710   →  98 756 B = 96.4 KB</span></span></code></pre>
+<blockquote>
+<p><code>[measured]</code> <strong>These two values were measured before the camera joined the product</strong> — see the head of this section. <code>_stack_start_cpu0</code> was also previously recorded as <code>0x3fced710</code> / 115 140 B, omitting the ROM's two 16 KB boot stacks. <code>esp32s3-main-stack.x</code> places the stack top at the top of <code>dram2_seg</code> <strong>minus</strong> <code>ROM_BOOT_STACKS = 0x4000</code> (<code>0x3fced710 - 0x4000 = 0x3fce9710</code>); the ROM's PRO/APP boot stacks must not be reached by the main stack. The same omission led <code>camera.md</code> to the wrong conclusion that the ring would necessarily region-overflow in <code>vanling</code>; that section now carries the correction.</p>
+</blockquote>
+<p><strong>Why it is needed</strong>: drawing a render puts <code>Diagnostics</code> snapshots and two <code>[u16; ENVELOPE_COLUMNS]</code> column arrays on the stack by value, and the Audio page once crashed on this stack (the exception's <code>A1</code> sat below <code>_stack_end</code>).</p>
+<p><code>[measured]</code> On 2026-10-28 the Ambient page reads <strong>42,392 B of 65,976 B</strong> (64.3%), leaving 23,584 B (info image boot log, <code>[DISPLAY] stack peak 42392 B of 65976 B</code>, the first window at 2.7 s); the earlier 36,453 B (43.9%) predates the render/state rounds. The firmware ships its own high-water measurement (<code>[DISPLAY] stack peak</code>), sampled once per repaint window and taken as the deepest value — a measurement, not an estimate. The Camera page's reading used to be <code>0 B</code> throughout: that path passes no sampling point, so it was unmeasured rather than shallow, and now samples like the others.</p>
+<p><strong>An open question</strong>: this peak is nearly constant from boot, and switching pages does not raise it — yet the historical crash point was the Audio page's full-frame stamp. Which path the peak actually belongs to is <strong>not yet identified</strong>. If it turns out to be rendering, rendering is heavier than the code comment describes, and it is worth chasing.</p>
+<h3 id="After_the_per-page_split:_the_wall_did_not_move,_the_peak_is_42,392_B_([measured],_2026-10-28)">After the per-page split: the wall did not move, the peak is 42,392 B (<code>[measured]</code>, 2026-10-28)</h3>
+<p><code>[measured]</code> The same ruler (<code>nm apps/iot/target/xtensa-esp32s3-none-elf/release/vanling</code>), read after <code>state/</code> was split per page and the sound catalogue moved into <code>app</code>:</p>
+<table><thead><tr><th>Quantity</th><th>Reading</th></tr></thead><tbody>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td><code>0x3fce9710 − 0x3fcd9558</code> = <strong>65,976 B</strong> (floor 65,536, margin <strong>440 B</strong>)</td></tr>
+<tr><td><code>__embassy_main::POOL</code></td><td><strong>42,776 B</strong> (<code>0xa718</code>)</td></tr>
+<tr><td><code>moon run iot:image</code></td><td>S3 <code>1,059,904 / 6,291,456 B</code> (16.85%), C6 <code>842,400 / 1,048,576 B</code> (80.34%)</td></tr>
+</tbody></table>
+<p>These addresses are byte-identical to the readings before the split, so the two rounds add <strong>0</strong> to the S3 static footprint: what moved is where code lives, not the layout. The images are S3 <code>1,059,888 → 1,059,904 B</code> (+16 B); C6's last recorded figure was <code>826,976 B</code>, but rebuilt at HEAD with the same command it is <strong>826,656 → 842,400 B (+15,744 B)</strong>.</p>
+<p><strong>That 15.7 KB sits entirely on the C6 side, and the source is measured</strong>: <code>app/src/playback/sounds.rs</code>'s <code>play</code> now parses before handing a source to the speaker, whereas at HEAD the parse lived in the S3 driver — C6's <code>UnwiredSpeaker::play(Sound)</code> did nothing, so LTO dropped it. The symbols show it: HEAD's C6 image has <strong>zero</strong> occurrences of <code>from_midi</code>, the <code>Score::into_notes</code> sort or <code>Tone::fill</code>; this round has seven. <code>control_loop::poll</code> therefore grew by 5,466 B, and <code>iot_core::drivers::playback</code> symbols total 10,608 B this round. C6's <code>take_playback()</code> returns <code>None</code>, so the path never runs: it costs slot, not cycles. C6 has 206,176 B left, so this is recorded rather than urgent — whether to put the parse back behind compile time (a soft feature, or keeping <code>play</code> only in builds with a speaker) remains an open decision.</p>
+<p>That build set no <code>IOT_WIFI_*</code>, and credential strings shift <code>_stack_end</code>, so this wall is comparable only with builds that also carry no credentials.</p>
+<p><code>[measured]</code> <strong>Peak: <code>42,392 B of 65,976 B</code></strong> (64.3%, leaving 23,584 B). The line appears in the product info image's boot log (<code>moon run iot:flash-s3</code>, the first window 2.7 s after reset, Ambient page), and <code>main stack</code> matches <code>nm</code> — so <code>[DISPLAY] stack peak</code> does not need a debug image: the high-water prints at info for every 1,024 B it gains, and only a repeated reading drops to debug. The figure covers the splash and the page it lands on.</p>
+<p><code>[measured]</code> <strong>Cross-page worst case: 42,392 B of 65,976 B</strong> (the Speaker page reads 42,376 B, the only one lower). Each of the six pages was rebuilt with <code>IOT_BOOT_PAGE=&lt;page&gt;</code>, flashed and monitored once; same board, same session, every one of them got <code>192.168.1.136</code>:</p>
+<table><thead><tr><th>Page</th><th><code>App/part</code> B</th><th><code>main stack</code> B</th><th>Peak B</th></tr></thead><tbody>
+<tr><td>ambient</td><td>1,059,904</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>attitude</td><td>1,059,952</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>audio</td><td>1,059,984</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>speaker</td><td>1,060,192</td><td>65,976</td><td>42,376</td></tr>
+<tr><td>camera</td><td>1,059,920</td><td>65,976</td><td>42,392</td></tr>
+<tr><td>network</td><td>1,059,936</td><td>65,976</td><td>42,392</td></tr>
+</tbody></table>
+<p><code>main stack</code> is identical across all six: the boot page only picks an entry, it does not move static layout. The Speaker page's peak is 16 B shallower than the rest — that is that page's draw chain being shallower, not measurement granularity: the line triggers once per 1,024 B gained, but the value printed is the exact high-water. Budgeting still takes the ceiling, 42,392 B. <strong>The 440 B is the distance from the wall to the floor; 42,392 B is the water line already reached.</strong></p>
+<h3 id="After_the_B/C_split_the_wall_is_160_B_wider_([measured],_2026-10-29)">After the B/C split the wall is 160 B wider (<code>[measured]</code>, 2026-10-29)</h3>
+<p><code>[measured]</code> Same ruler, read after <code>core/src/page/</code> became one module per page, <code>state/tests.rs</code> moved into the modules it tests, <code>ui/src/pages/live.rs</code> split into three pages, and the frame cadence became <code>app/src/frame.rs</code> (measured once the Docker engine came back; the build carried no <code>IOT_WIFI_*</code>):</p>
+<table><thead><tr><th>quantity</th><th>reading</th><th>previous (end of A)</th><th>delta</th></tr></thead><tbody>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td><code>0x3fce9710 − 0x3fcd94b8</code> = <strong>66,136 B</strong></td><td>65,976 B</td><td><strong>+160 B</strong></td></tr>
+<tr><td>margin (minus 65,536)</td><td><strong>600 B</strong></td><td>440 B</td><td>+160 B</td></tr>
+<tr><td><code>__embassy_main::POOL</code></td><td><strong>42,784 B</strong> (<code>0xa720</code>)</td><td>42,776 B</td><td>+8 B</td></tr>
+<tr><td><code>moon run iot:image</code> S3</td><td><code>1,059,216 / 6,291,456 B</code> (16.84%)</td><td>1,059,904</td><td><strong>−688 B</strong></td></tr>
+<tr><td><code>moon run iot:image</code> C6</td><td><code>843,728 / 1,048,576 B</code> (80.46%)</td><td>842,400</td><td><strong>+1,328 B</strong></td></tr>
+</tbody></table>
+<p><code>[measured]</code> POOL grew 8 B while the wall widened 160 B, so other statics shrank by 168 B: B/C only move code, and LTO laid the result out again across the new module boundaries rather than any one thing being deliberately made smaller. The C6's +1,328 B is not attributed symbol by symbol — the C6 still has 204,848 B left, so only the number is recorded. <code>check-s3</code>, <code>build-s3</code>, <code>iot:image</code> and <code>check-features</code> (six host subsets plus nine bare-metal/C6 subsets) all pass this round.</p>
+<p><code>[measured]</code> The first attempt went unmeasured because Docker Desktop's engine was down on this machine: <code>moon run iot:check-s3</code> stopped at <code>image vanling/xtensa:esp32s3_1.98.1.0 is missing</code> and <code>docker info</code> reported <code>Cannot connect to the Docker daemon at unix:///Users/yu/.docker/run/docker.sock</code>. After the engine came back (Server 28.5.1) the same tree produced the table above.</p>
+<h3 id="Two_large_board_fields_boxed:_the_wall_is_35,616_B_wider_([measured],_2026-10-30)">Two large board fields boxed: the wall is 35,616 B wider (<code>[measured]</code>, 2026-10-30)</h3>
+<p><code>[measured]</code> <code>Board</code> travels by value into <code>main</code>'s future, and that future lives wholly inside the <code>__embassy_main::POOL</code> static pool, so <strong>every inline field is paid again as a static</strong>. This round boxes the two devices the <code>lckfb_szpi_esp32s3</code> board carried by value (the field <code>light</code> is renamed to <code>screen</code> at the same time; the C6's <code>light</code> is a real WS2812 and stays):</p>
+<pre class="giallo z-code"><code data-lang="rust"><span class="giallo-l"><span class="z-source">screen</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Screen</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">                    // was light: Option&lt;Screen&gt;</span></span>
+<span class="giallo-l"><span class="z-source">audio</span><span class="z-keyword z-operator">:</span><span class="z-entity z-name z-type"> Option</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Box</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-entity z-name z-type">Es7210Rx</span><span class="z-punctuation z-brackets z-angle z-rust">&lt;</span><span class="z-source">…</span><span class="z-punctuation">,</span><span class="z-entity z-name z-type"> REFERENCE_SAMPLES</span><span class="z-punctuation z-brackets z-angle z-rust">&gt;&gt;&gt;</span><span class="z-punctuation">,</span><span class="z-punctuation z-definition z-comment z-comment">   // was Option&lt;Es7210Rx&lt;…&gt;&gt;</span></span></code></pre>
+<p><code>size_of</code> (probed under <code>check-s3</code> with <code>let _: [u8; 0] = [0u8; size_of::&lt;T&gt;()]</code>; the probe is not left in the tree): <code>Screen</code> <strong>2,712 B</strong> (<code>Diagnostics</code> is 2,568 B of it), <code>Option&lt;Es7210Rx&lt;…&gt;&gt;</code> <strong>9,168 B</strong> (the AEC's <code>AdaptiveFilter</code> dominates), <code>Board</code> <strong>240 B</strong> with both boxed (<strong>12,112 B</strong> with both inline, derived from the two readings above).</p>
+<table><thead><tr><th>quantity</th><th>both boxed (this round)</th><th>screen only</th><th>neither</th><th>delta (neither → both)</th></tr></thead><tbody>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td><code>0x3fce9710 − 0x3fcd09b8</code> = <strong>101,720 B</strong></td><td>74,232 B</td><td>66,104 B</td><td><strong>+35,616 B</strong></td></tr>
+<tr><td>margin (minus 65,536)</td><td><strong>36,184 B</strong></td><td>8,696 B</td><td>568 B</td><td>+35,616 B</td></tr>
+<tr><td><code>__embassy_main::POOL</code></td><td><strong>7,192 B</strong> (<code>0x1c18</code>)</td><td>34,696 B (<code>0x8788</code>)</td><td>42,808 B (<code>0xa738</code>)</td><td><strong>−35,616 B</strong></td></tr>
+</tbody></table>
+<p>All three readings come from the same tree and the same ruler (<code>nm -S apps/iot/target/xtensa-esp32s3-none-elf/release/vanling</code>), the only differences being those two boxings and the field rename. Each POOL drop is about three times the field's size (screen <strong>−8,112 B</strong> ≈ 3 × 2,712; microphone front end <strong>−27,504 B</strong> = 3 × 9,168), i.e. each value sits three times in the future's layout (board construction, the <code>take_*</code> temporary, and the landing in <code>WiredSurface</code>/<code>PollEntry</code>); the symbols are not attributed one by one.</p>
+<p><strong>The heap is unchanged</strong>: both <code>Box</code>es are freed in <code>take_surfaces</code> / <code>take_audio</code> and the values move straight into the <code>Vec&lt;WiredSurface&lt;Screen&gt;&gt;</code> and the <code>PollEntry</code> <code>Box</code> that already existed, so the S3's 96 KB PSRAM heap peaks at the same size — those bytes simply land on the heap at boot and are moved again as they were before.</p>
+<p><code>check-s3</code>, <code>check-c6</code>, <code>check-host</code>, <code>build-s3</code> and <code>cargo clippy -- -D warnings</code> on the S3 target all pass this round.</p>
+<h3 id="Panel_SPI_copy_buffers_8_KiB_→_128_B,_widening_the_stack_wall_by_8,088_B_([measured],_2026-11-01)">Panel SPI copy buffers 8 KiB → 128 B, widening the stack wall by 8,088 B (<code>[measured]</code>, 2026-11-01)</h3>
+<p><code>[measured]</code> The panel bus's two 4 KiB <code>with_buffers</code> never take part in a frame transfer. <code>SpiDma::write</code>'s <code>DmaOperationKind::for_write</code> calls an <strong>internal-DRAM slice</strong> <code>InPlace</code> (<code>memory_range!("DRAM")</code> is <code>0x3FC88000..0x3FD00000</code>; <code>FRAME_ARENA</code> sits at <code>0x3fc9b420</code>), so the 153,600-byte frame and the on-stack commands and arguments all go straight through; only a <strong>constant slice rustc promoted into <code>.rodata</code></strong> (<code>&amp;[0x01]</code> and friends) lands in flash, out of the DMA's reach, and takes the copy buffers.</p>
+<p><code>[measured]</code> Dropping <code>with_buffers</code> outright <strong>does not boot</strong>: <code>board init failed, resetting: Spi(DmaError(BufferTooSmall))</code> — the software reset in <code>panel_spi</code> writes exactly such a constant. The buffers therefore stay, sized by the longest command argument: 64 B each, 128 B together.</p>
+<table><thead><tr><th>quantity</th><th>before</th><th>after</th><th>delta</th></tr></thead><tbody>
+<tr><td><code>.bss</code></td><td>231,064 B</td><td>222,976 B</td><td>−8,088 B</td></tr>
+<tr><td><code>.stack</code> (the <code>dram_seg</code> half)</td><td>43,880 B</td><td>52,000 B</td><td>+8,120 B</td></tr>
+<tr><td><code>main stack</code> (boot log)</td><td>101,240 B</td><td><strong>109,328 B</strong></td><td>+8,088 B</td></tr>
+<tr><td><code>[HEAP]</code></td><td>96 KiB</td><td><strong>512 KiB</strong></td><td>the heap is PSRAM, not internal DRAM</td></tr>
+</tbody></table>
+<p><code>dram_seg</code> is still 341,760 B with no slack: the linker folds whatever is saved straight into the main stack, so the gain is a <strong>wider wall</strong>, not bytes that become available.</p>
+<p><code>[measured]</code> The frame transfer did not slow down: with the 64 B buffers, eight of the nine repaints in one window landed at 15–19 ms (153,600 B / 80 MHz = 15.36 ms). The ninth read 610 ms, and in that same window <code>[INPUT]</code> reported <code>worst single hold 597 ms … worst source: touch 597 ms</code> — the touch poll was holding the executor, not the buffers (the frame lives in <code>.bss</code> and never goes near them).</p>
+<p><code>[measured]</code> The same round cut the radio driver's <code>dram_seg</code> share from 16 KiB to 8 KiB (<code>INTERNAL_BYTES</code> in <code>radio/esp32s3.rs</code>): boot prints <code>[WIFI] driver heap: 8192 B in dram_seg + 32768 B above it</code>, so the total goes 49,152 → <strong>40,960 B</strong> and the main stack 109,328 → <strong>117,520 B</strong> (+8,192, matching the share taken away byte for byte). Against the driver's already-measured 33,332 B peak that leaves about <strong>7.6 KB</strong> (32.2% → 23.1%); the product associates, gets an address and holds it at that size with no <code>OutOfMemory</code>. The S3 and C6 driver heaps are no longer the same size (the C6 keeps a single 48 KiB block).</p>
+<p><code>[measured]</code> The heap went 96 KiB → 512 KiB: boot prints <code>[HEAP] 524288 B at 0x3c100000 in PSRAM, of a 8388608-byte window</code>. Before, boot left about 1.6 KB free, so the next <code>Box</code> was an allocation failure; the PSRAM window is 8 MiB, so 512 KiB costs no internal DRAM.</p>
+<h3 id="The_panel_frame_goes_out_in_32-row_chunks_with_a_yield:_longest_contiguous_hold_15_ms_→_1–2_ms_([measured],_2026-11-01)">The panel frame goes out in 32-row chunks with a yield: longest contiguous hold 15 ms → 1–2 ms (<code>[measured]</code>, 2026-11-01)</h3>
+<p><code>[measured]</code> One frame is 153,600 B / 80 MHz = <strong>15.36 ms</strong>, and a single <code>SpiBus::write</code> held core 0's cooperative executor for that whole stretch — the feed, the touch/motion poll, the capture poll and the render all share it. The fix is not a different driver but a transfer that lets go of the executor in the middle.</p>
+<p><strong>Async DMA does not work here</strong>: <code>SpiDma&lt;Async&gt;::write_async</code> puts its <code>[DmaDescriptor; LINK_DESCRIPTOR_COUNT]</code> (<code>MAX_DMA_SIZE.div_ceil(CHUNK_SIZE) + 3</code>) inside the coroutine frame, and this repo always <code>Box::pin</code>s futures onto the PSRAM heap, so the first real write panics:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>panicked at ... unwrap of DescriptorSet::new(descriptors) failed: UnsupportedMemoryRegion</span></span></code></pre>
+<p>The descriptors have to live in internal DRAM, which a heap-boxed future cannot offer. So this board <strong>cannot</strong> use esp-hal's async DMA together with a boxed future.</p>
+<p>What is used instead: the driver stays <code>SpiDma&lt;'static, Blocking&gt;</code>, <code>write_frame</code> becomes <code>async</code>, and the frame ships in <strong>32 controller rows = 15,360 B</strong> chunks with <code>embassy_futures::yield_now().await</code> between them; the descriptors stay in the blocking call's own stack frame (internal DRAM). <code>FRAME_CHUNK_BYTES ≤ 32,736</code> (esp-hal's private <code>MAX_DMA_SIZE</code>) is pinned at compile time by <code>const _: () = assert!(...)</code>, because overrunning it fails at run time with <code>MaxDmaTransferSizeExceeded</code> and shows up as a frame that never reaches the glass.</p>
+<p><strong>Safe on the wire</strong>: <code>panel_spi</code> wires no CS pin (only <code>.with_sck().with_mosi()</code>), so chunking inserts SCK idle gaps, DC stays high throughout, and the byte stream is identical to one transfer; rendered output and page behaviour are unchanged.</p>
+<p>Only one interface surface grew: <code>PageSurface::flush</code> / <code>Renderer::flush</code> return <code>Option&lt;Pin&lt;Box&lt;dyn Future&gt;&gt;&gt;</code> and <code>Registry::flush()</code> awaits it once after <code>tick</code>. Painting stays synchronous (RAM only); the transfer happens in the flush. <code>camera-probe</code> awaits the same <code>write_frame</code>.</p>
+<p>Accounting: <code>hold</code> is render + total wire time (the CPU load did not change, it is just no longer one unbroken stretch), and the new <code>worst chunk</code> is the longest single transfer — that is the <strong>real longest contiguous hold</strong>. This section's readings use the old accounting; the next section moves the transfer to the second core, after which <code>hold</code> is render only and <code>worst wait</code> reports the parked time.</p>
+<table><thead><tr><th>reading (Attitude page, <code>IOT_BOOT_PAGE=Attitude IOT_LOG_LEVEL=debug</code>)</th><th>before</th><th>after</th></tr></thead><tbody>
+<tr><td>first window</td><td><code>6 repaints in 2046 ms, held 110 ms (5%), worst render 3 ms, worst write 15 ms</code></td><td><code>6 repaints in 2724 ms, held 110 ms (4%), worst render 2 ms, worst write 17 ms (longest chunk 2 ms)</code></td></tr>
+<tr><td>steady window</td><td><code>10 repaints in 2097 ms, held 193 ms (9%), worst render 4 ms, worst write 16 ms</code></td><td><code>12 repaints in 2202 ms, held 229 ms (10%), worst render 3 ms, worst write 16 ms (longest chunk 2 ms)</code></td></tr>
+</tbody></table>
+<p><code>worst write</code> is still 15–17 ms (the wire time does not shrink because it is chunked); what changed is that it is no longer one stretch: <code>longest chunk</code> is 1–2 ms. The occasional 6xx ms in the boot window is Wi-Fi association landing inside a single chunk transfer; it predates this change (the same window reports <code>[INPUT] worst single hold 597 ms … worst source: touch 597 ms</code>) and has nothing to do with chunking.</p>
+<p><code>[measured]</code> Resources are unchanged: boot prints <code>[DISPLAY] … main stack 117520 B</code>, the same as HEAD (<code>nm</code> reads <code>_stack_start_cpu0 − _stack_end</code> = <code>0x3fce9710 − 0x3fcccc00</code>), with <code>.data</code> 18,904 B, <code>.data.wifi</code> 496 B, <code>.bss</code> 214,784 B and a 1,055,264 B app. Dropping the async driver also dropped the +88 B of <code>.data</code> it had added.</p>
+<h3 id="Audio_repaint_step_doubled_+_panel_transfer_moved_to_the_second_core:_core_0_holds_40%_→_3%_([measured],_2026-11-01)">Audio repaint step doubled + panel transfer moved to the second core: core 0 holds 40% → 3% (<code>[measured]</code>, 2026-11-01)</h3>
+<p><code>[measured]</code> The section above cut a frame's <strong>contiguous</strong> hold from 15 ms to 1–2 ms, but the 16 ms of wire time was still core 0's bill: <code>SpiDma&lt;Blocking&gt;</code>'s busy wait was merely sliced, and the whole stretch still belonged to the cooperative executor. The Audio page makes that visible — <code>[DISPLAY] Audio 44 repaints in 2059 ms, held the executor 819 ms (40%)</code>, while <code>[INPUT]</code> takes 39% in the steady window of the same build (<code>1970 ms of 5003 ms</code>, below) — meaning core 0's bulk was always the capture fold, not the panel. Both were changed, cheapest first.</p>
+<p><strong>One: the Audio page's repaint step goes 40 → 80 ms.</strong> The threshold moves off <code>render::DIAG_REPAINT_STEP_MS</code> onto each page's render policy (<code>render::screen::policy::repaint_step_ms(page)</code>); only Audio is twice the default, every other page stays at 40. The reason is that this page's drift arrives faster than anyone reads it: a capture poll closes two envelope columns every 20 ms, so the 40 ms step already redrew the 200-column sweep every ~45 ms; at twice the step a frame advances eight columns — still a sweep, at half the cost. <code>the_audio_page_waits_twice_the_default_step</code> pins it.</p>
+<table><thead><tr><th>reading (<code>IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug</code>, ~2 s window)</th><th>before</th><th>step only</th><th>then second core</th></tr></thead><tbody>
+<tr><td>repaints</td><td>44–45</td><td>27–30</td><td>26–30</td></tr>
+<tr><td><code>held the executor</code></td><td>819 ms (40%)</td><td>505–561 ms (24–27%)</td><td><strong>65–76 ms (3%)</strong></td></tr>
+<tr><td><code>worst render</code></td><td>3 ms</td><td>2–3 ms</td><td>2–3 ms</td></tr>
+<tr><td><code>worst wait</code></td><td>—</td><td>—</td><td>17 ms</td></tr>
+<tr><td><code>worst write</code> (<code>longest chunk</code>)</td><td>16 ms (1–2 ms)</td><td>16 ms (1–2 ms)</td><td>15–16 ms (1 ms)</td></tr>
+</tbody></table>
+<p><strong>Two: the panel's transfer moves to the second APP core.</strong> Controller and bus become <code>PanelBus</code> and <code>Screen</code> keeps only a channel; the coordinator posts the finished frame as a <code>Ticket</code> (raw pointer plus length, <code>unsafe impl Send</code>) into <code>REQUESTS: Channel&lt;_, Ticket, 1&gt;</code> and then parks in <code>SHIPPED.wait()</code> for the answer, while <code>panel_service</code> runs <code>write_frame</code> on the other core and signals a <code>Result&lt;Wire, Error&gt;</code>. Safety is the handshake itself: the frame is the <code>'static</code> <code>static mut</code> arena, <code>Panel::write</code> sits in <code>wait()</code> for the ticket's whole life without touching it, and only one request is ever in flight.</p>
+<p><code>[measured]</code> The trigger had to move: <code>esp_rtos::start_second_core</code> hard-codes <code>FROM_CPU_INTR1</code>, which the product's <code>Priority2</code> speaker feed executor already held, so the feed moves to <code>FROM_CPU_INTR2</code> (<code>InterruptExecutor&lt;2&gt;</code>) and the cross-core wakeup keeps INTR1. The second core's stack is a 16 KiB static (<code>PANEL_CORE_STACK</code> in <code>chip-esp</code>) — <code>.stack</code> fills whatever is left of the region, so this is a slice off the main-stack wall, not an addition.</p>
+<p><code>[measured]</code> The accounting changes with it: <code>hold</code> is now render only (the coordinator's own CPU) and the parked time is its own <code>worst wait</code>. So "40% → 3%" is <strong>a transfer of ownership of the hold</strong>, not a shorter wire time: those 16 ms are still spent, just on the other core; <code>worst write</code> is still 15–16 ms and <code>longest chunk</code> 1 ms — but from this section on, <code>longest chunk</code> measures <strong>core 1's hold</strong> and no longer enters core 0's account; it is a jitter figure for the panel service's own lane and may not be added to the <code>[INPUT]</code>/<code>[DISPLAY]</code> holds.</p>
+<table><thead><tr><th>resource (<code>size -A</code> / <code>nm</code>, same tree)</th><th>before</th><th>after</th><th>delta</th></tr></thead><tbody>
+<tr><td><code>.text</code></td><td>850,713 B</td><td>857,729 B</td><td>+7,016 B</td></tr>
+<tr><td><code>.bss</code></td><td>214,784 B</td><td>231,544 B</td><td>+16,760 B (16 KiB stack + channel/signal)</td></tr>
+<tr><td><code>.data</code></td><td>18,904 B</td><td>18,928 B</td><td>+24 B</td></tr>
+<tr><td>main stack (boot log / <code>_stack_start_cpu0 − _stack_end</code>)</td><td>117,520 B (<code>0x3fcccc00</code>)</td><td><strong>100,728 B</strong> (<code>0x3fcd0d98</code>)</td><td>−16,792 B</td></tr>
+</tbody></table>
+<p><code>[measured]</code> Nothing regressed: the Attitude page reads <code>[DISPLAY] Attitude 5–9 repaints in 2041–2560 ms, held the executor 16–29 ms (0–1%), worst render 3 ms, worst wait 16 ms, worst write 15 ms (longest chunk 1 ms)</code>; both pages report <code>stack peak 29848 B of 100728 B</code>, with no panic and no <code>[DISPLAY]</code> warning. Core 0's largest remaining holder is the capture fold (<code>[INPUT] held the executor 1970 ms of 5003 ms</code>, ~39%), untouched here.</p>
+<p><code>[measured]</code> Checks: <code>check-s3</code>, <code>check-c6</code>, <code>check-host</code>, <code>check-features</code> (every subset), <code>build-s3</code> (only the pre-existing RWX linker warning), <code>cargo clippy -- -D warnings</code> for the S3 target, <code>lint</code>, <code>lint-host</code>, <code>test</code> and <code>test-bsp</code> all pass this round.</p>
+<h3 id="The_driver_half_moves_to_core_1_whole:_core_0_keeps_only_render&#39;s_4%_([measured],_2026-11-01)">The driver half moves to core 1 whole: core 0 keeps only render's 4% (<code>[measured]</code>, 2026-11-01)</h3>
+<p>The section above left core 0's remaining 39% — the capture fold — recorded as "untouched here". This section touches it: <code>input_task</code> and <code>control_loop</code>, together with the drivers they hold, become one <code>Io</code> bundle that an <code>IoPlacement</code> routes — <code>Elsewhere(&amp;IoQueue)</code> hands it to <code>run_io_from</code> on the second core, <code>Inline(spawner)</code> keeps it on the coordinator's own executor. A single-core C6, and an S3 with no panel, take <code>Inline</code>: same tasks, same code path, only the place differs.</p>
+<table><thead><tr><th>reading (<code>IOT_BOOT_PAGE=Audio IOT_LOG_LEVEL=debug</code>, ~2 s window, steady state)</th><th>before (panel on core 1)</th><th>after (driver half also on core 1)</th></tr></thead><tbody>
+<tr><td><code>[DISPLAY] Audio</code> repaints</td><td>26–30</td><td>26–29</td></tr>
+<tr><td><code>held the executor</code></td><td>65–76 ms (3%)</td><td>83–95 ms (4%)</td></tr>
+<tr><td><code>worst render</code></td><td>2–3 ms</td><td>3–4 ms</td></tr>
+<tr><td><code>worst wait</code></td><td>17 ms</td><td>26–47 ms</td></tr>
+<tr><td><code>worst write</code> (<code>longest chunk</code>)</td><td>15–16 ms (1 ms)</td><td>15–16 ms (1 ms)</td></tr>
+<tr><td><code>[INPUT] held the executor</code></td><td>1970 ms of 5003 ms (39%), charged to core 0</td><td>1677–2026 ms of 5001–5007 ms (33–40%), charged to core 1</td></tr>
+<tr><td><code>[INPUT] worst single hold</code></td><td>—</td><td>9–19 ms (bound 30 ms), capture 7–16 ms</td></tr>
+<tr><td><code>[PLAY] cadence</code></td><td>—</td><td>400 feeds in 2000 ms (100% of nominal), 0 gaps over 20 ms, worst gap 5 ms, worst work 428–707 µs</td></tr>
+<tr><td><code>stack peak</code></td><td>29848 B of 100728 B</td><td>24008 B of 91824 B</td></tr>
+</tbody></table>
+<p><code>[measured]</code> The capture fold's bill moved house almost verbatim: the same <code>[INPUT] held the executor … of 5001 ms</code> reading, same numerator and denominator, now lands on core 1 instead of core 0; core 0's executor keeps only render's 4%. The price is single and nameable — the Audio page's <code>worst wait</code> goes from 17 ms to 26–47 ms: the panel service shares core 1's one cooperative executor with the capture poll (7 ms at worst, 16 ms in the boot window) and the speaker feed, so a full 15 ms transfer plus that stretch lands around 30 ms, with the occasional 47 ms. The repaint count is unchanged (26–29): the extra wait does not drop frames.</p>
+<p><code>[measured]</code> Playback, motion and camera did not get worse: <code>[PLAY]</code> runs at the full 400 feeds/2 s with 0 gaps; the Attitude page reads <code>[DISPLAY] Attitude 5–9 repaints in 2022–2779 ms, held the executor 15–30 ms (0–1%), worst render 3–4 ms, worst wait 17–19 ms, worst write 15 ms (longest chunk 1 ms)</code> with <code>[INPUT] held the executor 632–637 ms of 5003–5005 ms</code> in the same window (12–13%: that page does not capture) and a 1856 B core-1 stack; the Camera page's steady state reads <code>[DISPLAY] Camera 11 repaints in 2118–2120 ms, held the executor 3–4 ms (0%), worst render 0 ms, worst wait 17 ms, worst write 15 ms (longest chunk 1 ms)</code>, the same order as before. Every boot onto the Camera page reports one <code>[CAM] no descriptor completed in 420 ms, stalled at 0 of 40, peripheral running (re-arm 1/2)</code> in its first window (same window: <code>worst wait 639 ms</code>) and never again; that path rides core 0's render loop (<code>advance(frame)</code> writes the panel frame during paint) and is untouched here.</p>
+<p><code>[measured]</code> Resources: <code>.text</code> 857,729 → 857,321 B (−408), <code>.bss</code> 231,544 → 240,448 B (+8,904: second core's stack 16 → 24 KiB, the rest the <code>IoQueue</code> and <code>run_io_from</code>'s task slot), <code>.data</code> 18,928 B unchanged, App 1,062,400 B; main stack 100,728 → 91,824 B.</p>
+<p><code>[measured]</code> Those 24 KiB now have a reading: one <code>[STACK] core 1 peak {high} B of {total} B</code> line every 5 s (info only once the peak moves a kilobyte, debug otherwise), one round per page:</p>
+<table><thead><tr><th>page (<code>IOT_BOOT_PAGE=…</code>)</th><th>what stays on</th><th>core 1 stack peak</th></tr></thead><tbody>
+<tr><td>Audio</td><td>capture + panel + playback</td><td><strong>4556 → 4780 B</strong> of 24,576 B (19%)</td></tr>
+<tr><td>Speaker</td><td>panel + playback</td><td>2336 B</td></tr>
+<tr><td>Attitude</td><td>panel + motion polling</td><td>1856 B</td></tr>
+<tr><td>Camera</td><td>panel</td><td>1920 B</td></tr>
+</tbody></table>
+<p><code>[measured]</code> The deepest path is the audio capture poll, and 19,796 B of the 24 KiB are left for the driver tasks still to come. The method is to fill the stack with 0xA5 (a word pattern: a lone byte turns up in ordinary data) and then find the lowest word that is still intact; the watermark only grows. The scan starts 512 B above the floor because esp-hal parks its own entry closure in the bottom few bytes before the second core starts, and without that skip the reading is always a full stack (the first attempt read 24,512 B). Re-painting from inside core 1 was tried and the board would not come up, so it was reverted: writing across cores into the stack you are standing on does not work.</p>
+<p><code>[measured]</code> Checks: <code>check-s3</code>, <code>check-c6</code>, <code>check-host</code>, <code>check-features</code>, <code>lint</code>, <code>lint-host</code>, <code>test</code> (726 + 10 + 29 + 42), <code>test-bsp</code> (101), <code>cargo clippy -- -D warnings</code> for the S3 target and <code>build-s3</code> (only the pre-existing RWX linker warning) all pass; a C6 board flashed with it comes up on the Ambient page, lights the WS2812, no panic. The <code>Send</code> on the three trait objects (<code>InputSource</code>/<code>EventAggregator</code>/<code>FrameSource</code>) and on <code>CaptureSink</code> is a compile-time constraint: something that cannot cross a core cannot go into the bundle, and no per-site inspection is needed to say so.</p>
+<h3 id="The_network_worker_moves_from_join_to_a_task:_the_stack_region_loses_64_B_([measured],_2026-11-02)">The network worker moves from <code>join</code> to a task: the stack region loses 64 B (<code>[measured]</code>, 2026-11-02)</h3>
+<p><code>main</code> no longer <code>join(run, net::serve)</code>: the network is an <code>#[embassy_executor::task]</code> (started by <code>run</code> in that cut), the same lifecycle as the driver half. Its static storage moves out of <code>main</code>'s pool into a pool of its own, so the total differs by one task header. Measured before and after on the same tree with the same command (<code>bash ../../scripts/iot-xtensa.sh build --release -p iot-app --bin vanling --target xtensa-esp32s3-none-elf -Z build-std=core,alloc --no-default-features --features lckfb-szpi-esp32s3,console-auto</code>):</p>
+<table><thead><tr><th>Reading (<code>nm -S</code>, S3 <code>vanling</code>)</th><th>Before</th><th>After</th></tr></thead><tbody>
+<tr><td><code>__embassy_main::POOL</code></td><td>2,528 B (<code>0x9e0</code>)</td><td>1,432 B (<code>0x598</code>)</td></tr>
+<tr><td><code>network::task::POOL</code></td><td>—</td><td>1,168 B (<code>0x490</code>)</td></tr>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td>96,432 B</td><td>96,368 B</td></tr>
+</tbody></table>
+<p><code>[measured]</code> The two pools add up from 2,528 to 2,600 B (+72 B) and the stack region loses only 64 B. <code>network::task</code>'s future is just 1,168 B because the large pieces inside <code>link</code> (the credential store, the scan history, <code>browsing</code>'s future) are already on the heap. <code>_stack_end_cpu0</code> sits at <code>0x3fcd1ea0</code>, still far above the 65,536 B floor. <code>check-s3</code> only type-checks; this delta is visible only to <code>nm</code> on a linked image.</p>
+<p>The boot log from that image confirms the task actually starts (in that cut <code>run</code> started the worker, hence the order): <code>[IOT] starting the net worker</code> appears after <code>[IOT] demand …</code> and before <code>[DISPLAY] stack peak</code>, immediately followed by <code>[WIFI] network stack up, DHCP requested</code>. <code>[DISPLAY] backlight dark until the first frame; main stack 96368 B</code> and <code>[DISPLAY] stack peak 14917 B of 96368 B</code> agree with the region size from <code>nm</code>, so moving the pool did not change the stack region.</p>
+<h3 id="The_network_worker_is_spawned_at_the_composition_point:_pool_−16_B,_stack_region_+32_B_([measured],_2026-11-02)">The network worker is spawned at the composition point: pool −16 B, stack region +32 B (<code>[measured]</code>, 2026-11-02)</h3>
+<p><code>WorkerStart { name, start }</code> is gone: only the entry point knows the network task's driver types, so <code>main</code> spawns it directly before handing control to <code>run</code>; <code>run</code> holds no worker list and no longer owns "which workers start this boot". Same tree, same command:</p>
+<table><thead><tr><th>Reading (<code>nm -S</code>, S3 <code>vanling</code>)</th><th>Previous</th><th>This cut</th></tr></thead><tbody>
+<tr><td><code>__embassy_main::POOL</code></td><td>1,432 B (<code>0x598</code>)</td><td>1,416 B (<code>0x588</code>)</td></tr>
+<tr><td><code>network::task::POOL</code></td><td>1,168 B (<code>0x490</code>)</td><td>1,152 B (<code>0x480</code>)</td></tr>
+<tr><td><code>_stack_start_cpu0 − _stack_end_cpu0</code></td><td>96,368 B</td><td>96,400 B</td></tr>
+</tbody></table>
+<p><code>[measured]</code> The pools lose 32 B and the stack region gains 32 B — mirror images, so the net is zero; no per-symbol attribution. <code>_stack_end_cpu0</code> = <code>0x3fcd1e80</code>. App 1,062,128 B (S3) / 845,392 B (C6, 80.62% of its partition).</p>
+<p><code>[measured]</code> The boot log pins both the new start order and the splash verdict: the S3 prints <code>[IOT] starting the net worker</code> and then <code>[IOT] demand …</code> (because <code>spawn</code> happens before <code>run</code>), and <code>[DISPLAY] … main stack 96400 B</code> matches the <code>nm</code> reading. Eight milliseconds after <code>[INPUT] the splash is over; setup mode was not asked for</code> comes <code>[WIFI] this device saved a network; joining …</code>, so the worker really was waiting on <code>NetworkCommand::SplashOver</code> and not on some other signal. The C6 shows the same <code>[IOT] starting the net worker</code> → <code>[WIFI] network stack up</code>, then <code>[WIFI] no page surface and no saved network; waiting offline</code> as soon as the splash ends, with the WS2812 walking the offline burst back to the page's own light. Neither board panicked.</p>
+<p><code>[not re-measured]</code> The later Wi-Fi rewrite moved the start back into <code>run</code>: the entry point only hands over <code>Wifi::Worker(NetworkWorker)</code>, a closure taking a <code>Spawner</code>, and <code>run</code> runs it before <code>run_loop</code>. The two pool readings above belong to the "entry point spawns directly" cut; the rewrite ran only <code>check-s3</code> / <code>check-c6</code> / <code>check-host</code> (type-check only), so there is no new <code>nm</code> reading.</p>
+<h3 id="The_IRAM_mirror_is_47,396_B_and_none_of_it_is_this_repo&#39;s_([measured],_2026-11-01)">The IRAM mirror is 47,396 B and none of it is this repo's (<code>[measured]</code>, 2026-11-01)</h3>
+<p><code>[measured]</code> On the S3, IRAM and DRAM are two views of the same SRAM, so every piece of code placed in IRAM also occupies a same-sized mirror inside <code>dram_seg</code> — that is what <code>.rwdata_dummy</code> is: <strong>47,396 B</strong>, the sum of three sections (<code>objdump -h</code>):</p>
+<table><thead><tr><th>section</th><th>bytes</th><th>what it is</th></tr></thead><tbody>
+<tr><td><code>.vectors</code></td><td>1,024</td><td>the interrupt vector table</td></tr>
+<tr><td><code>.rwtext</code></td><td>14,392</td><td>esp-hal / esp-rtos / esp-storage / xtensa-runtime code placed in IRAM</td></tr>
+<tr><td><code>.rwtext.wifi</code></td><td>31,980</td><td>the radio blob's IRAM copy (an ESP-IDF requirement for the blob)</td></tr>
+</tbody></table>
+<p><code>[measured]</code> Grouping <code>.rwtext</code> by symbol (<code>nm -S</code> over <code>0x40378400..0x4037bc38</code>):</p>
+<table><thead><tr><th>owner</th><th>bytes</th><th>why it has to be in IRAM</th></tr></thead><tbody>
+<tr><td>esp-hal</td><td>4,843</td><td>PSRAM init and mapping (cannot fetch from flash while it rewrites the cache/SPI0), GPIO and I2C ISRs, cache setup</td></tr>
+<tr><td>esp-rtos</td><td>3,547</td><td>the scheduler: <code>trigger_task_switch</code>, <code>RunQueue</code>, <code>timer_tick_handler</code>, all in interrupt context</td></tr>
+<tr><td>xtensa runtime, exception/interrupt entry</td><td>1,789</td><td><code>Reset</code>, <code>save_context</code>/<code>restore_context</code>, <code>__level_{1..7}_interrupt</code>, <code>__INTERRUPTS</code></td></tr>
+<tr><td>esp-radio / phy glue</td><td>1,048</td><td><code>semphr_take/give</code>, <code>interrupt_dispatch</code>, <code>tx_done_cb</code>, <code>__esp_phy_*</code>, <code>__pender</code></td></tr>
+<tr><td>esp-storage</td><td>765</td><td><code>spiflash_read/write/erase_*</code>: the cache is off while flash is being written</td></tr>
+<tr><td>linker symbol table and alignment</td><td>2,400</td><td>the <code>sym_*</code> address table (984 B) plus the gaps between 127 symbols</td></tr>
+</tbody></table>
+<p><code>[measured]</code> <strong>This repo contributes 0 of those 14,392 B</strong>: <code>rg '#\[ram'</code> finds exactly one use, <code>RECLAIMED_MEM</code> in <code>radio/esp32s3.rs</code>, and that is data rather than code. So "move the functions that do not need IRAM back to flash" has no target here — the only movable bytes are esp-hal's own choices (about 1.7 KB of PSRAM init, 410 B of <code>gpio::wakeup::record_wakeup</code>), and taking them means patching a dependency, which is not worth it.</p>
+<p><code>[measured]</code> <strong>D-cache 32 → 16 KB is not an option</strong>: the S3 has only 32 KB and 64 KB. Setting <code>ESP_HAL_CONFIG_DATA_CACHE_SIZE</code> to <code>16KB</code> is rejected by esp-hal's build script:</p>
+<pre class="giallo z-code"><code data-lang="plain"><span class="giallo-l"><span>Validation error for crate esp-hal, option data-cache-size: Expected one of [&quot;32KB&quot;, &quot;64KB&quot;], found &#39;16KB&#39;</span></span></code></pre>
+<p><code>[measured]</code> <strong>The second core is not free</strong>: <code>Stack&lt;N&gt;</code> is a DRAM static (the probes use 8 KiB / 16 KiB), so it takes the same amount straight out of the main-stack wall; and <code>esp_rtos::start_second_core</code> takes <code>FROM_CPU_INTR1</code> by signature, which the product's <code>Priority2</code> speaker feed executor used to hold (<code>start_feed_executor(feed_intr)</code>). Using the second core means moving the feed to <code>FROM_CPU_INTR2</code> first and paying for the cross-core plumbing — an architecture change, not a tuning knob; the panel transfer's price and payoff are in "Audio repaint step doubled + panel transfer moved to the second core" above (<code>.text</code> +7,016 B, <code>.bss</code> +16,760 B, main stack −16,792 B).</p>
+<hr />
+<h2 id="IOT_BOOT_PAGE_must_be_resolved_at_build_time_([measured],_2026-10-29)"><code>IOT_BOOT_PAGE</code> must be resolved at build time (<code>[measured]</code>, 2026-10-29)</h2>
+<p><code>[measured]</code> The symptom: any build that <strong>set</strong> <code>IOT_BOOT_PAGE</code> died at the join — the log stopped after <code>[WIFI] this device saved a network; joining …</code>, with <code>StoreProhibited</code> (sometimes <code>LoadProhibited</code>), the PC inside esp-radio's <code>os_adapter::free</code> / <code>event_post</code> and <code>EXCVADDR</code> at <code>0x3</code>. The same source built without the variable, flashed to the same board, connected and got an address every time; HEAD (<code>a13e96f5</code>) with <code>IOT_BOOT_PAGE=ambient</code> also connected (peak 41,880 B of 65,912 B).</p>
+<p><code>[measured]</code> The fault is not on the main stack: the exception's <code>THREADPTR = 0x3fcd4908</code> is a radio task's TCB and <code>A1 = 0x3fcd4570</code> sits 20,472 B below the main stack's <code>_stack_end = 0x3fcd9568</code> — that is the radio task's own stack. What got corrupted is the radio blob's static data, the run starting at <code>sta_con_timer</code> (<code>0x3fcd8974</code>) that sits directly below the main stack floor. <code>ESP_HAL_CONFIG_STACK_GUARD_MONITORING = "false"</code> in <code>.cargo/config.toml</code> means an overrun produces no warning at all, only "somebody else's code crashed" (next section).</p>
+<p><code>[measured]</code> The difference is pinned to one place: <code>boot_page()</code> used to resolve <code>option_env!</code> at run time — <code>trim().to_ascii_lowercase()</code> into a <code>String</code>, then a table lookup. Same source: without the variable the join uses 23,409 B and the peak is 42,392 B; with <code>IOT_BOOT_PAGE=ambient</code> it is 27,745 B / 46,728 B, <strong>+4,336 B</strong>, and then it always crashes. The build with the variable has a main-task poll frame of <code>entry a1, 0x6710</code> (26,384 B); HEAD's is <code>entry a1, 0x5540</code> (21,824 B) — the latter also carries this round's other changes, so the absolute frame difference cannot all be charged to the boot page; what lines up item for item is the pair of same-source readings above.</p>
+<p><code>[not separated]</code> Which region those 4,336 B overwrote was not separated: it could be the main stack running past the floor straight into the blob's <code>.bss</code>, or simply the larger frame changing the internal-heap layout so a radio task's stack landed on the blob's statics. Both explain the readings and neither changes the fix.</p>
+<p><code>[measured]</code> The fix: the boot page becomes a <strong>compile-time</strong> constant — <code>const BOOT_PAGE: Page = boot_page_from_env(option_env!("IOT_BOOT_PAGE"))</code>, with a <code>const fn</code> trimming whitespace and comparing case-insensitively; an unrecognised name is kept separately in <code>const UNKNOWN_BOOT_PAGE: Option&lt;&amp;str&gt;</code> and <code>boot_page()</code> logs the <code>[IOT] IOT_BOOT_PAGE=… is not a page</code> line from it (it is <code>None</code> for a valid name, so the whole <code>if let</code> folds away). After the fix an <code>IOT_BOOT_PAGE=attitude</code> build matches the product build item for item (<code>main stack 65,976 B</code>, peak <code>42,392 B</code>, 23,409 B at the join) and associates and gets <code>192.168.1.136</code> normally. The host test <code>only_a_name_no_page_answers_to_is_reported</code> pins "only an unknown name warns, and a valid one stays quiet in every spelling".</p>
+<p><strong>Constraint</strong>: the boot page stays compile-time. A bench image and the product image share one stack budget, and that is the premise — the six pages above have identical <code>main stack</code> because the boot page takes no part in run-time layout.</p>
+<hr />
+<hr />
+<h2 id="esp-hal&#39;s_stack-overflow_watchpoint_fires_falsely">esp-hal's stack-overflow watchpoint fires falsely</h2>
+<p><code>[measured]</code> esp-hal / esp-rtos arm hardware STORE watchpoints as stack-overflow guards, and the armed window overlaps legitimate stores, raising a level-6 Debug exception that kills the boot (observed at the render <code>on_appearance</code> on esp32s3).</p>
+<p>Hence <code>.cargo/config.toml</code> turns hardware detection off and the software canary on:</p>
+<pre class="giallo z-code"><code data-lang="toml"><span class="giallo-l"><span class="z-source">ESP_RTOS_CONFIG_HW_TASK_OVERFLOW_DETECTION</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;false&quot;</span></span>
+<span class="giallo-l"><span class="z-source">ESP_HAL_CONFIG_STACK_GUARD_MONITORING</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;false&quot;</span></span>
+<span class="giallo-l"><span class="z-source">ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION</span><span class="z-punctuation z-separator z-key-value"> =</span><span class="z-punctuation z-definition z-string z-string"> &quot;true&quot;</span></span></code></pre>
+<p>The software canary checks the sentinel below the stack floor on every context switch and panics naming the offending task — better than silently corrupting memory.</p>
+<hr />
+<h2 id="The_panel&#39;s_face:_a_12_px_bitmap_magnified_by_whole_steps_([test],_2026-11-25)">The panel's face: a 12 px bitmap magnified by whole steps (<code>[test]</code>, 2026-11-25)</h2>
+<p>The table lives in <code>apps/iot/crates/core/src/ui/font.rs</code> and is <code>crates/core/assets/font/ui12.bin</code>
+(486,881 B), cut by <code>cargo run -p iot-tool -- font</code> from
+<code>crates/tool/assets/fonts/ui12.bdf</code> (2.1 MB, shipped with both the MIT and the OFL licence). The BDF
+starts from TakWolf's Fusion Pixel 12px Mono <code>zh_Hans</code> (GB2312's 7,475 glyphs), then <code>font --merge</code>
+adds the whole Big5 table from <code>zh_hant</code> (<code>big5.txt</code>, 13,706 code points), for 15,466 glyphs in all.
+866 Big5 code points (805 rare Level-2 hanzi and 61 symbols) have no glyph in the upstream <code>zh_hant</code>
+release and draw as <code>MISSING</code> □; the other 12,840 do. <code>SIZE 12 75 75</code>, <code>FONT_ASCENT 10</code>,
+<code>FONT_DESCENT 2</code>.</p>
+<ul>
+<li><strong>Table format <code>VLF1</code></strong>: a 32 B header (glyph count, line height, ascent, descent), then per glyph
+a <code>u16</code> code point, a packed-metrics <code>u32</code>, a bitmap-offset <code>u32</code> and the bitmap. Code points are
+sorted and searched by bisection; <code>Face::glyph/advance/measure/glyphs</code> is the only entry.</li>
+<li><strong>Monospaced</strong>: an ASCII cell advances 6 columns and a hanzi 12 — one hanzi is exactly two cells,
+so network names, passphrases and mixed Chinese/ASCII text share one grid. Line height is 12 with
+a pitch of 13 (<code>LINE</code>/<code>ROW_PITCH</code>), 10 rows of ascent and 2 of descent.</li>
+<li><strong>Only whole sizes</strong>: <code>Metrics::at(size)</code> magnifies the 12 px table by <code>size.div_ceil(12)</code>, so
+<code>13..=24</code> reads as 24 px and 36 as 36 px; there is no 14 or 20 px. Page titles, buttons and chip
+labels use 24 px, body copy and readings 12 px. <code>Metrics::height/ascent/descent</code> are the <code>Face</code>
+value × the step, and <code>typeset::line_height</code> is the face height with no extra leading.</li>
+<li><strong>Panel measurements follow the face</strong>: a 12-row footer (<code>FOOTER_ROWS</code>), a content bottom of 228
+(<code>CONTENT_BOTTOM</code>), a 10 px margin (<code>MARGIN</code>) and a 44 px minimum touch target (<code>TOUCH_MIN</code>).
+<code>FACE_HEIGHT == LINE</code> and <code>the_panel_is_measured_in_the_face_it_draws_with</code> in <code>panel.rs</code> stop a
+face change that leaves the layout behind, at compile time or in the test.</li>
+<li><strong>The Network page's targets are taller because of it</strong>: three 45 px list rows
+(<code>LIST_ROW_H &gt;= TOUCH_MIN</code>), an action strip at row 184, 45 px keys, and a 118 px confirmation box
+with 34 cells per row. Network names are cut by pixels (<code>ui::text::fit</code>) and their buffers are sized
+in UTF-8 bytes rather than glyphs: <code>NAME_BYTES = SSID_BYTES + 1</code> (the cut mark takes a byte), and
+<code>DIALOG_BYTES</code> leaves room for a prefix and quotes.</li>
+<li><strong>2026-11-25: the vector path was removed.</strong> A separate <code>vector.bin</code> (368 glyphs / 194,558 B) was
+once cut from a 16 MB Noto Sans Mono CJK SC OTF for 24 px body copy; on the S3 a 24 px vector
+paragraph cost 52–55 ms on the first frame and 30 ms steady after adding a 69 KiB heap
+<code>GlyphCache</code>, while a magnified bitmap rasterizes nothing per glyph. Only <code>ui12.bin</code> remains: the
+OTF, <code>iot-tool outline</code>, <code>ttf-parser</code>, <code>vector.bin</code> and the <code>GlyphCache</code>/rasterizer are gone, and
+24 px body copy and titles read the same table at twice the size.</li>
+<li><strong>Regression</strong>: <code>font.rs</code> holds the header and metrics (bitmap ASCII/Han advances, the fallback
+mark, invalid UTF-8 not stalling, <code>中</code> keeping its BDF box, 24 px = ×2 and 36 px = ×3); <code>panel.rs</code>
+holds the face and the line height together; <code>typeset.rs</code> holds the prohibitions and truncation;
+<code>declare.rs</code> holds the ground, spans, decorations, sizes and scroll-box clipping; <code>canvas.rs</code> holds
+a heavy mark landing once and clipping; <code>services/text.rs</code> holds the sample fully covered by the
+bitmap face; the 34 golden hashes in <code>services/tests.rs</code> (17 pages × badge on/off) hold whole pages
+pixel for pixel.</li>
+<li><strong>Colours and spans</strong>: <code>Color(u32)</code> is ARGB32; <code>Style</code>/<code>RunStyle</code> store only a <code>ColorId</code> into a
+16-slot palette interned per declaration (overflow is a debug assertion), and <code>Canvas</code> blends coverage
+over RGB565 at coverage, so a translucent run mixes with the pixels below. <code>Ui::span</code> allows 8
+spans that recolour and redecorate a run without moving a line.</li>
+<li><strong>Sizes and units</strong>: <code>Style::font_size(Length)</code> lands a <code>u8</code> pixel value; <code>Px</code> is exact, <code>Dp</code> is
+5/4 px (2.0" 320×240 = 200 dpi against the 160 dpi a logical pixel is defined at), <code>Rem</code> is a
+hundredth of 12 px, and <code>Percent</code> is read against the root size; <code>Auto</code> and an unresolvable
+percentage fall back to 12 px.</li>
+<li><strong>Static footprint</strong>: one 486,881 B table in flash; <code>Ui</code> is 11,896 B (60 nodes × 160 B plus 2 KB of
+text and the span table, under the 12,288 B cap), <code>Style</code> is 84 B, <code>Length</code> is 4 B.</li>
+</ul>
+<p>The table is flash: <code>ui12.bin</code> 486,881 B; the BDF stays on the tool side and never enters the image.</p>
+<h2 id="The_Text_page:_two_independent_scroll_regions,_a_24_px_bitmap_paragraph_([test],_2026-11-25)">The Text page: two independent scroll regions, a 24 px bitmap paragraph (<code>[test]</code>, 2026-11-25)</h2>
+<p>The Text page splits long content into two named regions: <code>WRAP</code> is a mixed Chinese/English paragraph that wraps (24 px bitmap, exactly ×2), and <code>GLYPHS</code> is the 12 px bitmap sample rows. Each is 306×90 px; at 24 px the sample breaks into 25 lines of 600 px in all and travels 510 px, and the page declares all 25 (a longer paragraph still truncates at line 25).</p>
+<ul>
+<li><strong>Layout does not clamp</strong>: <code>Style::scroll_area(id)</code> only names a box and records its rectangle and travel; <code>Ui::scroll_info(id)</code> reads them back. The limit and the bounce stay in the page's <code>ScrollState</code>, because only the page knows how far past the edge it may go.</li>
+<li><strong>Two measurements at construction</strong>: the panel is a fixed 320×228 and the content is static; an empty pass finds the region width, <code>typeset::wrap</code> breaks the run once at that width, and a second pass with the broken lines lays out and <code>measure</code>s both rectangles and travels.</li>
+<li><strong>Follows the finger</strong>: <code>drag</code> is <code>[Option&lt;Drag&gt;; TEXT_AREAS]</code>; a press records <code>(id, area, y, at_ms)</code> and every drag finds its own slot by id. After a 2 px deadband <code>GestureEvent::Drag</code> reports every 2 px of travel, and the page moves the offset directly through <code>drag(area, delta)</code>, with half damping past an edge. An id that never pressed claims a free region on its first drag inside one, with the baseline at the current point, so a lost <code>Press</code> does not jump; an id already holding a region never steals another. Two fingers drag two regions without interfering; once both are held, a third finger finds no slot and is ignored whole, never taking a held region. A held region does not spring in <code>tick</code> while the other keeps gliding; <code>on_hide</code> clears every slot. The lift hands over to <code>fling</code> at the drag tail's velocity (a running average of each sample's instantaneous speed, the first taken as-is), but only when the lift lands within 30 ms of the last drag sample — three touch scans. Older than that, the finger stopped moving before it lifted and the tail is stale; a hold (<code>Release.at_ms = None</code>) never flings. The loop parks while a finger rests, so a frame-counting "still" rule never advances; the decision has to read the input clock. A release after a drag adds no lines, and both regions can glide at once.</li>
+<li><strong>Discrete intents are not dropped</strong>: when the input ring is full, <code>Press</code>/<code>Swipe</code>/<code>Tap</code>/<code>LongPress</code>/<code>Button</code> wait on <code>IntentBus::send().await</code>; only <code>Drag</code>/<code>Touch</code>/<code>Motion</code>/<code>ChipGesture</code>/<code>Ghost</code> may be refused — a lost <code>Press</code> erases the whole gesture, while a lost <code>Drag</code> is superseded by the next sample.</li>
+<li><strong>Touch identity pairs by proximity; the slot only breaks a tie</strong>: the FT6336 burst carries the <code>Pn_YH[7:4]</code> slot number (<code>0x0F</code> when invalid), and the driver passes it through as <code>RawPoint::hw_id</code>, mapping <code>&gt;= 2</code> or <code>0x0F</code> to <code>NO_ID</code>. This self-capacitance panel swaps its two points between samples, so <code>TouchContinuity</code> pairs all of the frame's candidates (new point × live point, within 80 px) smallest distance first and takes each pair once. It does not match point by point in report order: when a second finger lands near a finger already down and the panel reports the newcomer first, per-point matching hands it the old id, the real finger becomes a new contact, the page jumps one finger 40 px and the other finds no region slot, so only one of the two scrolls. Only an exact distance tie is decided by the slot. A point that reaches no active point is a new contact, not a discarded one — matching on the slot first would read two fingers moving together as a jump. The phantom rule's radius is 16 px, one fingertip, so it only swallows a duplicate echo on the same spot; two fingers placed side by side each become a contact even when they land together. A lift is confirmed only after 3 absent samples (about 30 ms), during which another finger landing near the old position inherits its id and the page treats it as the same finger. A contact the phantom rule turned away keeps the position it first landed in; when it is accepted later, <code>Press</code> reports that point (both the region binding and the tap land where the finger did), while the drag baseline starts at the current sample, so the delayed acceptance does not move the content.</li>
+<li><strong>Swipe/glide</strong>: a fast up/down swipe that never dragged still steps 3 lines (36 px in the glyph region, 72 px in Wrap at its own 24 px line height) and then releases at the gesture's average <code>distance/held</code>; ≥250 px/s starts a fling, capped at 1600 px/s, ×0.875 per 20 ms tick, stopping below 150 px/s, gliding about <code>0.16·v0</code>. A lift more than 30 ms after the last drag sample — or a hold — releases at 0, so a page dragged and then rested does not keep sliding.</li>
+<li><strong>Bounce</strong>: the limit is <code>viewport/4</code> (0 when the region fits or bounce is off), an overshoot damps by an extra ×0.5, and after release each tick closes half the gap, snapping at ≤1 px. <code>ScrollConfig { bounce, bar }</code> is the page's one switch; neither changes layout, so flipping one needs no re-measure.</li>
+<li><strong>Scrollbar</strong>: a 2 px gutter is always reserved; the thumb is <code>max(8, viewport²/(viewport+max))</code> tall at <code>(viewport-height)·clamp(offset,0,max)/max</code>, hidden when <code>max == 0</code> or the bar is off. The thumb uses <code>bordered()</code>, not <code>filled()</code>: the Text page declares no ground, so <code>fill_rect</code> has nothing to invert, and a 2 px border reads solid and inverts like a glyph.</li>
+<li><strong>Motion</strong>: <code>PageSystem</code> drives <code>LocalPage::tick</code> with the wall-clock delta (0 on the first pass, clamped to <code>MAX_CATCH_UP_MS = 5·STEP_MS</code>) instead of a fixed <code>STEP_MS</code> per loop pass: a 52 ms rasterization used to advance a glide by only 20 ms, so a scroll ran at a third of its speed on exactly the slowest pages. <code>FrameSnapshot::animating()</code> keeps the renderer <code>TimeDriven</code>, and <code>Repaint::WhenOrOverlay</code> draws the closing frame inside the Text page's own 20 ms step (the shared floor is 40 ms, but a scroll frame moves pixels the buffer already has without rasterizing, so this page can follow the frame loop; at 40 ms a drag moved once every two frames, which reads as a stutter).</li>
+<li><strong>Steady page</strong>: <code>PageId::steady()</code> is true for Text alone and the snapshot carries <code>steady</code>, so the lamp holds phase 0 of its declared colour instead of breathing; the page's scrolling still times through <code>animating()</code>. The panel backlight no longer follows it and takes only <code>Backlight</code>'s setting (0 is dark; the 12% software floor was removed on 2026-11-25). <code>render/lamp</code> pins the lamp side, and <code>only_the_reading_page_holds_the_light_still</code> in <code>shared/route</code> pins the steady set.</li>
+<li><strong>Typography sample</strong>: the first line is bold and underlined, and its first 6 bytes carry a red span (<code>RunStyle::color</code> plus <code>decoration_color</code>); a span changes colour and decorations only, never line metrics, so the breaks match the unstyled run.</li>
+<li><strong>Bold is laid once</strong>: a heavy line is not the glyph stamped at <code>left</code> and <code>left+1</code> — on an inverted ground the second pass flips the first one's pixels back, which is why the top line went hollow. The bitmap face now widens with <code>coverage(x)|coverage(x-1)</code>, merges that into one coverage mask and lays it once. The <code>canvas</code> tests hold that an overlap is not inverted back; only the two <code>text</code> golden rows moved.</li>
+<li><strong>Layout measures once</strong>: flex skips the natural main-axis measurement of a child with an explicit <code>basis</code> (the answer is discarded anyway), and a scroll box with no room across lays out no content. The Text page runs <code>typeset::wrap</code> once at construction, declares one <code>nowrap</code> node with an explicit width per line, and <code>layout_text</code> skips <code>max_content</code> for those nodes, so a frame no longer walks the face per glyph; the 18 golden rows guard the old pixels.</li>
+<li><strong><code>[measured]</code> S3, 12 px bitmap version (2026-11-20)</strong> (240 MHz, <code>IOT_BOOT_PAGE=text</code>, DEBUG log): the first window reads <code>11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms</code>, and the steady state <code>5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)</code>; the same page before the fix read <code>6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms</code>. Main stack 86,216 B, peak 30,364 B, no panic. A static page barely repaints, so the per-frame cost during a drag still needs a finger.</li>
+<li><strong>Image size</strong> (<code>moon run iot:image</code>, 2026-11-22): S3 <code>1,798,672 / 6,291,456 B (28.59%)</code>, C6 <code>1,614,288 / 6,291,456 B (25.66%)</code>; with both tables in the image, 4.4 MB / 4.6 MB remain.</li>
+<li><strong><code>[measured]</code> Boot after flashing</strong> (2026-11-21, explicit <code>IOT_PORT</code>): the S3 reads <code>[DISPLAY] stack peak 34,280 B of 82,840 B</code> and <code>[STACK] core 1 peak 2,160 B of 24,576 B</code>, with the first window <code>9 repaints in 2031 ms, held 544 ms (26%), worst render 62 ms (fill 1), worst wait 19 ms, worst write 15 ms (longest chunk 1 ms)</code> (cold cache); the C6 reaches <code>[WATCHDOG] the first frame was shown and the network path settled; this boot is healthy</code> with no panic.</li>
+<li><strong>A scroll frame repaints only the strip but ships the whole box</strong> (2026-11-21): <code>AppPainter</code> compares the two regions' offsets with the previous frame and <code>memmove</code>s the pixels it already has, then derives two <code>FrameDamage</code> sets. The <strong>repaint set</strong> holds only the strip that entered the viewport, the header reading and the thumb; <code>Canvas</code> clips every mark to it and <code>clear_damage</code> lays the ground back under it, so a scroll frame never rasterizes. The <strong>ship set</strong> gives <code>St7789</code> the whole scroll box plus header and thumb: the panel is GRAM and cannot move its own pixels, so writing only the strip leaves the rest of the box frozen at the content it held when the drag started — old text stranded in bands while the new content slides past. A fast fling (<code>|delta| ≥ rect.h</code>) no longer falls back to the whole frame: the entering strip clamps to the box height and <code>scroll_blit</code> skips it, so the box repaints whole but only that box ships; a page switch still takes the whole frame. Both sets stay within 7 rectangles (three per region plus the footer band) and <code>St7789</code> writes them through <code>CASET</code>/<code>RASET</code>. At the measured geometry two regions scrolling together ship <code>2×(306×90 + 310×13 + 2×90)</code> ≈ 127 KB, about 135 KB with the footer, so roughly 12.7–13.5 ms at 80 MHz (<strong>computed, not measured</strong>: a scroll frame's <code>worst write</code> needs a finger on the glass to record) — close to the whole frame's 153.6 KB. What the path saves is rasterization (30–55 ms down to about 1 ms of pixel moves), not wire bytes. A changed ground, a page switch and a camera frame still take the whole frame, and <code>ScreenPainter::reset</code> makes the canvas forget a frame it cannot reuse. <strong>The debug badge used to disable this path entirely</strong>: <code>keeps_frame</code> returned false as soon as the overlay was up, so the product image (<code>OVERLAY = true</code>) repainted every pixel of every drag frame — on the S3 that measured about 35 ms per frame and 20 fps. The badge now only adds the bottom 320×12 footer band to both sets, so scroll frames still move pixels and the badge reading still refreshes. <code>render::screen::painter</code> holds the sign, both directions, each set's rectangle count and box/strip heights, the ground clear, the scroll frame surviving the overlay, the footer band's size, and a simulated panel that applies the ship set and must match the frame byte for byte; <code>ui::canvas</code> holds that fills and glyphs outside the damage never land.</li>
+<li><strong>A lift resolved at the down point can hold a region forever</strong> (2026-11-22): <code>TextPage::bind</code> used to resolve a Release with <code>area_at</code> on the down point, while a <code>Press</code> outside both boxes (header, margin, gap, footer) emits no intent at all. A finger that lands outside, drags in and is claimed by a <code>Drag</code> still lifts at the outside down point, so the Release came out <code>None</code> and <code>drag[slot]</code> was never freed — every later slow drag in that region was refused by <code>claim</code>, while a fast flick still worked through the <code>scroll()</code> fallback because its Release found nothing, and only a page switch (<code>on_hide</code>) reset the slot. A Release now looks the id up in the claimed <code>drag</code> first and falls back to the down point; <code>a_press_outside_a_box_that_drags_in_still_releases_it</code> holds that press outside, drag in, lift, then a slow drag must move.</li>
+<li><strong>The first damage-only writer blanked the panel</strong> (2026-11-21): <code>write_rect</code> sent <code>0x2C</code> and then called <code>write_chunk</code>, which never touched DC — <code>emit_command</code> leaves DC low when it has no arguments, so the rectangle's pixels went to the ST7789 as command bytes. Anti-aliased coverage, the accent red and the thumb make a few thousand bytes certain to contain <code>0x01</code> (SWRESET), <code>0x28</code> (DISPOFF) and the like; once the panel is reset the application only sends <code>0x2A</code>/<code>0x2B</code>/<code>0x2C</code> again and never re-initializes, so the first scroll went black and stayed black (not a panic: <code>[DISPLAY]</code>/<code>[INPUT]</code> kept logging). <code>write_chunk</code> now raises DC itself — both of its callers (the whole frame's <code>write_pixels</code> and the damage path's <code>write_rect</code>) send nothing but pixels. The same failure path no longer freezes either: on a write error <code>flush_pending</code> refills the frame's ground and sets <code>page_dirty</code>, so the next repaint draws the page whole instead of leaving <code>NeedsPaint</code> to make <code>repaint</code> return early on a <code>None</code> <code>painted_color()</code> for as long as the ground does not change.</li>
+<li><strong>Regression</strong>: <code>services::text::tests</code> holds both regions scrollable and independent, routing only inside a region, the drag following the finger, a drag without a press claiming its region without a jump, a press outside that drags in still freeing its region on lift, a release after a drag adding no lines, a release more than 30 ms after the last sample not flinging, a hold never flinging, a fast swipe still stepping 3 lines, a tap after a drag adding nothing, ignoring horizontal/outside swipes, <code>on_hide</code> reset, no missing glyphs, the node and text-byte bounds, ASCII cell width and row alignment, two fingers scrolling both regions end to end, one lift leaving the other moving, both flung at once, a third finger ignored, the sample fully covered by the bitmap face, and the 25-line / node-budget; <code>drivers::input</code> holds that a phantom-rejected press names its first landing point, that its drag baseline starts at the accepted sample, that a swapped report order keeps both ids, that a second finger reported first does not steal the tracked finger's id, that points without a slot pair by distance, that both fingers slide ten samples without a release, that an exact-distance tie falls to the slot, and that a point past the reach gate does not drag the old contact; <code>ft6336</code> holds one burst carrying two contacts and a <code>0b01</code> lift frame being skipped; <code>render::screen::painter</code> holds the scroll sign, both directions, each set's rectangles and box/strip heights, the ground clear, and a fast fling staying on the scroll path; <code>ui::canvas</code> holds that nothing lands outside the damage; <code>shared::ui::scroll::tests</code> holds the speed thresholds, glide distance, bounce home, a held region not springing and both switches; <code>services::tests::a_text_scroll_moves_one_region_and_its_thumb</code> holds the offset reaching the picture and the thumb following it.</li>
+</ul>
+<h2 id="What_one_frame&#39;s_declaration_costs_([test],_2026-11-21)">What one frame's declaration costs (<code>[test]</code>, 2026-11-21)</h2>
+<p>The layout layer keeps no tree: <code>Ui</code> collects a declaration while <code>view</code> runs, lays it out once and
+draws it once. The node array is <code>MAX_NODES = 60</code>, each node 160 B; the fullest page of its own is Text
+(25 lines + 18 sample rows + two thumbs + page furniture = 56), and painting adds the badge, leaving four boxes
+spare. The whole <code>Ui</code> is 11,896 B, inside the panel core's 24 KiB stack, and
+<code>ui::tests::a_declaration_fits_the_stack_the_panel_core_was_given</code> pins it under 12 KiB; <code>Style</code> at
+84 B and <code>Length</code> at 4 B have pinned tests of their own.</p>
+<h3 id="Three_refactors_that_look_worth_doing,_and_where_each_one_starts_([test],_2026-11-22)">Three refactors that look worth doing, and where each one starts (<code>[test]</code>, 2026-11-22)</h3>
+<ul>
+<li><strong><code>ControlRect</code> does not fold into <code>ui::Rect</code></strong>: the former is panel space (usize, non-negative,
+shared by drawing and hit testing), the latter layout space (i32, may be negative, rounded from
+1/64 px). Folding them would add casts to four constructors and six arithmetic sites and drop the
+non-negative invariant; the duplicated <code>holds</code> is two lines.</li>
+<li><strong><code>Style</code> is not packed yet</strong>: seven <code>Length</code>s + <code>Inset</code> at 16 B + <code>Edges</code> at 8 B + enums/bools at
+11 B make 84 B. Sentinel-packing <code>Inset</code>, folding the enums and bools into flags and dropping
+<code>grow/shrink/max_lines</code> to <code>u8</code> saves about 18 B a style and 1,080 B of <code>Ui</code>; the cost is bit
+arithmetic on the API pages write most. <code>Ui</code> is 11,896 / 12,288 today, 392 B spare, enough for
+about three more <code>u16</code>s; <strong>pack when a fourth word is needed</strong>.</li>
+<li><strong>The font tables are not cut</strong>: 575,155 B live in flash, and the image is 1,798,704 / 6,291,456 =
+28.59%. The wall is static RAM, not flash; only dual-slot OTA or a smaller-flash board would make
+cutting Big5 / 12-bit row packing / codepoint deltas worthwhile.</li>
+</ul>
+<p><code>a_tall_run_keeps_the_height_it_wrapped_to</code> pins that a natural height is no longer clipped at
+<code>i16::MAX</code>: a 32-line run at 24 px is 61,440 subpx.</p>
+<h2 id="Numbers_must_not_move_the_layout_([test],_2026-11-20)">Numbers must not move the layout (<code>[test]</code>, 2026-11-20)</h2>
+<p>The Attitude page once declared all three reading columns with <code>grow(1)</code>: flex starts each
+column at its <strong>content</strong> width, so a change in digit count redistributed the row and the whole
+block of text slid sideways. The fix has two layers:</p>
+<ul>
+<li><strong>A fixed reading line</strong>: a four-cell label, one cell of air and a seven-cell right-aligned
+value (<code>page::READING = 72 px</code>); a value wider than its slot keeps its own width rather
+than being cut, so a line never changes width with the number in it;</li>
+<li><strong>Explicit column widths</strong>: each column is <code>width(72)</code> and no longer depends on content; the
+dial is <code>absolute().right(MARGIN).bottom(0)</code> inside a <code>stack</code>, declared after the text so it
+paints on top.</li>
+</ul>
+<p>Two engine gaps fell out of it: an absolutely positioned child of a <code>stack</code> stretched by its
+parent still read the content width (it now takes the edge from the tight constraints), and
+<code>inset</code> used <code>0</code> to mean "unset", which left <code>right(0)</code>/<code>bottom(0)</code> unsayable; it is an
+<code>Option&lt;i16&gt;</code> now.</p>
+<p>Regression: <code>services::attitude::tests::{the_numbers_do_not_move_the_layout, the_dial_owns_the_bottom_right_corner}</code> (a zero sample and a full-width negative one lay out to
+identical rectangles; the dial hugs the content's bottom-right corner without touching text) and
+<code>ui::layout::tests::{a_stretched_stack_reaches_its_parents_edge, an_inset_of_zero_means_the_edge_not_an_unset_side}</code>.</p>
+<h2 id="A_frame&#39;s_paint:_the_layout_measured_the_same_run_fifty_times_([measured]/[test],_2026-11-20)">A frame's paint: the layout measured the same run fifty times (<code>[measured]</code>/<code>[test]</code>, 2026-11-20)</h2>
+<p><code>[measured]</code> The starting point was the Attitude page at about 104 ms a frame and Ambient at
+<code>worst render 92 ms</code>. The attribution was measured, not guessed: <code>Screen::paint</code> was temporarily
+split into <code>fill</code> / <code>layout</code> / <code>draw</code>, and the console read <code>[PAINT] Attitude body 0.70 ms, layout 98.9 ms, finish 102.4 ms</code> — layout took 97%, and painting plus the second layout pass about 3.5 ms.</p>
+<p>Layout was expensive because it measured repeatedly: the host counted 2,394 <code>wrap</code> calls a frame for
+45 text nodes on the Attitude page, about 53 per node. Every flex pass asks its children for a size
+(measure, place, measure again), and a <code>grow</code> cascade asks again under different constraints;
+<code>layout_text</code> ran <code>max_content</code> + <code>wrap</code> from the top each time, and both binary-search glyphs in
+flash (one advance ≈ 800–900 cycles).</p>
+<p>The fix remembers which constraints a node's size came from: <code>Node::measured_at: Measured(u64)</code>
+packs the four post-<code>enforce</code> constraints into one word, and a box returns on a full-key hit. A run
+keys on width alone — a line breaks on width, never on the height it is offered — with its natural
+height in the high half, so a height change re-clamps against the current <code>min_h</code>/<code>max_h</code> instead of
+re-wrapping. <code>Tree::push</code> builds with <code>..Node::default()</code>, and <code>u64::MAX</code> is a word no constraint
+produces, so a fresh declaration never reads as measured; a width that really changes re-measures,
+pinned by <code>a_text_node_re_measures_when_the_width_changes</code>,
+<code>a_run_keys_on_its_width_not_the_height_it_is_offered</code> and
+<code>a_run_clamped_by_height_gets_its_lines_back</code>.</p>
+<table><thead><tr><th>Reading (S3, 240 MHz)</th><th>before</th><th>after</th></tr></thead><tbody>
+<tr><td><code>wrap</code> calls per frame (host)</td><td>2,394</td><td>41</td></tr>
+<tr><td>text bytes swept per frame (host)</td><td>28,656</td><td>4,708</td></tr>
+<tr><td>Attitude <code>[PAINT]</code></td><td>body 0.70 / layout 98.9 / finish 102.4 ms</td><td>body 0.71 / layout 3.9 / finish 4.5 ms</td></tr>
+<tr><td>Ambient <code>[DISPLAY]</code></td><td><code>worst render 92 ms (fill 2)</code>, <code>held 646 ms (29%)</code></td><td><code>worst render 25–33 ms (fill 1–2)</code>, <code>held 42–243 ms (1–11%)</code></td></tr>
+<tr><td>Attitude whole frame (host, release)</td><td>1.104 ms</td><td>96 µs</td></tr>
+<tr><td>Splash <code>[PAINT]</code></td><td>finish 1.65 ms</td><td>finish 0.47 ms</td></tr>
+</tbody></table>
+<p><code>finish</code> still contains one layout pass (every node hits) and the painting; the product path calls
+<code>finish</code> once, so that stretch is the whole frame's paint.</p>
+<p>The pixel layer tightened at the same time and the picture is byte-identical (the 16 whole-page
+golden hashes do not move): <code>draw_glyph</code> reads a glyph's bitmap row by row, skipping eight pixels
+for an empty byte, with the box and clip intersected once at the entrance; <code>fill_rect</code> takes one
+span per row and writes it whole; <code>draw_text</code> paints a <code>Start</code> run that fits without running the
+breaker; <code>Screen::fill</code> stores two pixels at a time. The <code>[DISPLAY]</code> line therefore grew
+<code>worst render N (fill M)</code>, splitting fill from paint as a standing regression metric.</p>
+<p>Ambient still does 224 <code>wrap</code> calls and 7 measurements under different constraints per frame: that
+is the <code>grow</code> cascade (2^depth), and squeezing it further means changing flex's measurement order,
+so this round leaves it. A frame also has a 15.36 ms wire floor (153,600 B / 80 MHz); no repaint
+can go below it.</p>
+<h2 id="Panic_reset_and_the_watchdog:_a_reboot_is_the_only_way_out_of_a_freeze_([test]/[measured]/[reported],_2026-11-08)">Panic reset and the watchdog: a reboot is the only way out of a freeze (<code>[test]</code>/<code>[measured]</code>/<code>[reported]</code>, 2026-11-08)</h2>
+<ul>
+<li><strong>A panic only stops by default</strong>: esp-backtrace's <code>panic-handler</code> prints the backtrace and parks
+this core in an interrupt-free loop that only a power cycle leaves. This round turns on
+<code>custom-halt</code> on the workspace dependency, and <code>custom_halt()</code> — defined in <code>iot-chip-esp</code> — sets
+the crash flag and then calls <code>software_reset()</code> (<code>crashed_reset()</code>). When <code>custom-halt</code> and
+<code>halt-cores</code> are both on, the latter wins
+(the branch order in <code>abort()</code>'s <code>cfg_select!</code>), so <strong>this repository must never enable
+<code>halt-cores</code></strong> — with it on, <code>custom_halt</code> is never called and nothing fails to compile.</li>
+<li><strong>esp-hal's <code>init</code> disables the RWDT</strong>, so the watchdog can only be armed again in the chip layer.
+<code>watchdog.rs</code> takes <code>RTC_TIMER</code> with <code>Rtc::new(steal())</code>: <code>Board::new</code> destructures <code>Peripherals</code>
+ending in <code>..</code>, the RTC timer is not one of its fields, and that is the same <code># Safety</code> basis as
+the PSRAM steal. The <code>Rwdt</code> lives in a <code>critical_section::Mutex&lt;RefCell&lt;Option&lt;_&gt;&gt;&gt;</code>.</li>
+<li><strong>Two arming points</strong>: <code>arm_boot_watchdog()</code> arms it with a <strong>30 s</strong> timeout before heap setup and
+<code>Board::new</code>, covering each driver's own boot timeout; <code>start_watchdog()</code> tightens it to <strong>5 s</strong>
+once the coordinator executor exists and starts the feeder. Stage0 acts with <code>ResetCore</code>, not
+<code>ResetSystem</code>: the latter resets the RTC domain, where the crash count lives in <code>store0</code>, while
+<code>software_reset()</code> (the panic path) is a core reset too, so both preserve the count.</li>
+<li><strong>Crash counting and safe mode</strong> (<code>iot_core::boot</code> + <code>iot-chip-esp::boot_guard</code>): one word in
+<code>store0</code> — the top 16 bits are the magic <code>0x5642</code>, bit 15 means "the previous boot panicked", and
+the low 15 bits are the consecutive crash count. The panic <code>custom_halt()</code>, heap/PSRAM/board-init
+failures all go through <code>crashed_reset()</code>, which sets the flag before resetting; watchdog resets
+are recognised from the reset reason. Every boot folds its reset in via <code>note_boot()</code>: a crash
+adds one, a clean start (power-on, manual reset, reflash) goes back to zero — so "reset often"
+does not drift into safe mode. The boot after the <strong>fifth</strong> consecutive crash reset enters safe
+mode (four normal retries before it).</li>
+<li><strong>Boot health is no longer time-based</strong>: <code>iot_core::boot::Readiness</code> needs both halves before
+this boot counts — the first frame has been flushed on every wired surface (reported by the
+coordinator), and the network worker has built the IP stack, or this build deliberately has no
+radio (<code>Wifi::Absent</code>/<code>Unattended</code> is reported by <code>run</code>, the worker reports after
+<code>embassy_net::new</code>). Once both are in, the feeder calls <code>mark_healthy()</code> once and clears the
+count. A failed association or a DHCP address that never arrives is <strong>not</strong> a crash: the device
+is alive, just not reachable.</li>
+<li><strong>Safe mode keeps Wi-Fi and a read-only diagnostic surface</strong>: the safe branch skips <code>Board::new</code>
+and takes only <code>WIFI</code>/<code>FLASH</code>/<code>TIMG0</code>/<code>FROM_CPU_INTR0</code> from <code>Peripherals</code>, using
+<code>try_init_heap()</code> (a failure parks on the console instead of resetting) and <code>EspStation</code> to
+bring the stack up directly. It makes one station attempt with a saved network (or the
+build-time credential) and, if an address arrives within 20 s, serves diagnostics on the
+station's address; otherwise it raises the open AP <code>vanling-safe-xxxx</code> (192.168.4.1) with the
+same DHCP/DNS pair and a read-only text page on <code>GET /</code>, <code>/status</code>, <code>/health</code> (crash count,
+uptime, heap free, saved networks, link phase and address). Every other method or path is 400.
+The AP is open because the normal setup passphrase is shown on a panel this path does not trust,
+and the page is read-only.</li>
+<li><strong>Safe mode is latched, so it cannot build a reset loop</strong>: once <code>enter_safe_mode()</code> is set, a
+panic, <code>crashed_reset()</code> or a heap/board failure parks in <code>park_forever()</code> with no watchdog
+armed, and the console repeats a line every 10 s. The reset button, a power cycle or a reflash
+all return to one normal attempt (none of those reset reasons counts as a crash). A panic in
+the diagnostic path itself therefore leaves the evidence in place.</li>
+<li><strong><code>[test]</code> (2026-11-08, <code>cargo test -p iot-core</code>)</strong>: <code>safe.rs</code> pins that the page carries every
+fact, the no-address/AP case, refusal of a too-small buffer, and that only the read-only surface
+is served; <code>boot.rs</code> pins that only the fifth crash enters safe mode and that neither half of
+"first frame + network" is enough on its own.</li>
+<li><strong>Feeding is an ordinary task on the coordinator's executor</strong>, waking every 1 s; <code>1 s × 3 ≤ 5 s</code>
+is a compile-time assertion. That is exactly the wanted rule: as long as that executor still
+schedules, the watchdog is fed; when the frame loop itself stops, nobody feeds it — including the
+case where <code>renderers.flush().await</code> never returns because the panel core stopped taking DMA. It
+does <strong>not</strong> cover a separate executor or the other core stalling on its own while the
+coordinator keeps running; the 5 s never arrives then.</li>
+<li><strong>The WS2812 no longer panics</strong>: on the C6 the strip is the only surface, and a failed write used
+to <code>expect</code> every frame, so panic → reset → panic made a reboot loop one round per 5 s. Now a
+failure logs one <code>[RGB]</code> warning, a success clears the flag, and the next outage reports again.</li>
+<li><strong><code>[measured]</code> (2026-11-08, one flash per board, old image)</strong>: the C6 product image prints
+<code>[WATCHDOG] armed for 5000 ms, fed every 1000 ms from the coordinator</code> at boot, and after one
+<code>CTRL+R</code> reset it ran for about five minutes with no reset at all (only lamp-colour lines).
+The S3, flashed with <code>-a watchdog-reset</code>, booted, associated with its saved network, and was still
+printing at <strong>5.7 s</strong> (<code>[STACK] core 1 peak …</code>), so the 5 s RWDT did not fire; its
+<code>[WATCHDOG]</code> line cannot be captured — the native-USB CDC enumerates only after the app's first
+lines, and the same function prints that line on the C6. The reading was taken by flashing with
+<code>espflash flash … -a watchdog-reset</code> and then opening the port with <code>cat</code> straight away
+(<code>espflash monitor</code> drops the port itself when the watchdog reset re-enumerates it). Both readings
+are from the <code>ResetSystem</code> + coordinator-only arming image; the <code>[WATCHDOG]</code> line is now two lines
+(boot and runtime).</li>
+<li><strong><code>[measured]</code> (2026-11-08, <code>moon run iot:emu-smoke</code>)</strong>: the new image boots in the C6 emulator
+from ROM and the 2nd-stage bootloader, printing
+<code>[BOOT] reset reason Some(ChipPowerOn); 0 crashed boot(s) in a row; Normal start</code> and
+<code>[WATCHDOG] armed before board bring-up for 30000 ms; tightened to 5000 ms once the coordinator runs</code>,
+then <code>[IOT] boot complete</code>. This shows <code>store0</code> is accessible on the C6, an uninitialised value is
+rejected by the magic and counted as a clean boot, and the boot arming does not misfire on the
+normal path. The emulator does not model the real RWDT expiry.</li>
+<li><strong><code>[reported]</code></strong>: four bench readings remain — (1) panic → <code>custom_halt</code> → reset (nothing has
+deliberately called <code>panic!</code>); (2) <code>ResetCore</code> preserving <code>store0</code> when the RWDT really expires;
+(3) consecutive crashes actually reaching safe mode, and a power cycle returning to a normal
+start; (4) the safe-mode <code>vanling-safe-xxxx</code> AP opening in a real browser and serving the
+diagnostic page. What can be defended is the register semantics, that both <code>ResetCore</code> and
+<code>software_reset()</code> are core resets, and the emulator log above.</li>
+</ul>
+
+</article>
+
+  </main>
+</div>
+<script src="https://lastsunday.github.io/vanling/mermaid.min.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  document.querySelectorAll('pre code[data-lang="mermaid"]').forEach(function(block) {
+    var pre = block.parentElement;
+    var div = document.createElement('div');
+    div.className = 'mermaid';
+    div.textContent = block.textContent;
+    pre.parentElement.replaceChild(div, pre);
+  });
+  if (typeof mermaid !== 'undefined') {
+    mermaid.initialize({ startOnLoad: true });
+  }
+});
+</script>
+<script>
+
+</script>
+</body>
+</html>
