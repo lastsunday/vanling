@@ -84,6 +84,7 @@ impl DeviceManager {
 pub(crate) const TEST_SCALE: MotionScale = MotionScale::from_ranges(8_192, 64);
 
 pub(crate) const BREATH: LightState = LightState::Breath(Breath {
+    effect: iot_core::light::Effect::Breath,
     period_ms: 3_000,
     hue_period_ms: 60_000,
     hue_span: 255,
@@ -109,8 +110,9 @@ pub(crate) fn tap() -> InputIntent {
     }))
 }
 
-pub(crate) fn triple_click() -> InputIntent {
-    op(InputEvent::Button(ButtonEvent::TripleClick))
+/// Turns the page through the navigation verb, for tests about the cycle rather than the button.
+pub(crate) fn next_page(manager: &mut DeviceManager) {
+    manager.apply_business(BusinessIntent::Navigation(NavigationIntent::NextPage));
 }
 
 pub(crate) fn long_press() -> InputIntent {

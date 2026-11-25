@@ -1,7 +1,7 @@
 //! The Speaker page's input contract: a tap plays, a hold mutes, and no gesture here moves a
 //! light.
 
-use crate::shared::intent::PlaybackAction;
+use crate::shared::intent::{NavigationIntent, PlaybackAction};
 use crate::state::test_support::*;
 
 fn on_speaker() -> DeviceState {
@@ -41,7 +41,10 @@ fn a_tap_plays_and_a_long_press_mutes() {
     );
     assert_eq!(
         translate(&op(long_press_event()), &on_speaker(), &Services::default()),
-        Some(BusinessIntent::Playback(PlaybackAction::SetMuted(true)))
+        Some(BusinessIntent::Navigation(NavigationIntent::Go(
+            PageId::Menu.code()
+        ))),
+        "the button's hold goes home instead of muting"
     );
 }
 
@@ -70,7 +73,8 @@ fn the_page_never_moves_a_light() {
             &on_speaker(),
             &Services::default()
         ),
-        Some(BusinessIntent::Navigation(NavigationIntent::NextPage))
+        None,
+        "three clicks no longer turn the page"
     );
 }
 

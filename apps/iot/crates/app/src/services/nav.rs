@@ -10,10 +10,21 @@ use iot_core::drivers::input::{ButtonEvent, InputEvent};
 pub struct NavService;
 
 impl NavService {
-    /// The gesture the button answers from anywhere: three clicks turn the page.
-    pub(super) fn from_anywhere(op: &InputIntent) -> Option<BusinessIntent> {
-        matches!(op.event, InputEvent::Button(ButtonEvent::TripleClick))
-            .then_some(BusinessIntent::Navigation(NavigationIntent::NextPage))
+    /// The button fallback when a panel page did not consume it: a click turns the page, a hold
+    /// goes home. A board with no panel has no pages to turn.
+    pub(super) fn from_anywhere(op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+        if !state.has_screen() || state.page() == PageId::Headless {
+            return None;
+        }
+        match op.event {
+            InputEvent::Button(ButtonEvent::Click) => {
+                Some(BusinessIntent::Navigation(NavigationIntent::NextPage))
+            }
+            InputEvent::Button(ButtonEvent::LongPress) => Some(BusinessIntent::Navigation(
+                NavigationIntent::Go(PageId::Menu.code()),
+            )),
+            _ => None,
+        }
     }
 }
 

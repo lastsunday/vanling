@@ -1,8 +1,72 @@
 use alloc::boxed::Box;
+use core::sync::atomic::{AtomicU8, AtomicU16, Ordering};
 
 use super::motion::MotionBatch;
 use crate::config::MotionConfig;
 use crate::demand::DemandKey;
+
+/// How a button's clicks are folded. `Single` emits on the lift that saw it; `Double` and
+/// `Triple` hold the click for [`DOUBLE_CLICK_WINDOW_MS`] so later presses can join it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ClickPattern {
+    #[default]
+    Single,
+    Double,
+    Triple,
+}
+
+impl ClickPattern {
+    const fn code(self) -> u8 {
+        match self {
+            Self::Single => 0,
+            Self::Double => 1,
+            Self::Triple => 2,
+        }
+    }
+
+    const fn from_code(code: u8) -> Self {
+        match code {
+            1 => Self::Double,
+            2 => Self::Triple,
+            _ => Self::Single,
+        }
+    }
+}
+
+/// The device-wide click policy, read on every poll so a runtime change applies at once.
+pub struct ClickConfig {
+    pattern: AtomicU8,
+    window_ms: AtomicU16,
+}
+
+impl ClickConfig {
+    pub const fn new(pattern: ClickPattern, window_ms: u16) -> Self {
+        Self {
+            pattern: AtomicU8::new(pattern.code()),
+            window_ms: AtomicU16::new(window_ms),
+        }
+    }
+
+    pub fn pattern(&self) -> ClickPattern {
+        ClickPattern::from_code(self.pattern.load(Ordering::Relaxed))
+    }
+
+    pub fn window_ms(&self) -> u64 {
+        u64::from(self.window_ms.load(Ordering::Relaxed))
+    }
+
+    pub fn set(&self, pattern: ClickPattern, window_ms: u16) {
+        self.window_ms.store(window_ms, Ordering::Relaxed);
+        self.pattern.store(pattern.code(), Ordering::Relaxed);
+    }
+}
+
+/// The device's one button policy: `Single` until something asks for more.
+static CLICKS: ClickConfig = ClickConfig::new(ClickPattern::Single, DOUBLE_CLICK_WINDOW_MS as u16);
+
+pub fn clicks() -> &'static ClickConfig {
+    &CLICKS
+}
 
 /// A physical button, reported as `true` when pressed.
 pub trait Button {
@@ -114,8 +178,9 @@ pub const INPUT_BASE_MS: u64 = 5;
 /// held the panel *alone* and never travelled to [`SWIPE_MIN_DISTANCE_PX`].
 pub const LONG_PRESS_MS: u64 = 600;
 
-/// How long a click sequence stays pending while the driver waits for the next click.
-pub const DOUBLE_CLICK_WINDOW_MS: u64 = 400;
+/// How long a click sequence stays pending while the driver waits for the next click. Short
+/// enough that a single click still feels immediate on a lamp with no panel to explain it.
+pub const DOUBLE_CLICK_WINDOW_MS: u64 = 250;
 
 /// Minimum press travel ever observed (px, Euclidean) that reads as a
 /// [`GestureEvent::Swipe`] — a quarter of the 240-px panel, so a tap's drift never reaches
@@ -767,25 +832,25 @@ impl EventAggregator for TouchGestures {
     }
 }
 
-pub struct DoubleClickAggregator {
-    window_ms: u64,
+pub struct ClickAggregator {
+    config: &'static ClickConfig,
     first_click_at_ms: Option<u64>,
     second_click_at_ms: Option<u64>,
     queued: EventQueue,
 }
 
-impl DoubleClickAggregator {
-    pub const fn new() -> Self {
-        Self::with_window_ms(DOUBLE_CLICK_WINDOW_MS)
-    }
-
-    pub const fn with_window_ms(window_ms: u64) -> Self {
+impl ClickAggregator {
+    pub const fn new(config: &'static ClickConfig) -> Self {
         Self {
-            window_ms,
+            config,
             first_click_at_ms: None,
             second_click_at_ms: None,
             queued: EventQueue::new(),
         }
+    }
+
+    fn window_ms(&self) -> u64 {
+        self.config.window_ms()
     }
 
     fn pending_event(&self) -> Option<InputEvent> {
@@ -807,7 +872,7 @@ impl DoubleClickAggregator {
         let Some(deadline) = deadline else {
             return;
         };
-        if now_ms.saturating_sub(deadline) > self.window_ms
+        if now_ms.saturating_sub(deadline) > self.window_ms()
             && let Some(event) = self.pending_event()
         {
             self.clear_pending();
@@ -816,14 +881,20 @@ impl DoubleClickAggregator {
     }
 }
 
-impl Default for DoubleClickAggregator {
+impl Default for ClickAggregator {
     fn default() -> Self {
-        Self::new()
+        Self::new(clicks())
     }
 }
 
-impl EventAggregator for DoubleClickAggregator {
+impl EventAggregator for ClickAggregator {
     fn feed(&mut self, event: InputEvent, now_ms: u64) -> Option<InputEvent> {
+        let pattern = self.config.pattern();
+        if pattern == ClickPattern::Single {
+            self.clear_pending();
+            self.queued.push(event);
+            return self.queued.pop();
+        }
         self.expire(now_ms);
         let generated = match event {
             InputEvent::Button(ButtonEvent::Click) => match self.first_click_at_ms {
@@ -832,18 +903,17 @@ impl EventAggregator for DoubleClickAggregator {
                     None
                 }
                 Some(_) if self.second_click_at_ms.is_some() => {
-                    if now_ms.saturating_sub(self.second_click_at_ms.unwrap_or(now_ms))
-                        <= self.window_ms
-                    {
+                    if pattern == ClickPattern::Triple {
                         self.clear_pending();
                         Some(InputEvent::Button(ButtonEvent::TripleClick))
                     } else {
+                        self.clear_pending();
                         self.first_click_at_ms = Some(now_ms);
                         Some(InputEvent::Button(ButtonEvent::DoubleClick))
                     }
                 }
                 Some(first) => {
-                    if now_ms.saturating_sub(first) <= self.window_ms {
+                    if now_ms.saturating_sub(first) <= self.window_ms() {
                         self.second_click_at_ms = Some(now_ms);
                         None
                     } else {
@@ -1126,14 +1196,14 @@ impl PollEntry {
         }
     }
 
-    /// A board button wired as an interaction source: debounced clicks folded into
-    /// double- and triple-clicks at the shared button cadence.
+    /// A board button wired as an interaction source: debounced clicks folded by the device's
+    /// [`clicks`] policy at the shared button cadence.
     pub fn button(source_id: u8, button: impl Button + Send + 'static) -> Self {
         Self::new(
             source_id,
             DemandKey::INTERACTION,
             Box::new(ButtonScanner::new(button)),
-            Box::new(DoubleClickAggregator::new()),
+            Box::new(ClickAggregator::default()),
             BUTTON_SCAN_MS,
         )
     }

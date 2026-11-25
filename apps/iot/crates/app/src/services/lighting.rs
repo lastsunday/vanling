@@ -1,13 +1,16 @@
 //! The lighting page: where a glow may reach the glass, how it moves, and the panel backlight.
 
-use iot_core::drivers::input::{GestureEvent, InputEvent};
+use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::text::format_u16;
 use iot_core::ui::{Rect, Style, TextAlign, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, LightingControl, LightingIntent};
-use crate::shared::model::{Command, DeviceState, Effects, GlassBreath, GlowPattern, GlowScope};
+use crate::shared::model::{
+    Command, DeviceState, Effects, GlassBreath, GlowPattern, GlowScope, PEAK_FLOOR, next_effect,
+    trough,
+};
 use crate::shared::page;
 use crate::shared::snapshot::{FrameSnapshot, LightingView, PageSnapshot};
 use crate::shared::surface::{finish, headless};
@@ -27,7 +30,6 @@ const VALUE_W: i16 = 36;
 const SLIDER_W: i16 = CONTENT_W - LABEL_W - VALUE_W - 2 * GAP;
 const ROW: i16 = 20;
 const PERIOD_STEP_MS: u16 = 45;
-const PEAK_FLOOR: u16 = 32;
 
 const _: () = assert!(SLIDER_W > 0);
 
@@ -64,6 +66,15 @@ impl LightingPage {
             LightingControl::PatternBreath => self.breath.pattern = GlowPattern::Breath,
             LightingControl::PatternSteady => self.breath.pattern = GlowPattern::Steady,
             LightingControl::PatternCycle => self.breath.pattern = GlowPattern::Cycle,
+            LightingControl::PatternAurora => self.breath.pattern = GlowPattern::Aurora,
+            LightingControl::PatternCandle => self.breath.pattern = GlowPattern::Candle,
+            LightingControl::PatternPulse => self.breath.pattern = GlowPattern::Pulse,
+            LightingControl::PatternHeartbeat => self.breath.pattern = GlowPattern::Heartbeat,
+            LightingControl::PatternLightning => self.breath.pattern = GlowPattern::Lightning,
+            LightingControl::PatternSparkle => self.breath.pattern = GlowPattern::Sparkle,
+            LightingControl::PatternStrobe => self.breath.pattern = GlowPattern::Strobe,
+            LightingControl::PatternPolice => self.breath.pattern = GlowPattern::Police,
+            LightingControl::PatternSos => self.breath.pattern = GlowPattern::Sos,
             LightingControl::Period
             | LightingControl::Hue
             | LightingControl::Peak
@@ -113,6 +124,9 @@ impl super::Service for LightingPage {
                 self.grab = None;
             }
             LightingIntent::LetGo => self.grab = None,
+            LightingIntent::NextEffect => {
+                self.breath.pattern = next_effect(self.breath.pattern);
+            }
         }
         (None, Effects::default())
     }
@@ -121,6 +135,7 @@ impl super::Service for LightingPage {
 impl super::LocalPage for LightingPage {
     fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
         let intent = match op.event {
+            InputEvent::Button(ButtonEvent::Click) => LightingIntent::NextEffect,
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
                 let control = LightingControl::from_tag(self.tag_at(i32::from(x), i32::from(y)))?;
                 LightingIntent::Press { id, control }
@@ -186,23 +201,16 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             ],
             scope_index(snapshot.glow),
         ));
-        page::caption(ui, hint(snapshot.glow, lang), theme);
-        ui.add(
-            Segmented::new(
-                [
-                    Msg::PatternBreath.bytes(lang),
-                    Msg::PatternSteady.bytes(lang),
-                    Msg::PatternCycle.bytes(lang),
-                ],
-                [
-                    LightingControl::PatternBreath.tag(),
-                    LightingControl::PatternSteady.tag(),
-                    LightingControl::PatternCycle.tag(),
-                ],
-                pattern_index(breath.pattern),
-            )
-            .height(ROW),
-        );
+        for row in PATTERN_ROWS {
+            ui.add(
+                Segmented::new(
+                    row.map(|pattern| pattern_msg(pattern).bytes(lang)),
+                    row.map(|pattern| pattern_control(pattern).tag()),
+                    pattern_cell(breath.pattern, row),
+                )
+                .height(ROW),
+            );
+        }
         let mut buf = [0u8; 10];
         slider_row(
             ui,
@@ -231,7 +239,6 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             peak_pct(breath.max_value),
             false,
         );
-        page::section(ui, Msg::SectionBacklight.bytes(lang), theme);
         slider_row(
             ui,
             theme,
@@ -253,19 +260,66 @@ fn scope_index(scope: GlowScope) -> u8 {
     }
 }
 
-fn pattern_index(pattern: GlowPattern) -> u8 {
+/// The three four-cell strips, in the order the page shows them.
+const PATTERN_ROWS: [[GlowPattern; 4]; 3] = [
+    [
+        GlowPattern::Steady,
+        GlowPattern::Breath,
+        GlowPattern::Cycle,
+        GlowPattern::Aurora,
+    ],
+    [
+        GlowPattern::Candle,
+        GlowPattern::Pulse,
+        GlowPattern::Heartbeat,
+        GlowPattern::Lightning,
+    ],
+    [
+        GlowPattern::Sparkle,
+        GlowPattern::Strobe,
+        GlowPattern::Police,
+        GlowPattern::Sos,
+    ],
+];
+
+/// The cell of `row` that `pattern` lights, or `row.len()` when it lives in another strip.
+fn pattern_cell(pattern: GlowPattern, row: [GlowPattern; 4]) -> u8 {
+    row.iter()
+        .position(|&cell| cell == pattern)
+        .map_or(row.len() as u8, |index| index as u8)
+}
+
+fn pattern_control(pattern: GlowPattern) -> LightingControl {
     match pattern {
-        GlowPattern::Breath => 0,
-        GlowPattern::Steady => 1,
-        GlowPattern::Cycle => 2,
+        GlowPattern::Steady => LightingControl::PatternSteady,
+        GlowPattern::Breath => LightingControl::PatternBreath,
+        GlowPattern::Cycle => LightingControl::PatternCycle,
+        GlowPattern::Aurora => LightingControl::PatternAurora,
+        GlowPattern::Candle => LightingControl::PatternCandle,
+        GlowPattern::Pulse => LightingControl::PatternPulse,
+        GlowPattern::Heartbeat => LightingControl::PatternHeartbeat,
+        GlowPattern::Lightning => LightingControl::PatternLightning,
+        GlowPattern::Sparkle => LightingControl::PatternSparkle,
+        GlowPattern::Strobe => LightingControl::PatternStrobe,
+        GlowPattern::Police => LightingControl::PatternPolice,
+        GlowPattern::Sos => LightingControl::PatternSos,
     }
 }
 
-fn hint(scope: GlowScope, lang: Lang) -> &'static [u8] {
-    match scope {
-        GlowScope::Off => Msg::HintOff.bytes(lang),
-        GlowScope::Page => Msg::HintPage.bytes(lang),
-        GlowScope::Everywhere => Msg::HintAll.bytes(lang),
+fn pattern_msg(pattern: GlowPattern) -> Msg {
+    match pattern {
+        GlowPattern::Steady => Msg::PatternSteady,
+        GlowPattern::Breath => Msg::PatternBreath,
+        GlowPattern::Cycle => Msg::PatternCycle,
+        GlowPattern::Aurora => Msg::PatternAurora,
+        GlowPattern::Candle => Msg::PatternCandle,
+        GlowPattern::Pulse => Msg::PatternPulse,
+        GlowPattern::Heartbeat => Msg::PatternHeartbeat,
+        GlowPattern::Lightning => Msg::PatternLightning,
+        GlowPattern::Sparkle => Msg::PatternSparkle,
+        GlowPattern::Strobe => Msg::PatternStrobe,
+        GlowPattern::Police => Msg::PatternPolice,
+        GlowPattern::Sos => Msg::PatternSos,
     }
 }
 
@@ -274,6 +328,15 @@ fn note(pattern: GlowPattern, lang: Lang) -> &'static [u8] {
         GlowPattern::Breath => Msg::PeakNote.bytes(lang),
         GlowPattern::Steady => Msg::SteadyNote.bytes(lang),
         GlowPattern::Cycle => Msg::CycleNote.bytes(lang),
+        GlowPattern::Aurora => Msg::AuroraNote.bytes(lang),
+        GlowPattern::Candle => Msg::CandleNote.bytes(lang),
+        GlowPattern::Pulse => Msg::PulseNote.bytes(lang),
+        GlowPattern::Heartbeat => Msg::HeartbeatNote.bytes(lang),
+        GlowPattern::Lightning => Msg::LightningNote.bytes(lang),
+        GlowPattern::Sparkle => Msg::SparkleNote.bytes(lang),
+        GlowPattern::Strobe => Msg::StrobeNote.bytes(lang),
+        GlowPattern::Police => Msg::PoliceNote.bytes(lang),
+        GlowPattern::Sos => Msg::SosNote.bytes(lang),
     }
 }
 
@@ -333,11 +396,7 @@ fn hue_at(pct: u8) -> u8 {
 }
 
 fn peak_at(pct: u8) -> u8 {
-    (PEAK_FLOOR + u16::from(pct) * (255 - PEAK_FLOOR) / 100) as u8
-}
-
-fn trough(peak: u8) -> u8 {
-    (u16::from(peak) * PEAK_FLOOR / 255) as u8
+    (u16::from(PEAK_FLOOR) + u16::from(pct) * (255 - u16::from(PEAK_FLOOR)) / 100) as u8
 }
 
 fn period_pct(ms: u16) -> u8 {
@@ -349,7 +408,8 @@ fn hue_pct(hue: u8) -> u8 {
 }
 
 fn peak_pct(peak: u8) -> u8 {
-    (u16::from(peak).saturating_sub(PEAK_FLOOR) * 100 / (255 - PEAK_FLOOR)) as u8
+    (u16::from(peak).saturating_sub(u16::from(PEAK_FLOOR)) * 100 / (255 - u16::from(PEAK_FLOOR)))
+        as u8
 }
 
 fn lighting_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
@@ -362,19 +422,68 @@ fn lighting_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::services::{LocalPage, Service};
+    use crate::shared::model::EFFECTS;
 
     #[test]
     fn the_pattern_strip_switches_the_glass_style() {
         let mut page = LightingPage::default();
         let mut state = DeviceState::default();
-        for (control, pattern) in [
-            (LightingControl::PatternSteady, GlowPattern::Steady),
-            (LightingControl::PatternCycle, GlowPattern::Cycle),
-            (LightingControl::PatternBreath, GlowPattern::Breath),
-        ] {
-            page.set(control, 0, &mut state);
+        for pattern in EFFECTS {
+            page.set(pattern_control(pattern), 0, &mut state);
             assert_eq!(page.breath.pattern, pattern);
         }
+    }
+
+    #[test]
+    fn every_effect_has_one_cell_in_exactly_one_row() {
+        for pattern in EFFECTS {
+            let lit = PATTERN_ROWS
+                .into_iter()
+                .filter(|&row| pattern_cell(pattern, row) < row.len() as u8)
+                .count();
+            assert_eq!(lit, 1, "{pattern:?}");
+        }
+        assert_eq!(PATTERN_ROWS.len() * PATTERN_ROWS[0].len(), EFFECTS.len());
+    }
+
+    #[test]
+    fn every_pattern_label_fits_its_cell() {
+        let metrics = iot_core::ui::font::Metrics::at(iot_core::ui::font::Metrics::ROOT as u16);
+        let cell = (CONTENT_W / PATTERN_ROWS[0].len() as i16) as usize;
+        for lang in [Lang::En, Lang::ZhHans] {
+            for pattern in EFFECTS {
+                let label = pattern_msg(pattern).bytes(lang);
+                assert!(
+                    iot_core::ui::typeset::max_content(label, metrics) <= cell,
+                    "{pattern:?} {lang:?} label overflows its cell"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_button_walks_the_same_effect_list() {
+        let mut page = LightingPage::default();
+        let mut state = DeviceState::default();
+        let start = page.breath.pattern;
+        let mut expected = start;
+        for _ in 0..EFFECTS.len() {
+            expected = next_effect(expected);
+            let op = InputIntent {
+                source: 0,
+                event: InputEvent::Button(ButtonEvent::Click),
+            };
+            let intent = page
+                .bind(&op, &state)
+                .expect("the button belongs to this page");
+            page.apply(&intent, &mut state);
+            assert_eq!(page.breath.pattern, expected);
+        }
+        assert_eq!(
+            page.breath.pattern, start,
+            "a full turn returns to the start"
+        );
     }
 
     #[test]

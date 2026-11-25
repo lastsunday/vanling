@@ -39,8 +39,8 @@ pub use self::effects::Effects;
 pub use self::health::Health;
 
 pub use self::light::{
-    Backlight, Breath, COLOR_GROUPS, GlassBreath, GlowPattern, GlowScope, LampLine, LightState,
-    Notice, NoticeKind, PALETTE,
+    Backlight, Breath, COLOR_GROUPS, EFFECTS, GlassBreath, GlowPattern, GlowScope, LampLine,
+    LightState, Notice, NoticeKind, PALETTE, PEAK_FLOOR, next_effect, trough,
 };
 
 pub use self::motion::MotionState;

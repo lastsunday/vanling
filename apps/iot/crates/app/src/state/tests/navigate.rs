@@ -16,33 +16,33 @@ fn the_page_switch_reaches_the_audio_page_and_back() {
         audio: true,
         ..Backed::NONE
     });
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Audio);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(
         manager.state().page(),
         PageId::Env,
         "the page that needs nothing"
     );
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Text);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Widgets);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Advanced);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Feedback);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Extended);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Data);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::List);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Lighting);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Menu);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Input);
 }
 
@@ -57,29 +57,29 @@ fn the_camera_page_cycles_from_the_board_and_back() {
         ..Backed::NONE
     });
     assert!(manager.state().backed.camera);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Camera);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Env);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Text);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Widgets);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Advanced);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Feedback);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Extended);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Data);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::List);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Lighting);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Menu);
-    feed_input(&mut manager, triple_click());
+    next_page(&mut manager);
     assert_eq!(manager.state().page(), PageId::Input);
 }
 
@@ -91,7 +91,7 @@ fn a_board_without_a_camera_never_lands_on_its_page() {
         ..Backed::NONE
     });
     for _ in 0..8 {
-        feed_input(&mut manager, triple_click());
+        next_page(&mut manager);
         assert_ne!(
             manager.state().page(),
             PageId::Camera,
@@ -124,7 +124,7 @@ fn a_full_lap_walks_every_page_and_returns_home() {
         PageId::Menu,
         PageId::Input,
     ] {
-        feed_input(&mut manager, triple_click());
+        next_page(&mut manager);
         assert_eq!(manager.state().page(), expected);
     }
 }

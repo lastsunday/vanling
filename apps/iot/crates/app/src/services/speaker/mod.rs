@@ -36,10 +36,9 @@ impl super::LocalPage for SpeakerPage {
             | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
                 Some(BusinessIntent::Playback(PlaybackAction::Next))
             }
-            InputEvent::Button(ButtonEvent::LongPress)
-            | InputEvent::Gesture(GestureEvent::LongPress { .. }) => Some(
-                BusinessIntent::Playback(PlaybackAction::SetMuted(!state.playback.muted)),
-            ),
+            InputEvent::Gesture(GestureEvent::LongPress { .. }) => Some(BusinessIntent::Playback(
+                PlaybackAction::SetMuted(!state.playback.muted),
+            )),
             _ => None,
         }
     }

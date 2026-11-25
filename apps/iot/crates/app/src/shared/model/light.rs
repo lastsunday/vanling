@@ -1,13 +1,16 @@
 //! The light surfaces as the render loop reads them: breathing, page behavior, and the verb tables.
 
 use iot_core::drivers::network::NetworkError;
-use iot_core::light::{GROUP_CAPACITY, Rgb, Sample};
+use iot_core::light::{Effect, EffectParams, GROUP_CAPACITY, Rgb, Sample};
 
 use crate::shared::intent::LightAction;
+
+pub use iot_core::light::Effect as GlowPattern;
 
 /// A breathing schedule: brightness envelope plus the hue path it travels.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Breath {
+    pub effect: Effect,
     pub period_ms: u32,
     pub hue_period_ms: u32,
     /// Hue sweep width; `0` means a static standalone color.
@@ -28,18 +31,18 @@ impl Breath {
 
     /// The color this breath paints at `elapsed_ms`, and how far into its envelope that is.
     pub fn sample(self, elapsed_ms: u32) -> Sample {
-        iot_core::light::sample(
-            elapsed_ms,
-            self.period_ms,
-            self.hue_period_ms,
-            self.hue_span,
-            self.min_brightness,
-            self.max_brightness,
-            self.saturation,
-            self.hue,
-            self.group,
-            self.group_len,
-        )
+        EffectParams {
+            period_ms: self.period_ms,
+            hue_period_ms: self.hue_period_ms,
+            hue_span: self.hue_span,
+            min_brightness: self.min_brightness,
+            max_brightness: self.max_brightness,
+            saturation: self.saturation,
+            hue: self.hue,
+            group: self.group,
+            group_len: self.group_len,
+        }
+        .sample(self.effect, elapsed_ms)
     }
 }
 
@@ -50,15 +53,6 @@ pub enum GlowScope {
     #[default]
     Page,
     Everywhere,
-}
-
-/// How the glass carries a light: a breathing envelope, a steady colour, or a turning hue.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum GlowPattern {
-    #[default]
-    Breath,
-    Steady,
-    Cycle,
 }
 
 /// A breath drawn on the glass: the lamp's envelope with its own colour and pace. A page or an
@@ -97,31 +91,41 @@ impl GlassBreath {
     pub const FASTEST_MS: u16 = 500;
     pub const SLOWEST_MS: u16 = 5_000;
 
-    /// The colour at `now_ms` and its position in the envelope. `Steady` and `Cycle` hold the
-    /// peak; `Cycle` walks the hue once per period.
+    /// The colour at `now_ms`. `Steady` and `Cycle` hold the peak; `Cycle` walks the hue once
+    /// per period; `Aurora` drifts through four waypoints while it breathes. Flashing effects
+    /// drop their floor to black so the gaps read as dark.
     pub fn at(self, now_ms: u32) -> Sample {
-        let (hue_period_ms, hue_span, min, max) = match self.pattern {
-            GlowPattern::Breath => (0, 0, self.min_value, self.max_value),
-            GlowPattern::Steady => (0, 0, self.max_value, self.max_value),
-            GlowPattern::Cycle => (
-                u32::from(self.period_ms),
-                255,
-                self.max_value,
-                self.max_value,
+        let peak = self.max_value;
+        let (min, hue_period_ms, group, group_len) = match self.pattern {
+            GlowPattern::Steady | GlowPattern::Cycle => (peak, 0, [0; GROUP_CAPACITY], 0),
+            GlowPattern::Aurora => (
+                self.min_value,
+                u32::from(self.period_ms) * 4,
+                [0; GROUP_CAPACITY],
+                0,
             ),
+            GlowPattern::Lightning
+            | GlowPattern::Sparkle
+            | GlowPattern::Strobe
+            | GlowPattern::Sos => (0, 0, [0; GROUP_CAPACITY], 0),
+            GlowPattern::Police => (peak, 0, [0, 170, 0, 0, 0, 0, 0], 2),
+            GlowPattern::Breath
+            | GlowPattern::Candle
+            | GlowPattern::Pulse
+            | GlowPattern::Heartbeat => (self.min_value, 0, [0; GROUP_CAPACITY], 0),
         };
-        iot_core::light::sample(
-            now_ms,
-            u32::from(self.period_ms),
+        EffectParams {
+            period_ms: u32::from(self.period_ms),
             hue_period_ms,
-            hue_span,
-            min,
-            max,
-            self.saturation,
-            self.hue,
-            [0; GROUP_CAPACITY],
-            0,
-        )
+            hue_span: 0,
+            min_brightness: min,
+            max_brightness: peak,
+            saturation: self.saturation,
+            hue: self.hue,
+            group,
+            group_len,
+        }
+        .sample(self.pattern, now_ms)
     }
 }
 
@@ -165,16 +169,35 @@ pub const PALETTE: [Rgb; 7] = [
     Rgb(190, 96, 255),
 ];
 
+/// The time-based effects a single click walks, in the order the page lists them.
+pub const EFFECTS: [Effect; 12] = [
+    Effect::Steady,
+    Effect::Breath,
+    Effect::Cycle,
+    Effect::Aurora,
+    Effect::Candle,
+    Effect::Pulse,
+    Effect::Heartbeat,
+    Effect::Lightning,
+    Effect::Sparkle,
+    Effect::Strobe,
+    Effect::Police,
+    Effect::Sos,
+];
+
 /// The breathing periods a step walks, in milliseconds.
 const BREATH_PERIODS_MS: [u32; 10] = [125, 250, 375, 500, 750, 1_000, 2_000, 3_000, 5_000, 8_000];
 
-/// The solid-mode brightness ladder a step walks.
-const SOLID_BRIGHTNESS_STEPS: [u8; 6] = [32, 64, 100, 140, 200, 255];
+/// The brightness ladder a step walks: 30% up to full, so the first press is never blinding.
+const BRIGHTNESS_STEPS: [u8; 5] = [77, 128, 179, 230, 255];
 
-/// How far one brightness swipe shifts the envelope.
-const BRIGHTNESS_ENVELOPE_STEP: u8 = 32;
+/// The dimmest a breathing envelope goes, as a share of its peak.
+pub const PEAK_FLOOR: u8 = 32;
 
-/// One hue group a breathing light can walk.
+pub const fn trough(peak: u8) -> u8 {
+    (peak as u16 * PEAK_FLOOR as u16 / 255) as u8
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ColorGroup {
     pub hue_span: u8,
@@ -250,13 +273,13 @@ impl LightState {
     pub const DEFAULT_PERIOD_MS: u32 = 3_000;
     pub const DEFAULT_HUE_PERIOD_MS: u32 = 60_000;
     pub const DEFAULT_HUE_SPAN: u8 = 255;
-    pub const DEFAULT_MIN_BRIGHTNESS: u8 = 24;
-    pub const DEFAULT_MAX_BRIGHTNESS: u8 = 80;
+    pub const DEFAULT_MIN_BRIGHTNESS: u8 = trough(Self::DEFAULT_MAX_BRIGHTNESS);
+    pub const DEFAULT_MAX_BRIGHTNESS: u8 = 77;
     pub const DEFAULT_SATURATION: u8 = 200;
     pub const DEFAULT_HUE: u8 = 0;
-    /// Warm sunset: amber, golden, deep rose, for a calm ambient glow.
-    pub const DEFAULT_GROUP: [u8; Breath::MAX_GROUP] = [16, 32, 3, 0, 0, 0, 0];
-    pub const DEFAULT_GROUP_LEN: u8 = 3;
+    /// The walking group: the lamp's default aurora and breath colours.
+    pub const DEFAULT_GROUP: [u8; Breath::MAX_GROUP] = [0, 21, 43, 85, 128, 170, 213];
+    pub const DEFAULT_GROUP_LEN: u8 = 7;
 
     /// Full-brightness entry point for solid mode; dimming is a long-press advance from here.
     pub const SOLID_DEFAULT_BRIGHTNESS: u8 = 255;
@@ -264,9 +287,9 @@ impl LightState {
     /// The panel's dim cap while the display demand is on-change.
     pub const ON_DEMAND_BACKLIGHT_PCT: u8 = 12;
 
-    /// Whether this state has anything for the action to move. `Off` answers only `Cycle`.
+    /// Whether this state has anything for the action to move.
     pub(crate) fn can(self, action: LightAction) -> bool {
-        !matches!(self, Self::Off) || matches!(action, LightAction::Cycle)
+        self.apply(action).is_some()
     }
 
     /// The state the action lands on, or `None` when it has nothing to move.
@@ -276,11 +299,14 @@ impl LightState {
             LightAction::NextColor { forward } => advance_color(self, forward),
             LightAction::Step => advance_step(self),
             LightAction::Brightness { up } => swipe_brightness(self, up),
+            LightAction::NextEffect => advance_effect(self),
+            LightAction::TogglePower => Some(toggle_power(self)),
         }
     }
 
     pub const fn boot() -> Self {
         LightState::Breath(Breath {
+            effect: Effect::Aurora,
             period_ms: LightState::DEFAULT_PERIOD_MS,
             hue_period_ms: LightState::DEFAULT_HUE_PERIOD_MS,
             hue_span: LightState::DEFAULT_HUE_SPAN,
@@ -295,6 +321,7 @@ impl LightState {
 
     /// The setup access point is up, waiting for a phone: a slow blue breath.
     pub const SETUP: Self = Self::Breath(Breath {
+        effect: Effect::Breath,
         period_ms: 2_000,
         hue_period_ms: 0,
         hue_span: 0,
@@ -308,6 +335,7 @@ impl LightState {
 
     /// A credential is in hand and the radio is acting on it: the setup blue, a step quicker.
     pub const JOINING: Self = Self::Breath(Breath {
+        effect: Effect::Breath,
         period_ms: 800,
         hue_period_ms: 0,
         hue_span: 0,
@@ -420,6 +448,71 @@ impl Notice {
     }
 }
 
+fn toggle_power(current: LightState) -> LightState {
+    match current {
+        LightState::Off => LightState::boot(),
+        _ => LightState::Off,
+    }
+}
+
+fn advance_effect(current: LightState) -> Option<LightState> {
+    match current {
+        // The list's end is the lamp's off stop, so one press can also put it out.
+        LightState::Off => Some(lit()),
+        LightState::Solid { .. } => Some(LightState::boot()),
+        LightState::Breath(breath) if breath.effect == EFFECTS[EFFECTS.len() - 1] => {
+            Some(LightState::Off)
+        }
+        LightState::Breath(breath) => {
+            let effect = next_effect(breath.effect);
+            Some(LightState::Breath(tone(effect, breath)))
+        }
+    }
+}
+
+/// The lamp's signature tone per effect: each effect reads as itself instead of one ambient
+/// hue. Steady, Breath, Aurora and Cycle keep the walking group; the rest name their colour.
+fn tone(effect: Effect, base: Breath) -> Breath {
+    let (hue, saturation, group, group_len) = match effect {
+        Effect::Steady | Effect::Breath | Effect::Aurora | Effect::Cycle => (
+            LightState::DEFAULT_HUE,
+            LightState::DEFAULT_SATURATION,
+            LightState::DEFAULT_GROUP,
+            LightState::DEFAULT_GROUP_LEN,
+        ),
+        Effect::Candle => (28, 200, [0; Breath::MAX_GROUP], 0),
+        Effect::Pulse => (128, 255, [0; Breath::MAX_GROUP], 0),
+        Effect::Heartbeat => (0, 255, [0; Breath::MAX_GROUP], 0),
+        Effect::Lightning | Effect::Sparkle | Effect::Strobe => {
+            (190, 40, [0; Breath::MAX_GROUP], 0)
+        }
+        Effect::Sos => (190, 0, [0; Breath::MAX_GROUP], 0),
+        Effect::Police => (0, 255, [0, 170, 0, 0, 0, 0, 0], 2),
+    };
+    Breath {
+        effect,
+        hue,
+        saturation,
+        group,
+        group_len,
+        ..base
+    }
+}
+
+/// The effect after `effect`, wrapping at the list's end.
+pub fn next_effect(effect: Effect) -> Effect {
+    let index = EFFECTS.iter().position(|&e| e == effect).unwrap_or(0);
+    EFFECTS[(index + 1) % EFFECTS.len()]
+}
+
+/// The first effect of the list, over the boot envelope.
+fn lit() -> LightState {
+    let LightState::Breath(breath) = LightState::boot() else {
+        unreachable!()
+    };
+    LightState::Breath(tone(EFFECTS[0], breath))
+}
+
 fn cycle_mode(current: LightState) -> LightState {
     match current {
         LightState::Off => LightState::default(),
@@ -459,7 +552,7 @@ fn advance_step(current: LightState) -> Option<LightState> {
             }))
         }
         LightState::Solid { color, brightness } => {
-            let next = table_step(&SOLID_BRIGHTNESS_STEPS, brightness, 1);
+            let next = brightness_step(brightness, true);
             Some(LightState::Solid {
                 color,
                 brightness: next,
@@ -468,33 +561,49 @@ fn advance_step(current: LightState) -> Option<LightState> {
     }
 }
 
+/// The brightness dial: one step up or down, with the dark stop past full. A dark lamp answers
+/// an upward step by lighting at the ladder's foot.
 fn swipe_brightness(current: LightState, up: bool) -> Option<LightState> {
     match current {
-        LightState::Off => None,
-        LightState::Breath(breath) => Some(LightState::Breath(shift_envelope(breath, up))),
+        LightState::Off => up.then(lit),
+        LightState::Breath(breath) => {
+            if up && breath.max_brightness >= BRIGHTNESS_STEPS[BRIGHTNESS_STEPS.len() - 1] {
+                return Some(LightState::Off);
+            }
+            let peak = brightness_step(breath.max_brightness, up);
+            Some(LightState::Breath(Breath {
+                min_brightness: trough(peak),
+                max_brightness: peak,
+                ..breath
+            }))
+        }
         LightState::Solid { color, brightness } => {
-            let next = table_step(&SOLID_BRIGHTNESS_STEPS, brightness, if up { 1 } else { -1 });
+            if up && brightness >= BRIGHTNESS_STEPS[BRIGHTNESS_STEPS.len() - 1] {
+                return Some(LightState::Off);
+            }
             Some(LightState::Solid {
                 color,
-                brightness: next,
+                brightness: brightness_step(brightness, up),
             })
         }
     }
 }
 
-fn shift_envelope(breath: Breath, up: bool) -> Breath {
-    let step = if up {
-        i16::from(BRIGHTNESS_ENVELOPE_STEP)
+/// The next ladder stop above or below `current`, wrapping at both ends.
+fn brightness_step(current: u8, up: bool) -> u8 {
+    if up {
+        BRIGHTNESS_STEPS
+            .iter()
+            .copied()
+            .find(|&step| step > current)
+            .unwrap_or(BRIGHTNESS_STEPS[0])
     } else {
-        -i16::from(BRIGHTNESS_ENVELOPE_STEP)
-    };
-    let guard = i16::from(BRIGHTNESS_ENVELOPE_STEP);
-    let min = (i16::from(breath.min_brightness) + step).clamp(0, 255 - guard);
-    let max = (i16::from(breath.max_brightness) + step).clamp(guard, 255);
-    Breath {
-        min_brightness: min as u8,
-        max_brightness: max as u8,
-        ..breath
+        BRIGHTNESS_STEPS
+            .iter()
+            .rev()
+            .copied()
+            .find(|&step| step < current)
+            .unwrap_or(BRIGHTNESS_STEPS[BRIGHTNESS_STEPS.len() - 1])
     }
 }
 
@@ -574,6 +683,59 @@ mod tests {
             breath.max_value
         );
         assert_ne!(first.color, quarter.color);
+    }
+
+    #[test]
+    fn aurora_breathes_while_it_drifts_through_its_waypoints() {
+        let mut breath = GlassBreath::CALM;
+        breath.pattern = GlowPattern::Aurora;
+        let period = u32::from(breath.period_ms);
+        assert_eq!(
+            breath.at(0).phase,
+            0,
+            "the breath still starts at the trough"
+        );
+        assert_eq!(breath.at(period / 2).phase, 255, "and peaks halfway");
+        assert_ne!(
+            breath.at(0).color,
+            breath.at(period).color,
+            "one period advances the hue to the next waypoint"
+        );
+    }
+
+    #[test]
+    fn every_pattern_is_deterministic_and_stays_in_its_envelope() {
+        for pattern in EFFECTS {
+            let mut breath = GlassBreath::CALM;
+            breath.pattern = pattern;
+            let period = u32::from(breath.period_ms);
+            let floor = match pattern {
+                GlowPattern::Lightning
+                | GlowPattern::Sparkle
+                | GlowPattern::Strobe
+                | GlowPattern::Sos => 0,
+                GlowPattern::Steady | GlowPattern::Cycle | GlowPattern::Police => breath.max_value,
+                _ => breath.min_value,
+            };
+            for t in [0, 13, period / 3, period / 2, period] {
+                let first = breath.at(t);
+                assert_eq!(first, breath.at(t), "{pattern:?} at {t} is deterministic");
+                let value = iot_core::light::brightness_of(first.color);
+                assert!(
+                    value >= floor && value <= breath.max_value,
+                    "{pattern:?} at {t}: {value} outside {floor}..={}",
+                    breath.max_value
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn the_lamp_boots_on_aurora() {
+        let LightState::Breath(breath) = LightState::boot() else {
+            panic!("boot is breathing");
+        };
+        assert_eq!(breath.effect, GlowPattern::Aurora);
     }
 
     #[test]
@@ -701,6 +863,7 @@ mod tests {
             ),
             (
                 Some(LightState::Breath(Breath {
+                    effect: Effect::Breath,
                     period_ms: 1_000,
                     hue_period_ms: 0,
                     hue_span: 0,
@@ -733,16 +896,19 @@ mod tests {
 #[cfg(test)]
 mod actions {
     use super::*;
+    use iot_core::light::hsv_to_rgb;
 
     const BREATH: LightState = LightState::boot();
 
-    const EVERY_ACTION: [LightAction; 6] = [
+    const EVERY_ACTION: [LightAction; 8] = [
         LightAction::Cycle,
         LightAction::NextColor { forward: true },
         LightAction::NextColor { forward: false },
         LightAction::Step,
         LightAction::Brightness { up: true },
         LightAction::Brightness { up: false },
+        LightAction::NextEffect,
+        LightAction::TogglePower,
     ];
 
     fn breathe() -> Breath {
@@ -776,12 +942,17 @@ mod actions {
     fn next_color_walks_the_group_in_breath_and_the_palette_in_solid() {
         let breath = breathe();
         assert_eq!(
+            color_group_idx(&breath),
+            1,
+            "the boot group is the seven-colour walk"
+        );
+        assert_eq!(
             BREATH.apply(LightAction::NextColor { forward: true }),
-            Some(LightState::Breath(COLOR_GROUPS[1].into_breath(breath)))
+            Some(LightState::Breath(COLOR_GROUPS[2].into_breath(breath)))
         );
         assert_eq!(
             BREATH.apply(LightAction::NextColor { forward: false }),
-            Some(LightState::Breath(COLOR_GROUPS[3].into_breath(breath)))
+            Some(LightState::Breath(COLOR_GROUPS[0].into_breath(breath)))
         );
         assert_eq!(
             solid(140).apply(LightAction::NextColor { forward: true }),
@@ -819,103 +990,169 @@ mod actions {
             );
             state = LightState::Breath(next);
         }
-        assert_eq!(solid(140).apply(LightAction::Step), Some(solid(200)));
-        assert_eq!(solid(255).apply(LightAction::Step), Some(solid(32)));
+        assert_eq!(solid(140).apply(LightAction::Step), Some(solid(179)));
+        assert_eq!(solid(255).apply(LightAction::Step), Some(solid(77)));
     }
 
     #[test]
-    fn brightness_shifts_the_envelope_in_breath_and_the_ladder_in_solid() {
-        let breath = breathe();
+    fn brightness_walks_the_ladder_and_keeps_the_envelope_ratio() {
+        let up = BREATH
+            .apply(LightAction::Brightness { up: true })
+            .expect("a breath has a peak");
         assert_eq!(
-            BREATH.apply(LightAction::Brightness { up: true }),
-            Some(LightState::Breath(Breath {
-                min_brightness: breath.min_brightness + BRIGHTNESS_ENVELOPE_STEP,
-                max_brightness: breath.max_brightness + BRIGHTNESS_ENVELOPE_STEP,
-                ..breath
-            }))
+            up,
+            LightState::Breath(Breath {
+                min_brightness: trough(128),
+                max_brightness: 128,
+                ..breathe()
+            })
         );
+        let down = BREATH
+            .apply(LightAction::Brightness { up: false })
+            .expect("a breath has a peak");
         assert_eq!(
-            BREATH.apply(LightAction::Brightness { up: false }),
-            Some(LightState::Breath(Breath {
-                min_brightness: 0,
-                max_brightness: breath.max_brightness - BRIGHTNESS_ENVELOPE_STEP,
-                ..breath
-            }))
+            down,
+            LightState::Breath(Breath {
+                min_brightness: trough(255),
+                max_brightness: 255,
+                ..breathe()
+            }),
+            "the lowest stop wraps to the brightest"
         );
         assert_eq!(
             solid(140).apply(LightAction::Brightness { up: true }),
-            Some(solid(200))
+            Some(solid(179))
         );
         assert_eq!(
             solid(140).apply(LightAction::Brightness { up: false }),
-            Some(solid(100))
+            Some(solid(128))
         );
         assert_eq!(
-            solid(32).apply(LightAction::Brightness { up: false }),
+            solid(77).apply(LightAction::Brightness { up: false }),
             Some(solid(255))
         );
         assert_eq!(
             solid(255).apply(LightAction::Brightness { up: true }),
-            Some(solid(32))
+            Some(LightState::Off),
+            "the dial's dark stop is past full"
+        );
+        assert_eq!(
+            LightState::Off.apply(LightAction::Brightness { up: true }),
+            Some(lit()),
+            "a dark lamp answers the dial by lighting at its foot"
+        );
+        assert_eq!(
+            LightState::Off.apply(LightAction::Brightness { up: false }),
+            None
         );
     }
 
     #[test]
-    fn the_envelope_keeps_its_span_at_both_walls() {
-        let at_bottom = Breath {
-            min_brightness: 8,
-            max_brightness: 40,
-            ..breathe()
-        };
-        let sunk = shift_envelope(at_bottom, false);
-        assert_eq!(sunk.min_brightness, 0, "floor clamps at 0");
+    fn the_ladder_wraps_at_both_ends_and_clicks_off_past_full() {
+        assert_eq!(brightness_step(BRIGHTNESS_STEPS[0], false), 255);
+        let mut state = BREATH;
+        for _ in 0..BRIGHTNESS_STEPS.len() - 1 {
+            state = state
+                .apply(LightAction::Brightness { up: true })
+                .expect("the dial climbs");
+        }
         assert_eq!(
-            sunk.max_brightness, BRIGHTNESS_ENVELOPE_STEP,
-            "ceiling rides the wall guard so the envelope keeps its span"
+            state,
+            LightState::Breath(Breath {
+                min_brightness: trough(255),
+                max_brightness: 255,
+                ..breathe()
+            })
         );
-        let at_top = Breath {
-            min_brightness: 240,
-            max_brightness: 255,
-            ..breathe()
-        };
-        let lifted = shift_envelope(at_top, true);
         assert_eq!(
-            lifted.min_brightness,
-            255 - BRIGHTNESS_ENVELOPE_STEP,
-            "floor parks at 255-guard so the envelope keeps its span"
+            state.apply(LightAction::Brightness { up: true }),
+            Some(LightState::Off)
         );
-        assert_eq!(lifted.max_brightness, 255, "ceiling clamps at 255");
-        let mut breath = breathe();
-        for up in [true, false] {
-            for _ in 0..32 {
-                breath = shift_envelope(breath, up);
-                assert!(
-                    breath.max_brightness as u16 - breath.min_brightness as u16
-                        >= u16::from(BRIGHTNESS_ENVELOPE_STEP),
-                    "a shift keeps at least a full step of span"
-                );
-            }
+        for step in BRIGHTNESS_STEPS {
+            assert!(trough(step) < step, "the trough stays below the peak");
         }
     }
 
     #[test]
-    fn off_answers_only_cycle_and_can_agrees_with_apply() {
-        assert!(LightState::Off.can(LightAction::Cycle));
-        assert!(LightState::Off.apply(LightAction::Cycle).is_some());
-        for state in [LightState::Off, solid(140), BREATH] {
-            for action in EVERY_ACTION {
-                assert_eq!(
-                    state.can(action),
-                    state.apply(action).is_some(),
-                    "{state:?} {action:?}"
-                );
-            }
-        }
+    fn off_answers_only_the_actions_that_can_light_it() {
         for action in EVERY_ACTION {
-            if action != LightAction::Cycle {
-                assert!(!LightState::Off.can(action), "{action:?}");
-            }
+            let lights_it = matches!(
+                action,
+                LightAction::Cycle
+                    | LightAction::NextEffect
+                    | LightAction::TogglePower
+                    | LightAction::Brightness { up: true }
+            );
+            assert_eq!(LightState::Off.can(action), lights_it, "{action:?}");
         }
+    }
+
+    #[test]
+    fn every_effect_carries_its_own_tone() {
+        let base = breathe();
+        let peak = base.max_brightness;
+        let tone_of = |effect| {
+            let breath = tone(effect, base);
+            (breath.hue, breath.saturation, breath.group_len)
+        };
+        assert_eq!(tone_of(Effect::Candle), (28, 200, 0));
+        assert_eq!(tone_of(Effect::Pulse), (128, 255, 0));
+        assert_eq!(tone_of(Effect::Heartbeat), (0, 255, 0));
+        for effect in [Effect::Lightning, Effect::Sparkle, Effect::Strobe] {
+            assert_eq!(tone_of(effect), (190, 40, 0), "{effect:?}");
+        }
+        assert_eq!(tone_of(Effect::Sos), (190, 0, 0), "SOS is white");
+        let police = tone(Effect::Police, base);
+        assert_eq!(police.group_len, 2);
+        assert_eq!(
+            police.sample(0).color,
+            hsv_to_rgb(0, 255, peak),
+            "the police starts red"
+        );
+        assert_eq!(
+            police.sample(base.period_ms / 2).color,
+            hsv_to_rgb(170, 255, peak),
+            "and flips to blue"
+        );
+        for effect in [Effect::Steady, Effect::Breath, Effect::Aurora] {
+            let breath = tone(effect, base);
+            assert_eq!(breath.group, LightState::DEFAULT_GROUP, "{effect:?}");
+            assert_eq!(breath.group_len, LightState::DEFAULT_GROUP_LEN);
+        }
+    }
+
+    #[test]
+    fn next_effect_walks_the_list_and_stops_at_off() {
+        let mut state = lit();
+        for (i, effect) in EFFECTS.iter().enumerate().skip(1) {
+            state = state
+                .apply(LightAction::NextEffect)
+                .expect("a breath turns");
+            let LightState::Breath(breath) = state else {
+                panic!("next effect stays in breathing");
+            };
+            assert_eq!(breath.effect, *effect, "step {i}");
+        }
+        assert_eq!(
+            state.apply(LightAction::NextEffect),
+            Some(LightState::Off),
+            "the list's end is the off stop"
+        );
+        assert_eq!(
+            LightState::Off.apply(LightAction::NextEffect),
+            Some(lit()),
+            "a press turns it back on at the head"
+        );
+        assert_eq!(
+            solid(140).apply(LightAction::NextEffect),
+            Some(LightState::boot()),
+            "a solid lamp enters the default breath"
+        );
+        assert_eq!(lit().apply(LightAction::TogglePower), Some(LightState::Off));
+        assert_eq!(
+            LightState::Off.apply(LightAction::TogglePower),
+            Some(LightState::boot())
+        );
     }
 
     #[test]
@@ -926,8 +1163,9 @@ mod actions {
         );
         assert_eq!(table_step(&PALETTE, Rgb(0, 0, 0), 1), PALETTE[1]);
         assert_eq!(
-            table_step(&SOLID_BRIGHTNESS_STEPS, 7, 1),
-            SOLID_BRIGHTNESS_STEPS[1]
+            brightness_step(7, true),
+            BRIGHTNESS_STEPS[0],
+            "a peak below the ladder starts at its head"
         );
         let unknown = Breath {
             group: [200, 250, 30, 0, 0, 0, 0],
@@ -942,9 +1180,6 @@ mod actions {
         let last = *PALETTE.last().unwrap();
         assert_eq!(table_step(&PALETTE, PALETTE[0], -1), last);
         assert_eq!(table_step(&PALETTE, last, 1), PALETTE[0]);
-        assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 32, -1), 255);
-        assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 140, -1), 100);
-        assert_eq!(table_step(&SOLID_BRIGHTNESS_STEPS, 7, -1), 255);
     }
 
     #[test]
@@ -1222,6 +1457,28 @@ mod lamp {
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::RequestSetup));
         manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
         assert_eq!(manager.state().notice, None);
+        assert_eq!(manager.state().page(), PageId::Network);
+    }
+
+    #[test]
+    fn a_hold_through_the_splash_of_a_lamp_only_board_opens_provisioning() {
+        let mut manager = lamp_only();
+        assert_eq!(manager.state().page(), PageId::Splash);
+        let hold = InputIntent {
+            source: 0,
+            event: InputEvent::Button(ButtonEvent::LongPress),
+        };
+        assert_eq!(
+            translate(&hold, &manager.state(), &Services::default()),
+            Some(BusinessIntent::Navigation(NavigationIntent::RequestSetup))
+        );
+        manager.apply_intent(Intent::Input(hold));
+        assert_eq!(
+            manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
+            Some(crate::shared::model::Command::Network(
+                crate::shared::model::NetworkCommand::SplashOver { setup: true }
+            ))
+        );
         assert_eq!(manager.state().page(), PageId::Network);
     }
 

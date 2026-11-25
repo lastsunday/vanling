@@ -27,15 +27,19 @@ fn a_button_asks_for_one_verb_per_click() {
     for (event, action) in [
         (
             InputEvent::Button(ButtonEvent::Click),
-            LightAction::NextColor { forward: true },
+            LightAction::NextEffect,
         ),
         (
             InputEvent::Button(ButtonEvent::DoubleClick),
-            LightAction::Step,
+            LightAction::NextColor { forward: true },
+        ),
+        (
+            InputEvent::Button(ButtonEvent::TripleClick),
+            LightAction::Brightness { up: true },
         ),
         (
             InputEvent::Button(ButtonEvent::LongPress),
-            LightAction::Cycle,
+            LightAction::Brightness { up: true },
         ),
     ] {
         assert_eq!(
@@ -56,14 +60,14 @@ fn a_touch_asks_the_panel_surface() {
         lamp_intent(tap_gesture(0), &lamp),
         Some(BusinessIntent::Light {
             instance: 0,
-            action: LightAction::NextColor { forward: true },
+            action: LightAction::NextEffect,
         })
     );
     assert_eq!(
         translate(&long_press(), &lamp, &Services::default()),
         Some(BusinessIntent::Light {
             instance: 0,
-            action: LightAction::Cycle,
+            action: LightAction::Brightness { up: true },
         })
     );
     for (direction, action) in [
@@ -106,14 +110,22 @@ fn a_diagonal_swipe_asks_for_nothing() {
 }
 
 #[test]
-fn off_answers_only_the_cycle() {
+fn off_answers_only_the_effects_that_can_light_it() {
     let off = state_on(PageId::Headless, LightState::Off);
+    for event in [InputEvent::Button(ButtonEvent::Click), tap_gesture(0)] {
+        assert_eq!(
+            lamp_intent(event, &off),
+            Some(BusinessIntent::Light {
+                instance: 0,
+                action: LightAction::NextEffect,
+            }),
+            "{event:?} turns the lamp back on"
+        );
+    }
     for event in [
-        InputEvent::Button(ButtonEvent::Click),
         InputEvent::Button(ButtonEvent::DoubleClick),
-        swipe_event(SwipeDirection::Up),
+        swipe_event(SwipeDirection::Down),
         swipe_event(SwipeDirection::Right),
-        tap_gesture(0),
     ] {
         assert_eq!(
             lamp_intent(event, &off),
@@ -121,12 +133,26 @@ fn off_answers_only_the_cycle() {
             "{event:?} has nothing to move"
         );
     }
+    for event in [
+        InputEvent::Button(ButtonEvent::TripleClick),
+        swipe_event(SwipeDirection::Up),
+    ] {
+        assert_eq!(
+            lamp_intent(event, &off),
+            Some(BusinessIntent::Light {
+                instance: 0,
+                action: LightAction::Brightness { up: true },
+            }),
+            "{event:?} lights a dark lamp at the dial's foot"
+        );
+    }
     assert_eq!(
         translate(&long_press(), &off, &Services::default()),
         Some(BusinessIntent::Light {
             instance: 0,
-            action: LightAction::Cycle,
-        })
+            action: LightAction::Brightness { up: true },
+        }),
+        "the dial lights a dark lamp at its foot"
     );
 }
 
@@ -140,7 +166,7 @@ fn a_button_drives_its_own_surface_and_clamps() {
         ),
         Some(BusinessIntent::Light {
             instance: 1,
-            action: LightAction::NextColor { forward: true },
+            action: LightAction::NextEffect,
         }),
         "each button drives the surface its wiring order names"
     );
@@ -152,7 +178,7 @@ fn a_button_drives_its_own_surface_and_clamps() {
         ),
         Some(BusinessIntent::Light {
             instance: 1,
-            action: LightAction::Step,
+            action: LightAction::NextColor { forward: true },
         }),
         "out-of-range sources clamp to the last surface"
     );
@@ -162,7 +188,10 @@ fn a_button_drives_its_own_surface_and_clamps() {
 fn a_tap_only_touches_the_first_surface() {
     assert_eq!(
         translate(&tap(), &two_lights(), &Services::default()),
-        None,
-        "the panel's surface is off, and a tap never reaches the second one"
+        Some(BusinessIntent::Light {
+            instance: 0,
+            action: LightAction::NextEffect,
+        }),
+        "the panel's surface answers even while dark, and never the second one"
     );
 }

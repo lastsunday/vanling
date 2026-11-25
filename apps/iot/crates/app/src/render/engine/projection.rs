@@ -51,6 +51,7 @@ fn light_snapshot(state: LightState) -> LightSnapshot {
             breath: BreathSnapshot::default(),
         },
         LightState::Breath(Breath {
+            effect: _,
             period_ms,
             hue_period_ms,
             hue_span,
@@ -392,6 +393,7 @@ mod tests {
         );
         assert_eq!(
             light_snapshot(LightState::Breath(crate::state::Breath {
+                effect: iot_core::light::Effect::Breath,
                 hue: 17,
                 group: [0, 0, 0, 0, 0, 0, 0],
                 group_len: 0,
@@ -404,7 +406,7 @@ mod tests {
         let breath = light_snapshot(LightState::Breath(BOOT_BREATH));
         assert_eq!(
             (breath.mode, breath.brightness, breath.hue),
-            (MODE_BREATH, 80, 16),
+            (MODE_BREATH, 77, 0),
             "a breathing light reports its ceiling and group head"
         );
         assert_eq!(
@@ -442,6 +444,7 @@ mod tests {
         );
         assert!(matches!(
             light_appearance(LightState::Breath(crate::state::Breath {
+                effect: iot_core::light::Effect::Breath,
                 period_ms: 1,
                 hue_period_ms: 2,
                 hue_span: 3,

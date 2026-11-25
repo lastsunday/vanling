@@ -2,6 +2,9 @@
 
 use super::*;
 
+static DOUBLE: ClickConfig = ClickConfig::new(ClickPattern::Double, DOUBLE_CLICK_WINDOW_MS as u16);
+static TRIPLE: ClickConfig = ClickConfig::new(ClickPattern::Triple, DOUBLE_CLICK_WINDOW_MS as u16);
+
 struct FakeButton<'a> {
     pressed: &'a Pressed,
 }
@@ -108,7 +111,7 @@ fn non_click_events_pass_through_immediately() {
     let mut passthrough = PassThrough;
     let click = InputEvent::Button(ButtonEvent::Click);
     assert_eq!(passthrough.feed(click, 100), Some(click));
-    let mut agg = DoubleClickAggregator::new();
+    let mut agg = ClickAggregator::new(&TRIPLE);
     let long = InputEvent::Button(ButtonEvent::LongPress);
     assert_eq!(
         agg.feed(long, 100),
@@ -119,9 +122,19 @@ fn non_click_events_pass_through_immediately() {
 }
 
 #[test]
+fn a_single_pattern_emits_on_the_lift_with_no_window() {
+    let click = InputEvent::Button(ButtonEvent::Click);
+    let mut agg = ClickAggregator::new(clicks());
+    assert_eq!(agg.feed(click, 100), Some(click), "no click is held back");
+    assert_eq!(agg.tick(1_000), None, "and nothing is left pending");
+    let long = InputEvent::Button(ButtonEvent::LongPress);
+    assert_eq!(agg.feed(long, 1_100), Some(long));
+}
+
+#[test]
 fn double_click_buffers_pairs_and_flushes() {
     let click = InputEvent::Button(ButtonEvent::Click);
-    let mut agg = DoubleClickAggregator::new();
+    let mut agg = ClickAggregator::new(&DOUBLE);
     assert_eq!(agg.feed(click, 100), None, "first click buffers");
     assert_eq!(
         agg.feed(click, 100 + DOUBLE_CLICK_WINDOW_MS),
@@ -133,7 +146,7 @@ fn double_click_buffers_pairs_and_flushes() {
         Some(InputEvent::Button(ButtonEvent::DoubleClick))
     );
 
-    let mut agg = DoubleClickAggregator::new();
+    let mut agg = ClickAggregator::new(&DOUBLE);
     assert_eq!(agg.feed(click, 100), None);
     assert_eq!(
         agg.tick(100 + DOUBLE_CLICK_WINDOW_MS),
@@ -146,7 +159,7 @@ fn double_click_buffers_pairs_and_flushes() {
         "the tick past the window releases the lone click"
     );
 
-    let mut agg = DoubleClickAggregator::new();
+    let mut agg = ClickAggregator::new(&DOUBLE);
     assert_eq!(agg.feed(click, 100), None);
     assert_eq!(
         agg.feed(click, 100 + DOUBLE_CLICK_WINDOW_MS + 1),
@@ -159,7 +172,7 @@ fn double_click_buffers_pairs_and_flushes() {
         "the new buffer expires as a lone click"
     );
 
-    let mut agg = DoubleClickAggregator::new();
+    let mut agg = ClickAggregator::new(&DOUBLE);
     let long = InputEvent::Button(ButtonEvent::LongPress);
     assert_eq!(agg.feed(click, 100), None);
     assert_eq!(
@@ -172,18 +185,56 @@ fn double_click_buffers_pairs_and_flushes() {
 #[test]
 fn triple_click_uses_the_same_window_and_restarts_afterwards() {
     let click = InputEvent::Button(ButtonEvent::Click);
-    let mut agg = DoubleClickAggregator::with_window_ms(DOUBLE_CLICK_WINDOW_MS);
+    let window = DOUBLE_CLICK_WINDOW_MS;
+    let mut agg = ClickAggregator::new(&TRIPLE);
     assert_eq!(agg.feed(click, 0), None);
-    assert_eq!(agg.feed(click, 400), None);
+    assert_eq!(agg.feed(click, window), None);
     assert_eq!(
-        agg.feed(click, 800),
+        agg.feed(click, 2 * window),
         Some(InputEvent::Button(ButtonEvent::TripleClick))
     );
-    assert_eq!(agg.feed(click, 1_200), None);
-    assert_eq!(agg.feed(click, 1_600), None);
+    assert_eq!(agg.feed(click, 3 * window), None);
+    assert_eq!(agg.feed(click, 4 * window), None);
     assert_eq!(
-        agg.feed(click, 2_000),
+        agg.feed(click, 5 * window),
         Some(InputEvent::Button(ButtonEvent::TripleClick))
+    );
+}
+
+#[test]
+fn a_double_pattern_restarts_after_the_pair() {
+    let click = InputEvent::Button(ButtonEvent::Click);
+    let window = DOUBLE_CLICK_WINDOW_MS;
+    let mut agg = ClickAggregator::new(&DOUBLE);
+    assert_eq!(agg.feed(click, 0), None);
+    assert_eq!(agg.feed(click, window), None);
+    assert_eq!(
+        agg.feed(click, 2 * window),
+        Some(InputEvent::Button(ButtonEvent::DoubleClick)),
+        "the third click closes the pair instead of opening a triple"
+    );
+    assert_eq!(
+        agg.tick(3 * window + 1),
+        Some(InputEvent::Button(ButtonEvent::Click)),
+        "and starts the next sequence"
+    );
+}
+
+#[test]
+fn a_runtime_window_change_applies_to_the_pending_sequence() {
+    static CONFIG: ClickConfig = ClickConfig::new(ClickPattern::Double, 100);
+    let click = InputEvent::Button(ButtonEvent::Click);
+    let mut agg = ClickAggregator::new(&CONFIG);
+    assert_eq!(agg.feed(click, 0), None);
+    CONFIG.set(ClickPattern::Double, 400);
+    assert_eq!(
+        agg.feed(click, 300),
+        None,
+        "the wider window holds the pair"
+    );
+    assert_eq!(
+        agg.tick(300 + 401),
+        Some(InputEvent::Button(ButtonEvent::DoubleClick))
     );
 }
 
@@ -374,7 +425,13 @@ fn poll_entry_wires_scanner_into_the_double_click() {
     assert!(entry.poll(50).is_none());
     assert_eq!(entry.poll(60), Some(InputEvent::Button(ButtonEvent::Click)));
     let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
-    let mut entry = PollEntry::button(0, FakeButton { pressed });
+    let mut entry = PollEntry::new(
+        0,
+        DemandKey::INTERACTION,
+        Box::new(ButtonScanner::new(FakeButton { pressed })),
+        Box::new(ClickAggregator::new(&DOUBLE)),
+        BUTTON_SCAN_MS,
+    );
     for ms in [0, 10, 20] {
         pressed.set(true);
         assert!(entry.poll(ms).is_none());
@@ -394,6 +451,24 @@ fn poll_entry_wires_scanner_into_the_double_click() {
     assert_eq!(
         entry.poll(511),
         Some(InputEvent::Button(ButtonEvent::DoubleClick))
+    );
+}
+
+#[test]
+fn a_board_button_ships_single_clicks_without_a_window() {
+    let pressed: &'static Pressed = Box::leak(Box::new(Pressed::new(false)));
+    let mut entry = PollEntry::button(0, FakeButton { pressed });
+    for ms in [0, 10, 20] {
+        pressed.set(true);
+        assert!(entry.poll(ms).is_none());
+    }
+    pressed.set(false);
+    assert!(entry.poll(30).is_none());
+    assert!(entry.poll(40).is_none());
+    assert_eq!(
+        entry.poll(50),
+        Some(InputEvent::Button(ButtonEvent::Click)),
+        "the lift is the click, with no window to wait out"
     );
 }
 

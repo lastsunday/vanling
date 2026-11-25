@@ -19,14 +19,17 @@ impl super::LocalPage for HeadlessPage {
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
             | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-                state.light_intent(op, LightAction::NextColor { forward: true })
+                state.light_intent(op, LightAction::NextEffect)
             }
             InputEvent::Button(ButtonEvent::DoubleClick) => {
-                state.light_intent(op, LightAction::Step)
+                state.light_intent(op, LightAction::NextColor { forward: true })
+            }
+            InputEvent::Button(ButtonEvent::TripleClick) => {
+                state.light_intent(op, LightAction::Brightness { up: true })
             }
             InputEvent::Button(ButtonEvent::LongPress)
             | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-                state.light_intent(op, LightAction::Cycle)
+                state.light_intent(op, LightAction::Brightness { up: true })
             }
             InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
                 state.light_swipe(op, direction)

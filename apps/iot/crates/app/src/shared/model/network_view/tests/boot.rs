@@ -150,7 +150,7 @@ fn a_long_press_after_the_splash_reaches_the_headless_page() {
     assert_ne!(
         manager.state().lights[0],
         before,
-        "the press is still the page's own verb"
+        "the press is still the headless page's own verb"
     );
 }
 

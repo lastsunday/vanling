@@ -8,7 +8,7 @@ use iot_app::runtime::workers::Network;
 use iot_app::shared::intent::Key;
 use iot_app::shared::intent::{
     BusinessIntent, Confirm, Intent, LightingControl, LightingIntent, LinkIntent, NavigationIntent,
-    NetworkIntent,
+    NetworkIntent, PlaybackAction,
 };
 use iot_app::state::{NetworkCommand, PageId};
 use iot_core::drivers::audio::dbfs;
@@ -23,31 +23,29 @@ use super::board::*;
 /// A finger's hold, not a threshold probe; the scanner's boundary is unit-tested.
 const LONG_HOLD: Duration = Duration::from_millis(LONG_PRESS_MS + 400);
 
-/// Repeats the gesture only while the page has not moved; a wrong landing still fails.
-async fn triple_click_to(page: PageId) {
+/// One page forward, waiting for the click window to close and the page to move.
+async fn click_to(page: PageId) {
     let start = *PAGES
         .lock()
         .unwrap()
         .last()
-        .expect("a page was painted before the first triple click");
-    for attempt in 0..3 {
-        triple_click().await;
-        for _ in 0..200 {
-            let landed = *PAGES
-                .lock()
-                .unwrap()
-                .last()
-                .expect("a page was painted before the first triple click");
-            if landed == page {
-                return;
-            }
-            if landed != start {
-                panic!("triple click {attempt} landed on {landed:?}, not {page:?}");
-            }
-            Timer::after(Duration::from_millis(10)).await;
+        .expect("a page was painted before the first click");
+    click(0).await;
+    for _ in 0..200 {
+        let landed = *PAGES
+            .lock()
+            .unwrap()
+            .last()
+            .expect("a page was painted before the first click");
+        if landed == page {
+            return;
         }
+        if landed != start {
+            panic!("a click landed on {landed:?}, not {page:?}");
+        }
+        Timer::after(Duration::from_millis(10)).await;
     }
-    panic!("three triple clicks never left {start:?} for {page:?}");
+    panic!("a click never left {start:?} for {page:?}");
 }
 
 /// Jumps straight to a page the menu cannot reach.
@@ -120,7 +118,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     go_to(bus, PageId::Input).await;
     // Forget Input's own frame: the assertion is about the next page the walk lands on.
     GLASS_ELSEWHERE.store(false, Ordering::SeqCst);
-    triple_click_to(PageId::Attitude).await;
+    click_to(PageId::Attitude).await;
     attempts = 0;
     while !GLASS_ELSEWHERE.load(Ordering::SeqCst) && attempts < 200 {
         Timer::after(Duration::from_millis(10)).await;
@@ -131,7 +129,13 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "a breath scoped to every page never reached another page"
     );
 
-    triple_click_to(PageId::Audio).await;
+    click_to(PageId::Audio).await;
+    // The page can be on screen before the worker's first poll reaches the driver.
+    attempts = 0;
+    while AUDIO_POLLS.load(Ordering::SeqCst) == 0 && attempts < 100 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
     assert!(
         AUDIO_POLLS.load(Ordering::SeqCst) > 0,
         "the capture source was never polled"
@@ -162,7 +166,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "the capture's A-weighted level did not reach the panel snapshot"
     );
 
-    triple_click_to(PageId::Speaker).await;
+    go_to(bus, PageId::Speaker).await;
 
     click(1).await;
 
@@ -228,9 +232,12 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "the page never left Playing after the driver reported the sound done"
     );
 
-    PRESSED[0].store(true, Ordering::SeqCst);
-    Timer::after(LONG_HOLD).await;
-    PRESSED[0].store(false, Ordering::SeqCst);
+    // The touch latch is the page's own; the hardware hold belongs to navigation.
+    send(
+        bus,
+        BusinessIntent::Playback(PlaybackAction::SetMuted(true)),
+    )
+    .await;
 
     attempts = 0;
     while !PLAYBACK_EVER_MUTED.load(Ordering::SeqCst) && attempts < 100 {
@@ -239,7 +246,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
     }
     assert!(
         PLAYBACK_EVER_MUTED.load(Ordering::SeqCst),
-        "a long press did not latch the speaker mute"
+        "a mute never reached the output"
     );
     attempts = 0;
     while MUTED.lock().unwrap().is_empty() && attempts < 100 {
@@ -252,7 +259,23 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
         "the mute did not reach the driver as a single latch"
     );
 
-    triple_click_to(PageId::Camera).await;
+    PRESSED[0].store(true, Ordering::SeqCst);
+    Timer::after(LONG_HOLD).await;
+    PRESSED[0].store(false, Ordering::SeqCst);
+    attempts = 0;
+    while *PAGES.lock().unwrap().last().expect("a page is painted") != PageId::Menu
+        && attempts < 200
+    {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert_eq!(
+        *PAGES.lock().unwrap().last().expect("a page is painted"),
+        PageId::Menu,
+        "a hold on the Speaker page did not go home"
+    );
+
+    go_to(bus, PageId::Camera).await;
 
     attempts = 0;
     while CAMERA_PAINTED.load(Ordering::SeqCst) == 0 && attempts < 100 {
@@ -266,7 +289,7 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     let painted_before = PAINTED.lock().unwrap().len();
     let released_before = RELEASED.load(Ordering::SeqCst);
-    triple_click_to(PageId::Network).await;
+    go_to(bus, PageId::Network).await;
 
     assert!(
         RELEASED.load(Ordering::SeqCst) > released_before,

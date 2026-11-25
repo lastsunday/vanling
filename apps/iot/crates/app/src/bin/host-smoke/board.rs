@@ -440,15 +440,6 @@ impl HasCamera for HostBoard {
     }
 }
 
-pub(super) async fn triple_click() {
-    for _ in 0..3 {
-        PRESSED[0].store(true, Ordering::SeqCst);
-        Timer::after(Duration::from_millis(80)).await;
-        PRESSED[0].store(false, Ordering::SeqCst);
-        Timer::after(Duration::from_millis(50)).await;
-    }
-}
-
 pub(super) async fn click(button: usize) {
     PRESSED[button].store(true, Ordering::SeqCst);
     Timer::after(Duration::from_millis(120)).await;

@@ -17,13 +17,13 @@ The capture driver never stops. It is always folding the samples the I2S deliver
 
 Reading `ST` as "the recorder is running / stopped" gets two things wrong at once: recording makes the driver do no additional work, and stopping it makes the driver do no less.
 
-A capture poll is pure data path: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot channel the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a business-side click (`BusinessIntent::Audio(AudioIntent::Start)` / `Audio(AudioIntent::Stop)` in `state/manager/write.rs`), and only on the Audio page — a click on any other page still cycles the color.
+A capture poll is pure data path: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot channel the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a business-side click (`BusinessIntent::Audio(AudioIntent::Start)` / `Audio(AudioIntent::Stop)` in `state/manager/write.rs`), and only on the Audio page — a click on another page belongs to that page, and turns the page only when the page does not claim it.
 
 There are three phases: `IDLE` (nothing captured, the panel draws only `TAP TO REC` and no sweep), `REC` (follows the live envelope), and `STOP` (draws the latched copy). A click on either `IDLE` or `STOP` goes straight back to `REC`.
 
 There is no "resume" semantic, because what gets latched is the window at the moment of stopping, not a recording.
 
-When the board finds no ES7210, `Backed::audio` is false and the `AUDIO` page never enters the page cycle (`PageId::next_page` skips pages no capability backs); every other page is unaffected. Getting to the page is a triple-click of the button or a three-finger tap (`NextPage`).
+When the board finds no ES7210, `Backed::audio` is false and the `AUDIO` page never enters the page cycle (`PageId::next_page` skips pages no capability backs); every other page is unaffected. Getting to the page is a single click of the button from the page before it (`NextPage`).
 
 The side that makes sound is in [Playback Semantics](@/development/iot/playback.en.md). The two pages share one 12.288 MHz MCLK but their semantics are opposite: capture **never stops**, playback is over when the sound is — which is why playback has a phase and this page does not.
 

@@ -31,7 +31,7 @@ type Bucket = fn(&MotionCounts) -> u16;
 #[test]
 fn the_page_switch_skips_pages_the_board_lacks() {
     let mut disabled = landed(DeviceManager::new());
-    feed_input(&mut disabled, triple_click());
+    next_page(&mut disabled);
     assert_eq!(
         disabled.state().page(),
         PageId::Env,
@@ -45,29 +45,29 @@ fn the_page_switch_skips_pages_the_board_lacks() {
         },
         ..Default::default()
     }));
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Attitude);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Env);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Text);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Widgets);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Advanced);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Feedback);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Extended);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Data);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::List);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Lighting);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Menu);
-    feed_input(&mut enabled, triple_click());
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Input);
 }
 

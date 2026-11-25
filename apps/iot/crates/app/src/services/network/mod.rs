@@ -8,12 +8,11 @@ mod view;
 #[cfg(test)]
 mod tests;
 
-use iot_core::drivers::input::{ButtonEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
-use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent, NetworkIntent};
+use crate::shared::intent::{BusinessIntent, InputIntent, LinkIntent};
 use crate::shared::model::{Command, DeviceState, Effects, NetworkView};
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
@@ -47,16 +46,6 @@ impl super::Service for NetworkPage {
             ),
             _ => (None, Effects::default()),
         }
-    }
-}
-
-impl NetworkPage {
-    /// The setup hold is a link decision, not a page one: switching the host is offered from
-    /// anywhere the panel is not a transient.
-    pub(super) fn from_anywhere(op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
-        (state.network.link.mode.is_setup()
-            && matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)))
-        .then_some(BusinessIntent::Network(NetworkIntent::SwitchHost))
     }
 }
 

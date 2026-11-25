@@ -1,8 +1,7 @@
-//! The cross-page answers of the input boundary: what the splash admits, and the setup
-//! shortcut that outranks the page's own verb.
+//! The cross-page answers of the input boundary: what the splash admits, and the hold that
+//! always goes home.
 
 use super::*;
-use crate::shared::intent::NetworkIntent;
 use iot_core::drivers::network::{LinkPhase, LinkStatus, NetworkMode, SetupHost};
 
 fn connected(state: DeviceState) -> DeviceState {
@@ -74,19 +73,33 @@ fn a_long_press_once_the_splash_is_over_is_the_headless_pages_verb() {
         ),
         Some(BusinessIntent::Light {
             instance: 0,
-            action: LightAction::Cycle,
+            action: LightAction::Brightness { up: true },
+        }),
+        "the dial lights a dark lamp at its foot"
+    );
+    assert_eq!(
+        translate(
+            &op(long_press_event()),
+            &connected(state_on(PageId::Headless, BREATH)),
+            &Services::default()
+        ),
+        Some(BusinessIntent::Light {
+            instance: 0,
+            action: LightAction::Brightness { up: true },
         })
     );
 }
 
 #[test]
-fn a_long_press_offers_the_access_points_front_whatever_page_is_up() {
+fn a_long_press_goes_home_even_while_setup_offers_a_host_switch() {
     assert_eq!(
         translate(
             &op(long_press_event()),
             &in_setup(state_on(PageId::Input, LightState::Off)),
             &Services::default()
         ),
-        Some(BusinessIntent::Network(NetworkIntent::SwitchHost))
+        Some(BusinessIntent::Navigation(NavigationIntent::Go(
+            PageId::Menu.code()
+        )))
     );
 }

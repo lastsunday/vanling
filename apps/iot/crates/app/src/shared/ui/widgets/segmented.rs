@@ -1,4 +1,4 @@
-//! One choice out of three, drawn as a bordered strip.
+//! One choice out of a strip, drawn as a bordered row.
 
 use iot_core::ui::panel::TOUCH_MIN;
 use iot_core::ui::{NodeId, Style, TextAlign, Ui, Widget};
@@ -6,16 +6,16 @@ use iot_core::ui::{NodeId, Style, TextAlign, Ui, Widget};
 use crate::shared::ui::theme::{CORNER, Theme};
 
 #[derive(Clone, Copy, Debug)]
-pub struct Segmented<'a> {
-    labels: [&'a [u8]; 3],
-    tags: [u16; 3],
+pub struct Segmented<'a, const N: usize> {
+    labels: [&'a [u8]; N],
+    tags: [u16; N],
     selected: u8,
     height: i16,
     theme: Option<&'a Theme>,
 }
 
-impl<'a> Segmented<'a> {
-    pub const fn new(labels: [&'a [u8]; 3], tags: [u16; 3], selected: u8) -> Self {
+impl<'a, const N: usize> Segmented<'a, N> {
+    pub const fn new(labels: [&'a [u8]; N], tags: [u16; N], selected: u8) -> Self {
         Self {
             labels,
             tags,
@@ -36,7 +36,7 @@ impl<'a> Segmented<'a> {
     }
 }
 
-impl Widget for Segmented<'_> {
+impl<const N: usize> Widget for Segmented<'_, N> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = ui.color(theme.muted);

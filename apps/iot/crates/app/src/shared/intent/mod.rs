@@ -8,7 +8,7 @@ pub use self::action::WidgetsAction;
 pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WINDOW_MS};
 
 use crate::shared::i18n::Lang;
-use iot_core::drivers::input::{InputEvent, SwipeDirection};
+use iot_core::drivers::input::{ClickPattern, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 use iot_core::ui::ThemeId;
 
@@ -251,6 +251,11 @@ pub enum SettingsIntent {
     SetLang { lang: Lang },
     /// The panel's palette from now on; a build names the one it starts in.
     SetTheme { theme: ThemeId },
+    /// How many presses a button may fold into one gesture, and how long it waits to decide.
+    SetClicks {
+        pattern: ClickPattern,
+        window_ms: u16,
+    },
 }
 
 /// One control on the lighting page. The discriminant is the wire tag, so the view, the hit
@@ -268,10 +273,19 @@ pub enum LightingControl {
     PatternBreath,
     PatternSteady,
     PatternCycle,
+    PatternAurora,
+    PatternCandle,
+    PatternPulse,
+    PatternHeartbeat,
+    PatternLightning,
+    PatternSparkle,
+    PatternStrobe,
+    PatternPolice,
+    PatternSos,
 }
 
 impl LightingControl {
-    pub const ALL: [Self; 10] = [
+    pub const ALL: [Self; 19] = [
         Self::Off,
         Self::Page,
         Self::All,
@@ -282,6 +296,15 @@ impl LightingControl {
         Self::PatternBreath,
         Self::PatternSteady,
         Self::PatternCycle,
+        Self::PatternAurora,
+        Self::PatternCandle,
+        Self::PatternPulse,
+        Self::PatternHeartbeat,
+        Self::PatternLightning,
+        Self::PatternSparkle,
+        Self::PatternStrobe,
+        Self::PatternPolice,
+        Self::PatternSos,
     ];
 
     pub const fn tag(self) -> u16 {
@@ -318,6 +341,8 @@ pub enum LightingIntent {
     },
     /// The finger left the glass: whatever it held is no longer held.
     LetGo,
+    /// The button walks the effect list; the panel's grid can still pick any of them.
+    NextEffect,
 }
 
 /// What a finger asks of a demo gallery: the control it touched, or the scroll under it.
@@ -406,7 +431,7 @@ pub enum ListIntent {
     Tap { x: u16, y: u16 },
 }
 
-/// The lamp's verbs; `Cycle` is the only one that leaves `Off`.
+/// The lamp's verbs; `Cycle` and `TogglePower` are the ones that can leave `Off`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LightAction {
     /// Off → breath → solid → off.
@@ -417,6 +442,10 @@ pub enum LightAction {
     Step,
     /// Shift the breathing envelope, or step solid brightness.
     Brightness { up: bool },
+    /// The next time-based effect; solid mode enters breathing on its default effect.
+    NextEffect,
+    /// Off ↔ the last lit state's boot default.
+    TogglePower,
 }
 
 impl LightAction {

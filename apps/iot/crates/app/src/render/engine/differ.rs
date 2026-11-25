@@ -252,6 +252,7 @@ mod tests {
             ]
         );
         let second = state(LightState::Breath(crate::state::Breath {
+            effect: iot_core::light::Effect::Breath,
             period_ms: 1_000,
             hue_period_ms: 3_000,
             hue_span: 80,

@@ -31,6 +31,7 @@ use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
 use crate::shared::snapshot::ScrollShift;
 use crate::shared::surface::{Custom, Panel, View, no_custom};
+use iot_core::drivers::input::{ButtonEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::Ui;
 
@@ -160,16 +161,18 @@ impl Services {
     }
 
     /// The input boundary. A transient owns the panel, so the cross-page bindings yield to it;
-    /// otherwise they answer before the page does.
+    /// otherwise a hold is the device's way home and no page may swallow it.
     pub fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         let here = state.page();
         let page = self.get(here);
         if here.is_transient() {
             return page.bind(op, state);
         }
-        NetworkPage::from_anywhere(op, state)
-            .or_else(|| NavService::from_anywhere(op))
-            .or_else(|| page.bind(op, state))
+        if matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)) {
+            return NavService::from_anywhere(op, state).or_else(|| page.bind(op, state));
+        }
+        page.bind(op, state)
+            .or_else(|| NavService::from_anywhere(op, state))
     }
 
     /// Who answers which group. One arm per owner, exhaustive like [`descriptor`]: a new group

@@ -141,11 +141,11 @@ mod tests {
             },
             ..Default::default()
         }));
-        for _ in 0..=3 {
+        for _ in 0..16 {
             if manager.state().page() == PageId::Speaker {
                 break;
             }
-            feed_input(&mut manager, triple_click());
+            next_page(&mut manager);
         }
         assert_eq!(manager.state().page(), PageId::Speaker);
         manager

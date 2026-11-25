@@ -3,9 +3,13 @@ use super::*;
 #[test]
 fn state_is_clean() {
     let manager = DeviceManager::new();
-    assert_eq!(manager.light_state(), BREATH, "boot wakes to breathing");
-    assert_eq!(DeviceState::default().lights[0], BREATH);
-    assert_eq!(DeviceManager::default().light_state(), BREATH);
+    assert_eq!(
+        manager.light_state(),
+        LightState::boot(),
+        "boot wakes to breathing"
+    );
+    assert_eq!(DeviceState::default().lights[0], LightState::boot());
+    assert_eq!(DeviceManager::default().light_state(), LightState::boot());
     let state = manager.state();
     assert_eq!(manager.touch_state(), None);
     assert_eq!(state.touch.view.tap_count, 0);
@@ -105,7 +109,7 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
         PageId::Lighting,
         PageId::Menu,
     ] {
-        feed_input(&mut manager, triple_click());
+        next_page(&mut manager);
         assert_eq!(manager.state().page(), expected);
     }
 }

@@ -19,8 +19,8 @@ fn a_button_click_records_on_the_audio_page_and_does_nothing_elsewhere() {
     for page in [PageId::Input, PageId::Attitude, PageId::Camera] {
         assert_eq!(
             translate(&click, &state_on(page, BREATH), &Services::default()),
-            None,
-            "{page:?} is not a control page, so the button does nothing"
+            Some(BusinessIntent::Navigation(NavigationIntent::NextPage)),
+            "{page:?} does not consume the click, so it turns the page"
         );
     }
 }

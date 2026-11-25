@@ -80,7 +80,7 @@ weight = 10
 | --- | --- |
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
-| `services/` | 产品服务（页面与设备自己的 `nav`/`light`/`settings`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`/`Settings`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
+| `services/` | 产品服务（页面与设备自己的 `nav`/`light`/`settings`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`/`Settings`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页；否则按钮长按先交导航（回 Menu），页拿不到；其余事件页先认领，页不认领的按钮单击才落到导航兜底（翻页）；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
 | `services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区，`menu`/`widgets`/`lighting` 用 `TagTable` 反查命中；`headless` 没有 `view`，只绑按钮与灯珠 |
 | `services/settings.rs` | 设备自己的记录：面板语言 `DeviceState.lang` 与调色板 `DeviceState.theme`，只有页面报 `SettingsIntent` 能写 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
@@ -89,7 +89,7 @@ weight = 10
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读） |
 | `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`PageId` 是目的地，`route()` 是穷尽 `match`，`ALL` 是唯一次序（按钮也照它走） |
 | `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
-| `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词；`GlowScope` 定呼吸能铺到哪些页，`Backlight` 是屏幕背光的唯一来源 |
+| `shared/model/light.rs` | 灯光记录：模式、时间类效果表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词；`Effect`（`Steady` / `Breath` / `Cycle` / `Aurora` / `Candle` / `Pulse` / `Heartbeat` / `Lightning` / `Sparkle` / `Strobe` / `Police` / `Sos`）由 `iot-core::light` 的同一个采样器画，`GlowScope` 定呼吸能铺到哪些页，`Backlight` 是屏幕背光的唯一来源 |
 | `shared/snapshot.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 `PageSnapshot` |
 | `shared/i18n/` | 面板文案：`Lang`、`Msg` 与不翻译的固定词；叶子，只依赖 `core` |
 | `shared/ui/` | 组件与交互词汇：`State`/`Theme`/`Slot`、滚动状态、键盘、命中表与 `widgets/`；不读快照 |
@@ -157,7 +157,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 页面可以用 `PageId::steady()` 声明稳态：`FrameSnapshot::steady` 让灯带停在声明颜色的相位 0 不再呼吸；屏幕背光不再跟着它走，只取 `Backlight` 的设置。页面自己的滚动仍按 `animating()` 保持 `TimeDriven`。今天的稳态集只有 `text`，`only_the_reading_page_holds_the_light_still` 钉住这一点。
 
-`Lighting` 页是灯效的唯一入口：`GlowScope { Off, Page, Everywhere }`（默认 `Page`）存在 `DeviceState.glow`，投影成 `FrameSnapshot.glow`；样式 `GlowPattern { Breath, Steady, Cycle }` 与参数由页面私有的 `LightingView.breath` 发布，`Off` 不铺，`Page` 只在 `Lighting` 页铺，`Everywhere` 在所有页铺。`Backlight { pct }`（默认 100）独立于灯效，`level() = pct` 是屏幕背光的唯一来源，0 即全黑。无屏板落在 `PageId::Headless`：它不进 `PageId::ALL`、不进菜单，只把按钮与灯珠接起来；有屏时请求 `Headless` 退回 `Input`。`PageId::from_code` 仍认它的 wire code，供开机与宿主机走查使用。
+`Lighting` 页是灯效的唯一入口：`GlowScope { Off, Page, Everywhere }`（默认 `Page`）存在 `DeviceState.glow`，投影成 `FrameSnapshot.glow`；效果 `Effect { Steady, Breath, Cycle, Aurora, Candle, Pulse, Heartbeat, Lightning, Sparkle, Strobe, Police, Sos }` 与参数由页面私有的 `LightingView.breath` 发布，玻璃和灯珠都走 `Breath::sample` 的同一条采样路径。`Off` 不铺，`Page` 只在 `Lighting` 页铺，`Everywhere` 在所有页铺。`Backlight { pct }`（默认 100）独立于灯效，`level() = pct` 是屏幕背光的唯一来源，0 即全黑。无屏板落在 `PageId::Headless`：单击换灯效（12 档后接关）、长按调亮度（30/50/70/90/100% 后接关，暗灯长按回到首档）、双击换颜色、三击加亮度（多击默认关闭，运行时用 `SettingsIntent::SetClicks` 开启），开机时按住越过 splash 请求配网；它不进 `PageId::ALL`、不进菜单，只把按钮与灯珠接起来；有屏时请求 `Headless` 退回 `Input`。灯与玻璃的默认开机效果是 `Aurora`。`PageId::from_code` 仍认它的 wire code，供开机与宿主机走查使用。
 
 ### 渲染管线：声明一次，布局一次，落墨一次
 

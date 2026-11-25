@@ -10,13 +10,15 @@ use alloc::vec::Vec;
 use crate::services::{Services, descriptor, paint};
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{
-    BusinessIntent, MenuIntent, SettingsIntent, TextIntent, WidgetsIntent,
+    BusinessIntent, MenuIntent, NavigationIntent, SettingsIntent, TextIntent, WidgetsIntent,
 };
 use crate::shared::model::DeviceState;
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::surface::Panel;
+use crate::state::test_support::{BREATH, cycled, op, state_on, translate};
 use iot_core::drivers::board::Backed;
+use iot_core::drivers::input::{ButtonEvent, InputEvent};
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::{Rgb, rgb565};
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
@@ -127,8 +129,8 @@ const GOLDEN: [(&str, bool, u32); 34] = [
     ("data", true, 0x5404eace),
     ("list", false, 0x52deda55),
     ("list", true, 0x37e43005),
-    ("lighting", false, 0x5902b77e),
-    ("lighting", true, 0xa9ae2b2e),
+    ("lighting", false, 0x2c929a49),
+    ("lighting", true, 0x3375f881),
 ];
 
 #[test]
@@ -501,6 +503,24 @@ fn every_page_answers_every_render_question() {
             descriptor(page).camera_frames(),
             page == PageId::Camera,
             "{page:?} frames"
+        );
+    }
+}
+
+#[test]
+fn a_button_hold_goes_home_from_every_page_that_keeps_it() {
+    let services = Services::default();
+    for page in cycled() {
+        assert_eq!(
+            translate(
+                &op(InputEvent::Button(ButtonEvent::LongPress)),
+                &state_on(page, BREATH),
+                &services
+            ),
+            Some(BusinessIntent::Navigation(NavigationIntent::Go(
+                PageId::Menu.code()
+            ))),
+            "{page:?} kept the hold"
         );
     }
 }
