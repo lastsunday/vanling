@@ -7,14 +7,14 @@ use crate::shared::ui::theme::Theme;
 #[derive(Clone, Copy, Debug)]
 pub struct Divider {
     width: i16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl Divider {
     pub const fn new() -> Self {
         Self {
             width: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -32,12 +32,13 @@ impl Default for Divider {
 
 impl Widget for Divider {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let width = if self.width > 0 {
             self.width
         } else {
             ui.width() as i16
         };
-        let ink = ui.color(self.theme.muted);
+        let ink = ui.color(theme.muted);
         ui.node(Style::new().width(width).height(1).background(ink))
     }
 }

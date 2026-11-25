@@ -82,7 +82,7 @@ weight = 10
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
 | `services/` | 产品服务（页面与设备自己的 `nav`/`light`/`settings`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`/`Settings`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
 | `services/{menu,input,attitude,camera,env,splash,text,widgets}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区，`menu`/`widgets` 用 `TagTable` 反查命中 |
-| `services/settings.rs` | 设备自己的记录：面板语言 `DeviceState.lang`，只有页面报 `SettingsIntent` 能写 |
+| `services/settings.rs` | 设备自己的记录：面板语言 `DeviceState.lang` 与调色板 `DeviceState.theme`，只有页面报 `SettingsIntent` 能写 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译、动作条与命中；`shape.rs` 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；`view/` 按带拆（`header` / `content` / `overlay`，词在 `text.rs`），带之间的层序由 `shape::Band` 决定；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
 | `shared/` | 跨页真相与词汇：只放一个以上页面会读的东西，是模块图里的叶子 |
@@ -97,7 +97,7 @@ weight = 10
 | `shared/surface.rs` | 落墨面 `Panel`：声明 → 布局 → 绘制的调度；只认快照 |
 | `state/manager/mod.rs` | 读侧：`DeviceState` 的所有权与构造（`Boot`、`DeviceManager::boot`）、持有 `Services`、按页派生的 `DemandPolicy`，以及协调者与渲染循环读的口 |
 | `state/manager/write.rs` | 写侧：总线意图、worker 上报与时钟 tick 的每一次写入；记录只在这里移动 |
-| `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE`、`IOT_LANG` 与覆盖项） |
+| `state/env.rs` | 构建期配置（`IOT_BOOT_PAGE`、`IOT_LANG`、`IOT_THEME` 与覆盖项） |
 | `render/engine/` | 与 surface 无关：`Differ` 决定*显示什么*（`differ.rs`），状态→外观在 `projection.rs`，`appearance.rs` 定义 `Topic`/`Appearance`，`color.rs` 步进颜色，`set.rs` 把外观交给认领它的 renderer |
 | `render/screen/` | 屏幕（`SurfaceRole::Screen`）：`ScreenRenderer`（`mod.rs`）、`painter.rs` 调 `services::paint`、`repaint.rs`（帧漂移与重绘步长） |
 | `render/lamp/` | 灯带（`SurfaceRole::Lamp`）：`LampRenderer`，只有一个颜色，没有屏幕会叠上去的东西 |

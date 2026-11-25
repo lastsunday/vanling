@@ -12,7 +12,7 @@ pub struct Button<'a> {
     state: State,
     width: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Button<'a> {
@@ -23,7 +23,7 @@ impl<'a> Button<'a> {
             state: State::NONE,
             width: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -49,18 +49,19 @@ impl<'a> Button<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Button<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let mut box_style = self.theme.button(ui, self.kind, self.state).tag(self.tag);
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
+        let mut box_style = theme.button(ui, self.kind, self.state).tag(self.tag);
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = self.theme.on_button(ui, self.kind, self.state);
+        let ink = theme.on_button(ui, self.kind, self.state);
         let label = Style::new()
             .ellipsis()
             .color(ink)

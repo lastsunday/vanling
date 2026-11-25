@@ -169,7 +169,7 @@ impl super::LocalPage for FeedbackPage {
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let lang = snapshot.lang;
     let w = snapshot.pages.feedback;
-    let theme = Theme::PANEL;
+    let theme = *Theme::of(snapshot.theme);
     page::body(ui, |ui| {
         let ink = ui.color(theme.ink);
         let muted = ui.color(theme.muted);

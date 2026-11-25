@@ -1,5 +1,5 @@
-//! The device's own record: the words the panel prints. A page names the language; nothing
-//! else writes it.
+//! The device's own record: the words and the palette the panel prints with. A page names
+//! either; nothing else writes them.
 
 use crate::shared::intent::{BusinessIntent, SettingsIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
@@ -13,10 +13,11 @@ impl super::Service for SettingsService {
         intent: &BusinessIntent,
         state: &mut DeviceState,
     ) -> (Option<Command>, Effects) {
-        let BusinessIntent::Settings(SettingsIntent::SetLang { lang }) = intent else {
-            return (None, Effects::default());
-        };
-        state.lang = *lang;
+        match intent {
+            BusinessIntent::Settings(SettingsIntent::SetLang { lang }) => state.lang = *lang,
+            BusinessIntent::Settings(SettingsIntent::SetTheme { theme }) => state.theme = *theme,
+            _ => return (None, Effects::default()),
+        }
         (None, Effects::default())
     }
 }

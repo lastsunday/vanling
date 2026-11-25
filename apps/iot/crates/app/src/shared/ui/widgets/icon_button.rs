@@ -10,7 +10,7 @@ pub struct IconButton {
     glyph: char,
     state: State,
     tag: u16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl IconButton {
@@ -19,7 +19,7 @@ impl IconButton {
             glyph,
             state: State::NONE,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -36,13 +36,11 @@ impl IconButton {
 
 impl Widget for IconButton {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let mut buf = [0u8; 4];
         let run = self.glyph.encode_utf8(&mut buf).as_bytes();
-        let box_style = self
-            .theme
-            .button(ui, ButtonKind::Text, self.state)
-            .tag(self.tag);
-        let ink = self.theme.on_button(ui, ButtonKind::Text, self.state);
+        let box_style = theme.button(ui, ButtonKind::Text, self.state).tag(self.tag);
+        let ink = theme.on_button(ui, ButtonKind::Text, self.state);
         ui.column(box_style, |ui| {
             ui.text(run, Style::new().nowrap().color(ink));
         })

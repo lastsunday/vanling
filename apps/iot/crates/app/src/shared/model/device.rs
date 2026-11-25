@@ -7,6 +7,7 @@ use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand};
 use iot_core::drivers::input::SwipeDirection;
 use iot_core::drivers::network::{LinkPhase, SetupHost};
+use iot_core::ui::ThemeId;
 
 use super::{
     AudioState, Backed, GlassBreath, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice,
@@ -46,6 +47,8 @@ pub struct DeviceState {
     pub dropped_intents: u32,
     /// The words the panel prints; the build sets it, a settings page may change it.
     pub lang: Lang,
+    /// The palette the panel draws with; the build sets it, a settings page may change it.
+    pub theme: ThemeId,
 }
 
 impl DeviceState {

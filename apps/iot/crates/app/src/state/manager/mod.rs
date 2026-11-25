@@ -8,6 +8,7 @@ use crate::shared::i18n::Lang;
 use crate::shared::model::{Backed, DeviceState, MAX_LIGHTS, PlaybackState, SurfaceRole};
 use crate::shared::route::{Navigator, PageId};
 use iot_core::demand::{DemandKey, EffectiveDemand, Override};
+use iot_core::ui::ThemeId;
 
 mod write;
 
@@ -27,6 +28,7 @@ pub struct Boot {
     pub boot_page: PageId,
     /// The words the panel prints.
     pub lang: Lang,
+    pub theme: ThemeId,
     /// What the build pins beyond the page's claim.
     pub overrides: Override,
 }
@@ -57,6 +59,7 @@ impl DeviceManager {
             nav,
             surface_roles: boot.surface_roles,
             lang: boot.lang,
+            theme: boot.theme,
             ..DeviceState::default()
         };
         let mut services = Services::default();

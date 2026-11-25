@@ -1,7 +1,7 @@
 //! The panel's palette and the style each widget starts from.
 
 use iot_core::ui::panel::TOUCH_MIN;
-use iot_core::ui::{Color, ColorId, Style, TextAlign, Ui};
+use iot_core::ui::{Color, ColorId, Style, TextAlign, ThemeId, Ui};
 
 use super::state::State;
 
@@ -34,6 +34,7 @@ pub struct Theme {
 }
 
 impl Theme {
+    /// The dark palette the panel boots with.
     pub const PANEL: Self = Self {
         ground: Color::rgb(0x00, 0x00, 0x00),
         ink: Color::rgb(0xFF, 0xFF, 0xFF),
@@ -47,6 +48,29 @@ impl Theme {
         surface: Color::rgb(0x22, 0x22, 0x22),
         gap: 4,
     };
+
+    /// Solarized Light: the same roles on paper instead of the lamp's colour.
+    pub const LIGHT: Self = Self {
+        ground: Color::rgb(0xFD, 0xF6, 0xE3),
+        ink: Color::rgb(0x58, 0x6E, 0x75),
+        muted: Color::rgb(0x65, 0x7B, 0x83),
+        accent: Color::rgb(0x26, 0x8B, 0xD2),
+        accent_pressed: Color::rgb(0x1E, 0x6F, 0xA8),
+        on_accent: Color::rgb(0x00, 0x2B, 0x36),
+        danger: Color::rgb(0xDC, 0x32, 0x2F),
+        selection: Color::rgba(0x58, 0x6E, 0x75, 0x20),
+        overlay: Color::rgba(0x00, 0x2B, 0x36, 0x66),
+        surface: Color::rgb(0xEE, 0xE8, 0xD5),
+        gap: 4,
+    };
+
+    /// The palette a theme id names.
+    pub const fn of(id: ThemeId) -> &'static Self {
+        match id {
+            ThemeId::Dark => &Self::PANEL,
+            ThemeId::Light => &Self::LIGHT,
+        }
+    }
 
     pub fn ink(&self, ui: &mut Ui<'_, '_>) -> ColorId {
         ui.color(self.ink)

@@ -8,7 +8,7 @@ use crate::shared::ui::theme::Theme;
 pub struct ProgressBar {
     value: u8,
     width: i16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl ProgressBar {
@@ -16,7 +16,7 @@ impl ProgressBar {
         Self {
             value,
             width: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -28,14 +28,15 @@ impl ProgressBar {
 
 impl Widget for ProgressBar {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let width = if self.width > 0 {
             self.width
         } else {
             ui.width() as i16
         };
         let filled = i32::from(width) * i32::from(self.value.min(100)) / 100;
-        let track = ui.color(self.theme.muted);
-        let paper = ui.color(self.theme.accent);
+        let track = ui.color(theme.muted);
+        let paper = ui.color(theme.accent);
         ui.stack(
             Style::new().width(width).height(6).background(track),
             |ui| {

@@ -9,12 +9,20 @@
 use crate::shared::i18n::Lang;
 use crate::state::PageId;
 use iot_core::demand::{Override, parse_override};
+use iot_core::ui::ThemeId;
 
 pub(crate) fn lang() -> Lang {
     if let Some(name) = UNKNOWN_LANG {
         log::warn!("[IOT] IOT_LANG={name:?} is not a language, printing English");
     }
     LANG
+}
+
+pub(crate) fn theme() -> ThemeId {
+    if let Some(name) = UNKNOWN_THEME {
+        log::warn!("[IOT] IOT_THEME={name:?} is not a theme, drawing dark");
+    }
+    THEME
 }
 
 pub(crate) fn boot_page() -> PageId {
@@ -61,6 +69,10 @@ const LANG: Lang = lang_from_env(option_env!("IOT_LANG"));
 
 const UNKNOWN_LANG: Option<&str> = unknown_lang(option_env!("IOT_LANG"));
 
+const THEME: ThemeId = theme_from_env(option_env!("IOT_THEME"));
+
+const UNKNOWN_THEME: Option<&str> = unknown_theme(option_env!("IOT_THEME"));
+
 const fn lang_from_env(name: Option<&str>) -> Lang {
     let Some(name) = name else {
         return Lang::En;
@@ -80,6 +92,52 @@ const fn unknown_lang(name: Option<&str>) -> Option<&str> {
         return None;
     }
     Some(name)
+}
+
+const fn theme_from_env(name: Option<&str>) -> ThemeId {
+    match name {
+        Some(name) => match theme_name(name) {
+            Some(theme) => theme,
+            None => ThemeId::Dark,
+        },
+        None => ThemeId::Dark,
+    }
+}
+
+const fn theme_name(name: &str) -> Option<ThemeId> {
+    let name = name.trim_ascii().as_bytes();
+    if eq_ignore_ascii_case(name, b"light") {
+        Some(ThemeId::Light)
+    } else if eq_ignore_ascii_case(name, b"dark") {
+        Some(ThemeId::Dark)
+    } else {
+        None
+    }
+}
+
+const fn unknown_theme(name: Option<&str>) -> Option<&str> {
+    let Some(name) = name else {
+        return None;
+    };
+    let trimmed = name.trim_ascii();
+    if trimmed.is_empty() || theme_name(trimmed).is_some() {
+        return None;
+    }
+    Some(name)
+}
+
+const fn eq_ignore_ascii_case(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+    let mut index = 0;
+    while index < left.len() {
+        if !left[index].eq_ignore_ascii_case(&right[index]) {
+            return false;
+        }
+        index += 1;
+    }
+    true
 }
 
 const UNKNOWN_BOOT_PAGE: Option<&str> = unknown_page(option_env!("IOT_BOOT_PAGE"));
@@ -116,10 +174,14 @@ const fn unknown_page(name: Option<&str>) -> Option<&str> {
 
 #[cfg(test)]
 mod tests {
-    use super::{boot_page_from_env, lang_from_env, unknown_lang, unknown_page};
+    use super::{
+        boot_page_from_env, lang_from_env, theme_from_env, unknown_lang, unknown_page,
+        unknown_theme,
+    };
     use crate::shared::i18n::Lang;
     use crate::shared::route::SPLASH_MS;
     use crate::state::PageId;
+    use iot_core::ui::ThemeId;
 
     #[test]
     fn every_bootable_page_answers_to_its_name() {
@@ -178,6 +240,21 @@ mod tests {
         assert_eq!(PageId::Splash.timeout_ms(), Some(SPLASH_MS));
         assert_eq!(boot_page_from_env(Some("splash")), PageId::Input);
         assert_eq!(unknown_page(Some("splash")), Some("splash"));
+    }
+
+    #[test]
+    fn a_theme_name_survives_case_and_space() {
+        assert_eq!(theme_from_env(None), ThemeId::Dark, "unset draws dark");
+        assert_eq!(theme_from_env(Some(" light ")), ThemeId::Light);
+        assert_eq!(theme_from_env(Some("DARK")), ThemeId::Dark);
+        assert_eq!(
+            theme_from_env(Some("sepia")),
+            ThemeId::Dark,
+            "an unknown name draws dark"
+        );
+        assert_eq!(unknown_theme(Some("sepia")), Some("sepia"));
+        assert_eq!(unknown_theme(Some("  ")), None);
+        assert_eq!(unknown_theme(Some("light")), None);
     }
 
     #[test]

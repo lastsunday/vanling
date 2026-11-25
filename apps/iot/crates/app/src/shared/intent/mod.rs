@@ -10,6 +10,7 @@ pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WI
 use crate::shared::i18n::Lang;
 use iot_core::drivers::input::{InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
+use iot_core::ui::ThemeId;
 
 /// The page's question, kept with the business vocabulary because the answer is an intent.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -248,6 +249,8 @@ pub enum WidgetsIntent {
 pub enum SettingsIntent {
     /// The panel's words from now on; a build names the one it starts in.
     SetLang { lang: Lang },
+    /// The panel's palette from now on; a build names the one it starts in.
+    SetTheme { theme: ThemeId },
 }
 
 /// What a finger asks of the glass-breath demo. The discriminant is the wire tag, so the

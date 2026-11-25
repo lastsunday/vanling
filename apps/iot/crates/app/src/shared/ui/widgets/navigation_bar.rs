@@ -10,7 +10,7 @@ pub struct NavigationBar<'a> {
     items: [&'a [u8]; 3],
     tags: [u16; 3],
     selected: u8,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> NavigationBar<'a> {
@@ -19,19 +19,19 @@ impl<'a> NavigationBar<'a> {
             items,
             tags,
             selected,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for NavigationBar<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let strip = ui.color(theme.surface);
         let on_pill = ui.color(theme.on_accent);
         let muted = ui.color(theme.muted);

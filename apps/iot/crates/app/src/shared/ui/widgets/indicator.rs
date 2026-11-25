@@ -14,7 +14,7 @@ const PILL: i16 = 14;
 pub struct Indicator<'a, W> {
     child: W,
     label: Option<&'a [u8]>,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a, W> Indicator<'a, W> {
@@ -22,7 +22,7 @@ impl<'a, W> Indicator<'a, W> {
         Self {
             child,
             label: None,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -33,20 +33,21 @@ impl<'a, W> Indicator<'a, W> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl<W: Widget> Widget for Indicator<'_, W> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let paper = ui.color(self.theme.accent);
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
+        let paper = ui.color(theme.accent);
         ui.stack(Style::new(), |ui| {
             ui.add(self.child);
             let at = Style::new().absolute().right(-REACH).top(-REACH);
             match self.label {
                 Some(label) => {
-                    let ink = ui.color(self.theme.on_accent);
+                    let ink = ui.color(theme.on_accent);
                     ui.text(
                         label,
                         at.height(PILL)

@@ -29,7 +29,7 @@ pub struct Badge<'a> {
     text: &'a [u8],
     tone: Tone,
     variant: Variant,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Badge<'a> {
@@ -38,7 +38,7 @@ impl<'a> Badge<'a> {
             text,
             tone: Tone::Neutral,
             variant: Variant::Filled,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -53,14 +53,14 @@ impl<'a> Badge<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Badge<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let (paper, ink) = match self.tone {
             Tone::Neutral => (theme.muted, theme.ground),
             Tone::Accent => (theme.accent, theme.on_accent),

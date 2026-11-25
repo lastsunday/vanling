@@ -10,7 +10,7 @@ pub struct Segmented<'a> {
     labels: [&'a [u8]; 3],
     tags: [u16; 3],
     selected: u8,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Segmented<'a> {
@@ -19,19 +19,19 @@ impl<'a> Segmented<'a> {
             labels,
             tags,
             selected,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Segmented<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = ui.color(theme.muted);
         let ink = ui.color(theme.ink);
         let muted = ui.color(theme.muted);

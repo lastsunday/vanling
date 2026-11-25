@@ -18,7 +18,7 @@ pub struct EmptyState<'a> {
     tone: Tone,
     width: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> EmptyState<'a> {
@@ -29,7 +29,7 @@ impl<'a> EmptyState<'a> {
             tone: Tone::Empty,
             width: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -49,14 +49,14 @@ impl<'a> EmptyState<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for EmptyState<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let paper = if self.tone == Tone::Error {
             ui.color(theme.danger)
         } else {

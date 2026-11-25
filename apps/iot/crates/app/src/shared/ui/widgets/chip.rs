@@ -11,7 +11,7 @@ pub struct Chip<'a> {
     width: i16,
     height: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Chip<'a> {
@@ -22,7 +22,7 @@ impl<'a> Chip<'a> {
             width: 0,
             height: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -47,17 +47,18 @@ impl<'a> Chip<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Chip<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = if self.selected {
-            self.theme.accent
+            theme.accent
         } else {
-            self.theme.muted
+            theme.muted
         };
         let edge = ui.color(edge);
         let mut box_style = Style::new()
@@ -74,10 +75,10 @@ impl Widget for Chip<'_> {
             box_style = box_style.height(self.height);
         }
         if self.selected {
-            let paper = ui.color(self.theme.selection);
+            let paper = ui.color(theme.selection);
             box_style = box_style.background(paper);
         }
-        let ink = ui.color(self.theme.ink);
+        let ink = ui.color(theme.ink);
         let label = Style::new()
             .nowrap()
             .color(ink)

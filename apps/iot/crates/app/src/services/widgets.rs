@@ -418,7 +418,7 @@ impl super::LocalPage for WidgetsPage {
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> Option<NodeId> {
     let lang = snapshot.lang;
     let w = snapshot.pages.widgets;
-    let theme = Theme::PANEL;
+    let theme = *Theme::of(snapshot.theme);
     let mut keyboard = None;
     page::body(ui, |ui| {
         page::title(ui, Msg::WidgetsTitle.bytes(lang));
@@ -597,13 +597,7 @@ fn widgets_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShi
     Some(ScrollShift::new(&areas, &[shift]))
 }
 
-fn custom(
-    snapshot: &FrameSnapshot,
-    _screen: Screen,
-    slot: u8,
-    canvas: &mut Canvas<'_>,
-    rect: Rect,
-) {
+fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
     let w = snapshot.pages.widgets;
     let lang = snapshot.lang;
     match slot {
@@ -618,9 +612,9 @@ fn custom(
                 .leading(Slot::Glyph('#'))
                 .trailing(Slot::Badge(trailing))
                 .state(State::NONE.then(State::SELECTED, w.tile))
-                .draw(canvas, rect, &Theme::PANEL);
+                .draw(canvas, rect, Theme::of(screen.theme));
         }
-        KEY_SLOT => keyboard::draw(canvas, rect, w.text, &Theme::PANEL),
+        KEY_SLOT => keyboard::draw(canvas, rect, w.text, Theme::of(screen.theme)),
         _ => {}
     }
 }

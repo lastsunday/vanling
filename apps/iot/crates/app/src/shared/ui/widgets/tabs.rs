@@ -10,7 +10,7 @@ pub struct Tabs<'a> {
     labels: [&'a [u8]; 3],
     tags: [u16; 3],
     selected: u8,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Tabs<'a> {
@@ -19,19 +19,19 @@ impl<'a> Tabs<'a> {
             labels,
             tags,
             selected,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Tabs<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let muted = ui.color(theme.muted);
         let on_paper = ui.color(theme.on_accent);
         let paper = ui.color(theme.accent);

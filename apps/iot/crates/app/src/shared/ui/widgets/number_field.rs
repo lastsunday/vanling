@@ -11,7 +11,7 @@ pub struct NumberField {
     value: u16,
     tags: [u16; 2],
     width: i16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl NumberField {
@@ -20,7 +20,7 @@ impl NumberField {
             value,
             tags,
             width: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -32,7 +32,7 @@ impl NumberField {
 
 impl Widget for NumberField {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = ui.color(theme.muted);
         let ink = ui.color(theme.ink);
         let mut digits = [0u8; 6];

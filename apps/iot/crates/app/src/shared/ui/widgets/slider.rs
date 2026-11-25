@@ -13,7 +13,7 @@ pub struct Slider {
     width: i16,
     state: State,
     tag: u16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl Slider {
@@ -23,7 +23,7 @@ impl Slider {
             width: 0,
             state: State::NONE,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -45,6 +45,7 @@ impl Slider {
 
 impl Widget for Slider {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let width = if self.width > 0 {
             self.width
         } else {
@@ -52,11 +53,11 @@ impl Widget for Slider {
         };
         let travel = (width - KNOB).max(1);
         let left = (i32::from(travel) * i32::from(self.value.min(100)) / 100) as i16;
-        let track = ui.color(self.theme.muted);
+        let track = ui.color(theme.muted);
         let knob = ui.color(if self.state.has(State::PRESSED) {
-            self.theme.accent_pressed
+            theme.accent_pressed
         } else {
-            self.theme.accent
+            theme.accent
         });
         ui.stack(Style::new().width(width).height(20).tag(self.tag), |ui| {
             ui.node(

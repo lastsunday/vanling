@@ -13,7 +13,7 @@ use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
 use iot_core::drivers::network::{ApList, LinkStatus};
 use iot_core::drivers::playback::{PlaybackPhase, Sound};
 use iot_core::drivers::surface::MAX_LIGHTS;
-use iot_core::ui::{MAX_SCROLL_AREAS, Rect};
+use iot_core::ui::{MAX_SCROLL_AREAS, Rect, ThemeId};
 
 /// What the Audio page draws: the phase driving the panel plus the envelope it should draw.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -330,6 +330,7 @@ pub struct FrameSnapshot {
     pub backed: Backed,
     /// The words the page prints.
     pub lang: Lang,
+    pub theme: ThemeId,
     /// The page wants the light and the backlight held still for as long as it is up.
     pub steady: bool,
     pub link: LinkStatus,

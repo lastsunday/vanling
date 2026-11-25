@@ -13,7 +13,7 @@ pub struct TextField<'a> {
     focused: bool,
     width: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> TextField<'a> {
@@ -23,7 +23,7 @@ impl<'a> TextField<'a> {
             focused: false,
             width: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -43,19 +43,20 @@ impl<'a> TextField<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for TextField<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let state = State::NONE.then(State::FOCUSED, self.focused);
-        let mut box_style = self.theme.field(ui, state).tag(self.tag);
+        let mut box_style = theme.field(ui, state).tag(self.tag);
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = self.theme.label(ui, state);
+        let ink = theme.label(ui, state);
         let mut buf = [0u8; RUN];
         let mut len = self.value.len().min(RUN - 1);
         buf[..len].copy_from_slice(&self.value[..len]);
@@ -74,7 +75,7 @@ pub struct Select<'a> {
     value: &'a [u8],
     width: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Select<'a> {
@@ -83,7 +84,7 @@ impl<'a> Select<'a> {
             value,
             width: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -98,18 +99,19 @@ impl<'a> Select<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Select<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let mut box_style = self.theme.field(ui, State::NONE).tag(self.tag);
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
+        let mut box_style = theme.field(ui, State::NONE).tag(self.tag);
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = self.theme.label(ui, State::NONE);
+        let ink = theme.label(ui, State::NONE);
         let mut buf = [0u8; RUN];
         let mut len = self.value.len().min(RUN - 2);
         buf[..len].copy_from_slice(&self.value[..len]);

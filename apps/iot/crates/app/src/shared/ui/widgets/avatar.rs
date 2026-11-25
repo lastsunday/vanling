@@ -9,27 +9,25 @@ const SIZE: i16 = 24;
 #[derive(Clone, Copy, Debug)]
 pub struct Avatar<'a> {
     text: &'a [u8],
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Avatar<'a> {
     pub const fn new(text: &'a [u8]) -> Self {
-        Self {
-            text,
-            theme: &Theme::PANEL,
-        }
+        Self { text, theme: None }
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Avatar<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let paper = ui.color(self.theme.muted);
-        let ink = ui.color(self.theme.ground);
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
+        let paper = ui.color(theme.muted);
+        let ink = ui.color(theme.ground);
         ui.text(
             self.text,
             Style::new()

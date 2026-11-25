@@ -10,7 +10,7 @@ pub struct Banner<'a> {
     message: &'a [u8],
     action: &'a [u8],
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Banner<'a> {
@@ -19,7 +19,7 @@ impl<'a> Banner<'a> {
             message,
             action,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -29,14 +29,14 @@ impl<'a> Banner<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Banner<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let ink = ui.color(theme.ink);
         let accent = ui.color(theme.accent);
         let paper = ui.color(theme.selection);

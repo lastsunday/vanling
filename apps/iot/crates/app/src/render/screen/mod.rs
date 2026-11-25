@@ -17,10 +17,12 @@ use crate::services::descriptor;
 use crate::shared::model::{GlassBreath, LightState};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
+use crate::shared::ui::theme::Theme;
 use iot_core::demand::{DemandKey, Mode};
 use iot_core::drivers::camera::FrameSource;
 use iot_core::drivers::surface::{ScreenPainter, ScreenSurface};
 use iot_core::light::Rgb;
+use iot_core::ui::ThemeId;
 
 pub struct ScreenRenderer {
     instance: u8,
@@ -81,7 +83,15 @@ impl ScreenRenderer {
             return;
         };
         let step = self.surface.repaint_step();
-        if let Some(ground) = self.page.and_then(|page| descriptor(page).ground()) {
+        let paper = self
+            .last_snapshot
+            .filter(|frame| frame.theme == ThemeId::Light)
+            .map(|_| Theme::of(ThemeId::Light).ground.rgb888());
+        if let Some(ground) = self
+            .page
+            .and_then(|page| descriptor(page).ground())
+            .or(paper)
+        {
             self.color.ground(&mut *self.surface, step, ground);
             self.surface.set_backlight(100);
             return;
@@ -162,6 +172,9 @@ impl ScreenRenderer {
     fn on_frame(&mut self, frame: &FrameSnapshot, now_ms: u32) -> Drive {
         let page_changed = self.page != Some(frame.page);
         let breath_changed = self.breath != frame.glass_breath;
+        let theme_changed = self
+            .last_snapshot
+            .is_some_and(|prev| prev.theme != frame.theme);
         self.steady = frame.steady;
         self.breath = frame.glass_breath;
         let camera = frame.demand.claim(DemandKey::CAMERA);
@@ -190,11 +203,11 @@ impl ScreenRenderer {
                 .set_backlight_ceiling(LightState::BACKLIGHT_FLOOR_PCT),
             Mode::Continuous => self.surface.set_backlight_ceiling(100),
         }
-        if page_changed || breath_changed || woke {
+        if page_changed || breath_changed || woke || theme_changed {
             self.color.forget_color();
             self.present(now_ms);
         }
-        self.paint_due(now_ms, page_changed);
+        self.paint_due(now_ms, page_changed || theme_changed);
         if self.is_camera_page() || frame.animating() || self.owed() {
             return Drive::TimeDriven;
         }
@@ -681,6 +694,32 @@ mod tests {
         let fills = screen.borrow().fills;
         assert_eq!(r.step(1_000), Drive::Idle);
         assert_eq!(screen.borrow().fills, fills);
+    }
+
+    #[test]
+    fn a_light_page_grounds_the_screen_with_its_paper() {
+        let (mut r, screen) = renderer();
+        let mut frame = frame_on(PageId::Env, Mode::Continuous);
+        frame.theme = ThemeId::Light;
+        r.on_appearance(Appearance::Frame(&frame), 0);
+        r.on_appearance(input_breath(0), 0);
+        assert_eq!(
+            screen.borrow().color,
+            Theme::of(ThemeId::Light).ground.rgb888()
+        );
+        assert_eq!(screen.borrow().backlight, 100);
+    }
+
+    #[test]
+    fn a_page_with_its_own_ground_keeps_it_in_light() {
+        for page in [PageId::Camera, PageId::Network] {
+            let (mut r, screen) = renderer();
+            let mut frame = frame_on(page, Mode::Continuous);
+            frame.theme = ThemeId::Light;
+            r.on_appearance(Appearance::Frame(&frame), 0);
+            r.on_appearance(input_breath(0), 0);
+            assert_eq!(screen.borrow().color, Rgb(0, 0, 0), "{page:?}");
+        }
     }
 
     #[test]

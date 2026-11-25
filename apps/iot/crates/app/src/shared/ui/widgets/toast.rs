@@ -10,7 +10,7 @@ pub struct Toast<'a> {
     width: i16,
     height: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Toast<'a> {
@@ -20,7 +20,7 @@ impl<'a> Toast<'a> {
             width: 0,
             height: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -40,14 +40,14 @@ impl<'a> Toast<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Toast<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let paper = ui.color(theme.muted);
         let ink = ui.color(theme.ground);
         let mut style = Style::new()

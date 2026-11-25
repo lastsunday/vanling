@@ -451,13 +451,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     });
 }
 
-fn custom(
-    snapshot: &FrameSnapshot,
-    _screen: Screen,
-    slot: u8,
-    canvas: &mut Canvas<'_>,
-    rect: Rect,
-) {
+fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
     if slot != FEED_SLOT {
         return;
     }
@@ -483,7 +477,7 @@ fn custom(
             delete: Msg::Delete.bytes(lang),
         },
     };
-    feed::draw(&view, canvas, rect, &Theme::PANEL);
+    feed::draw(&view, canvas, rect, Theme::of(screen.theme));
 }
 
 fn list_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {

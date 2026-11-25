@@ -11,7 +11,7 @@ pub struct Accordion<'a> {
     body: &'a [u8],
     open: bool,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Accordion<'a> {
@@ -21,7 +21,7 @@ impl<'a> Accordion<'a> {
             body,
             open: false,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -36,14 +36,14 @@ impl<'a> Accordion<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Accordion<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let ink = ui.color(theme.ink);
         let muted = ui.color(theme.muted);
         let paper = ui.color(theme.selection);

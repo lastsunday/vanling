@@ -15,7 +15,7 @@ use iot_core::drivers::surface::{
 };
 use iot_core::light::{Rgb, rgb565};
 use iot_core::ui::panel::{CONTENT_BOTTOM, FOOTER_ROWS, PANEL_COLUMNS};
-use iot_core::ui::{Canvas, GlyphCache, Screen};
+use iot_core::ui::{Canvas, GlyphCache, Screen, ThemeId};
 
 pub struct AppPainter {
     overlay: bool,
@@ -42,6 +42,7 @@ impl AppPainter {
         target: ScreenTarget<'a>,
         context: ScreenContext,
         damage: FrameDamage,
+        theme: ThemeId,
     ) -> Panel<'a> {
         let canvas = Canvas::new(target.frame, target.width, target.height, target.ground)
             .with_damage(damage);
@@ -54,6 +55,7 @@ impl AppPainter {
                 debug: self.overlay,
                 spl_offset_db: context.spl_offset_db,
                 probe: context.stack_probe,
+                theme,
             },
         )
     }
@@ -69,6 +71,7 @@ impl ScreenPainter for AppPainter {
         let shift = self
             .last
             .as_ref()
+            .filter(|prev| prev.theme == frame.theme)
             .and_then(|prev| descriptor(frame.page).scroll_shift(prev, frame));
         let ink = match shift {
             Some(shift) => {
@@ -94,7 +97,7 @@ impl ScreenPainter for AppPainter {
                 FrameDamage::FULL
             }
         };
-        let mut panel = self.panel(target, context, ink);
+        let mut panel = self.panel(target, context, ink, frame.theme);
         paint(frame.page, frame, &mut panel);
         self.last = Some(*frame);
     }
@@ -111,7 +114,7 @@ impl ScreenPainter for AppPainter {
             self.reset();
             return;
         };
-        let mut panel = self.panel(target, context, FrameDamage::FULL);
+        let mut panel = self.panel(target, context, FrameDamage::FULL, frame.theme);
         panel.declare(frame, no_custom, |snapshot, ui| {
             CameraPage::view_frame(snapshot, ui, readout)
         });
@@ -128,9 +131,9 @@ impl ScreenPainter for AppPainter {
         let Some(next) = snapshot.downcast_ref::<FrameSnapshot>() else {
             return false;
         };
-        self.last
-            .as_ref()
-            .is_some_and(|prev| descriptor(next.page).scroll_shift(prev, next).is_some())
+        self.last.as_ref().is_some_and(|prev| {
+            prev.theme == next.theme && descriptor(next.page).scroll_shift(prev, next).is_some()
+        })
     }
 
     fn reset(&mut self) {

@@ -46,7 +46,7 @@ Two hard rules for widgets: one instance stays within five nodes; `Theme` keeps 
 | `core::ui::widget` | The `Widget` trait and `Ui::add`; general vocabulary, knows no page |
 | `app::shared::i18n` | `Lang`, `Msg` and the fixed words; words only, no pixels |
 | `app::shared::ui::state` | The `State` bitset |
-| `app::shared::ui::theme` | `Theme::PANEL` and button/field style resolution |
+| `app::shared::ui::theme` | `Theme::PANEL` / `Theme::LIGHT` and button/field style resolution |
 | `app::shared::ui::slot` | The `Slot` enum, replacing `Widget?` |
 | `app::shared::ui::widgets` | Concrete widgets, one file each |
 | `app::shared::page` | Page furniture: margins, line rhythm, title, scrolling body, reading row |
@@ -95,9 +95,13 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub const PANEL: Self = Self { /* ... */ };
+    pub const PANEL: Self = Self { /* dark, the boot default */ };
+    pub const LIGHT: Self = Self { /* Solarized Light */ };
+    pub const fn of(id: ThemeId) -> &'static Self { /* ... */ }
 }
 ```
+
+`ThemeId { Dark, Light }` lives in `iot-core::ui::Screen` and travels from `DeviceState.theme` through `FrameSnapshot.theme` to the paint layer; widgets default to `Theme::of(ui.screen().theme)` and pages to `Theme::of(snapshot.theme)`. `.theme(&Theme)` still overrides a single widget. A switch swaps constant palettes and generates no colours: `ScreenRenderer::present` papers a light page with `ground` and pins the backlight at 100, `Network` / `Camera` keep their own black ground, and `Breath` plus an active glass breath force dark. Theme, like language, is runtime state and is not persisted; a build can set the boot value with `IOT_THEME=light`.
 
 Interning the same colour twice is idempotent; `MAX_COLORS = 16` is shared by the whole page. A new widget first asks whether an existing token fits; only then does it add a colour.
 
@@ -142,8 +146,8 @@ Flutter to here:
 | `StatefulWidget` | State in the page / snapshot | Rebuilt every frame |
 | `WidgetState` | `State(u8)` | No hover |
 | `WidgetStateProperty<T>` | `fn(&Theme, State) -> T` | No property objects |
-| `ButtonStyle` | `Theme::button(...)` | No runtime theme |
-| `ThemeData` | `const Theme` | Same |
+| `ButtonStyle` | `Theme`'s `button(...)` | Constant palettes, no style objects |
+| `ThemeData` | `const Theme` + `ThemeId` | A switch swaps constants; no theme tree |
 | `child` / `children` | Closures | No `List<Widget>` |
 | `leading: Widget?` | `Slot` | No boxing |
 | `onTap` | `NodeId` + page `bind` | Input is its own pipeline |
@@ -212,7 +216,7 @@ pub enum Slot<'a> {
 
 Every sample in the four galleries carries one caption (`page::caption`): its name plus how it moves, such as `TABLE / TAP A ROW`, with one `Msg` per language. That is why `Advanced` and `Extended` lost their section words — the caption already names the sample; `Data` keeps `page::section` (a rule and a name) for the overlay band. A caption is a muted `nowrap` run with no tag, so it does nothing when tapped.
 
-`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries two 44×44 chips at its right, `EN` and `中文` (`the_language_chips_are_touch_sized` pins them); tapping one sets `DeviceState.lang`. The button grid therefore starts a whole row lower; the fourteen entries fill five rows, and the last one needs a scroll to reach, with hits still resolved against the offset.
+`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen still lands on `Input`; `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries four 44×44 chips at its right, `EN` / `中文` / `DARK` / `LIGHT` (`the_settings_chips_are_touch_sized` pins them); the first two set `DeviceState.lang`, the last two set `DeviceState.theme`. The button grid therefore starts a whole row lower; the fourteen entries fill five rows, and the last one needs a scroll to reach, with hits still resolved against the offset.
 
 The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
 

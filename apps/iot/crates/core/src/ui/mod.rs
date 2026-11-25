@@ -25,5 +25,5 @@ pub use layout::{
     Length, MAX_NODES, MAX_SCROLL_AREAS, NodeId, Overflow, PX, RunStyle, ScrollId, ScrollInfo,
     Style, TextAlign,
 };
-pub use screen::Screen;
+pub use screen::{Screen, ThemeId};
 pub use widget::Widget;

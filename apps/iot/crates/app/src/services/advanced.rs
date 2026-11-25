@@ -258,7 +258,7 @@ impl super::LocalPage for AdvancedPage {
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let lang = snapshot.lang;
     let w = snapshot.pages.advanced;
-    let theme = Theme::PANEL;
+    let theme = *Theme::of(snapshot.theme);
     page::body(ui, |ui| {
         page::title(ui, Msg::AdvancedTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
@@ -359,14 +359,8 @@ fn cards(lang: Lang) -> [PagerCard<'static>; PAGER_COUNT as usize] {
     ]
 }
 
-fn custom(
-    snapshot: &FrameSnapshot,
-    _screen: Screen,
-    slot: u8,
-    canvas: &mut Canvas<'_>,
-    rect: Rect,
-) {
-    let theme = Theme::PANEL;
+fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
+    let theme = *Theme::of(screen.theme);
     let w = snapshot.pages.advanced;
     match slot {
         PAGER_SLOT => Pager {

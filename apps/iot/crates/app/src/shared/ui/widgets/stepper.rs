@@ -11,7 +11,7 @@ pub struct Stepper<'a> {
     labels: [&'a [u8]; 3],
     current: u8,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> Stepper<'a> {
@@ -20,7 +20,7 @@ impl<'a> Stepper<'a> {
             labels,
             current,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -30,14 +30,14 @@ impl<'a> Stepper<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for Stepper<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let paper = ui.color(theme.accent);
         let on_paper = ui.color(theme.on_accent);
         let muted = ui.color(theme.muted);

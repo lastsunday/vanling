@@ -176,6 +176,8 @@ IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
 
 `IOT_LANG=en|zh` 走同一套 `option_env!` 与 `const fn`，落成 `const LANG`；开机日志 `[IOT] words in En` / `[IOT] words in ZhHans` 是它生效的证据。两种语言的字面量本来都在二进制里（运行期还能切换），所以只能看这行日志，grep 中文串证明不了构建期选择。
 
+`IOT_THEME=dark|light` 同样在构建期落成 `const THEME`，只决定开机调色板；运行期菜单里可随时切换。开机日志 `[IOT] words in En, theme Light` 是它生效的证据，非法值退回 `dark` 并打一条警告。
+
 `[实测]` **启动页只能在构建期解析**，运行时连字符串都不许碰。曾经在启动时解析（`option_env!` 的 `&'static str` 经 `trim().to_ascii_lowercase()` 变成 `String` 再查表），只要构建带了 `IOT_BOOT_PAGE`，主任务的水位就从 42,392 B 涨到 46,728 B、连接那一刻的栈用掉 27,745 B（不带变量时 23,409 B），随后在 `[WIFI] … joining` 之后必崩：`StoreProhibited`/`LoadProhibited` 死在电台 blob 自己的 `free`/`event_post` 里，而不是栈检查报错。现在 `boot_page()` 读的是 `const BOOT_PAGE`（`const fn` 做大小写与去空白比较），`IOT_BOOT_PAGE=attitude` 的构建与产品构建逐项同值（`main stack 65,976 B`、峰值 `42,392 B`）并正常拿到地址。越界为什么落在电台任务上，见 `records/iot/hardware-constraints.md` 那一节；约束本身不依赖机制：**bench 镜像与产品镜像必须在同一张栈预算里，启动页在构建期落成常量就是它的前提。**
 
 > `[实测]` 这两个任务**不能**共用一个产物路径。`build-s3-camera` 与 `build-s3` 曾都声明 `target/.../release/vanling`，而 `flash-s3` 和 `scripts/iot-image.sh` 都读那个文件 —— 谁最后跑谁决定刷进去的是什么，moon 命中缓存时不会把自己的写回去，于是"烧产品固件"实际烧的是 camera 固件。现在 bench 构建前后保存/还原产品镜像，另存 `vanling-camera`，两个镜像并存。

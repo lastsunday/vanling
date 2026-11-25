@@ -233,7 +233,7 @@ impl super::LocalPage for ExtendedPage {
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let lang = snapshot.lang;
     let w = snapshot.pages.extended;
-    let theme = Theme::PANEL;
+    let theme = *Theme::of(snapshot.theme);
     page::body(ui, |ui| {
         page::title(ui, Msg::ExtendedTitle.bytes(lang));
         if w.focus {
@@ -305,14 +305,8 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     });
 }
 
-fn custom(
-    snapshot: &FrameSnapshot,
-    _screen: Screen,
-    slot: u8,
-    canvas: &mut Canvas<'_>,
-    rect: Rect,
-) {
-    let theme = Theme::PANEL;
+fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
+    let theme = *Theme::of(screen.theme);
     let w = snapshot.pages.extended;
     if slot == KEY_SLOT {
         if w.focus {

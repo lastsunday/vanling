@@ -11,7 +11,7 @@ pub struct LoadingOverlay<'a> {
     width: i16,
     height: i16,
     tag: u16,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> LoadingOverlay<'a> {
@@ -22,7 +22,7 @@ impl<'a> LoadingOverlay<'a> {
             width: 0,
             height: 0,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -44,14 +44,14 @@ impl<'a> LoadingOverlay<'a> {
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for LoadingOverlay<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let width = if self.width > 0 {
             self.width
         } else {

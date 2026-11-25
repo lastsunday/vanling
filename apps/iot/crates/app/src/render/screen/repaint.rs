@@ -21,12 +21,15 @@ pub(super) fn repaint_due(
     let step = descriptor(page).repaint_step_ms();
     match next.demand.claim(DemandKey::DISPLAY).mode {
         Mode::Off => return false,
-        Mode::OnChange => return since_ms >= step * ON_CHANGE_STRIDE && prev != next,
+        Mode::OnChange => {
+            return prev.theme != next.theme
+                || (since_ms >= step * ON_CHANGE_STRIDE && prev != next);
+        }
         Mode::Continuous => {}
     }
-    // Every page that prints a word has to be redrawn when the words change, including the
-    // ones whose own snapshot did not move.
-    if prev.lang != next.lang {
+    // Every page that prints a word or draws with the palette has to be redrawn when either
+    // changes, including the ones whose own snapshot did not move.
+    if prev.theme != next.theme || prev.lang != next.lang {
         return true;
     }
     if since_ms < step {
@@ -53,7 +56,9 @@ pub(super) fn repaint_wanted(
         Mode::Off => false,
         Mode::OnChange => prev != next,
         Mode::Continuous => {
-            prev.lang != next.lang || descriptor(page).repaints_on(prev, next, overlay)
+            prev.theme != next.theme
+                || prev.lang != next.lang
+                || descriptor(page).repaints_on(prev, next, overlay)
         }
     }
 }
@@ -87,6 +92,15 @@ mod tests {
         moved.lang = crate::shared::i18n::Lang::ZhHans;
         assert!(repaint_due(PageId::Env, &base, &moved, 0, true));
         assert!(repaint_due(PageId::Speaker, &base, &moved, 0, true));
+    }
+
+    #[test]
+    fn a_theme_switch_repaints_a_page_that_only_prints_words() {
+        let base = FrameSnapshot::default();
+        let mut moved = base;
+        moved.theme = iot_core::ui::ThemeId::Light;
+        assert!(repaint_due(PageId::Env, &base, &moved, 0, true));
+        assert!(repaint_wanted(PageId::Env, &base, &moved, true));
     }
 
     #[test]

@@ -18,10 +18,10 @@ use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::surface::Panel;
 use iot_core::drivers::board::Backed;
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
-use iot_core::light::Rgb;
+use iot_core::light::{Rgb, rgb565};
 use iot_core::ui::font::{FontFamily, Metrics};
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
-use iot_core::ui::{Canvas, GlyphCache, Screen};
+use iot_core::ui::{Canvas, GlyphCache, Screen, ThemeId};
 
 const WIDTH: usize = PANEL_COLUMNS;
 const HEIGHT: usize = PANEL_ROWS;
@@ -61,8 +61,18 @@ fn render_snapshot(snapshot: &FrameSnapshot, debug: bool) -> Vec<u8> {
 fn render_with(snapshot: &FrameSnapshot, debug: bool, glyphs: Option<&mut GlyphCache>) -> Vec<u8> {
     let page = snapshot.page;
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
+    // The device fills the ground before painting; a light page is paper, not a black frame.
+    let ground = descriptor(page).ground().unwrap_or_else(|| {
+        crate::shared::ui::theme::Theme::of(snapshot.theme)
+            .ground
+            .rgb888()
+    });
+    let packed = rgb565(ground).to_be_bytes();
+    for pixel in frame.chunks_exact_mut(2) {
+        pixel.copy_from_slice(&packed);
+    }
     {
-        let mut canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, descriptor(page).ground());
+        let mut canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, Some(ground));
         if let Some(glyphs) = glyphs {
             canvas = canvas.with_glyphs(glyphs);
         }
@@ -74,6 +84,7 @@ fn render_with(snapshot: &FrameSnapshot, debug: bool, glyphs: Option<&mut GlyphC
                 debug,
                 spl_offset_db: 100,
                 probe: None,
+                theme: snapshot.theme,
             },
         );
         paint(page, snapshot, &mut panel);
@@ -93,8 +104,8 @@ fn fingerprint(frame: &[u8]) -> u32 {
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
 const GOLDEN: [(&str, bool, u32); 34] = [
-    ("menu", false, 0x3ca9_d77c),
-    ("menu", true, 0x64ef_df2c),
+    ("menu", false, 0x1f54_7e8f),
+    ("menu", true, 0x5034_243f),
     ("input", false, 0xc18e_7dc5),
     ("input", true, 0xb334_d787),
     ("attitude", false, 0x4404_48b2),
@@ -171,6 +182,25 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
                 page.path()
             );
         }
+    }
+}
+
+#[test]
+fn a_theme_switch_reaches_the_ink() {
+    for page in PageId::ALL {
+        // Input prints nothing on a release build; Camera and Network keep their own black
+        // ground and ink by inverting it, so the palette does not reach them.
+        if matches!(page, PageId::Input | PageId::Camera | PageId::Network) {
+            continue;
+        }
+        let dark = page_snapshot(page);
+        let mut light = dark;
+        light.theme = ThemeId::Light;
+        assert_ne!(
+            render_snapshot(&light, false),
+            render_snapshot(&dark, false),
+            "{page:?} ignores the theme"
+        );
     }
 }
 
@@ -357,16 +387,32 @@ fn dump_every_page_when_asked() {
     };
     let dir = std::path::PathBuf::from(dir);
     std::fs::create_dir_all(&dir).unwrap();
-    for page in PageId::ALL {
-        std::fs::write(
-            dir.join(format!("{}.bmp", page.path())),
-            bmp(&render(page, false)),
-        )
-        .unwrap();
+    for &theme in ThemeId::ALL {
+        let suffix = if theme == ThemeId::Light {
+            "-light"
+        } else {
+            ""
+        };
+        for page in PageId::ALL {
+            let mut snapshot = page_snapshot(page);
+            snapshot.theme = theme;
+            std::fs::write(
+                dir.join(format!("{}{suffix}.bmp", page.path())),
+                bmp(&render_snapshot(&snapshot, false)),
+            )
+            .unwrap();
+        }
     }
     std::fs::write(
         dir.join("attitude-motion.bmp"),
         bmp(&render_snapshot(&motion(), false)),
+    )
+    .unwrap();
+    let mut light_motion = motion();
+    light_motion.theme = ThemeId::Light;
+    std::fs::write(
+        dir.join("attitude-motion-light.bmp"),
+        bmp(&render_snapshot(&light_motion, false)),
     )
     .unwrap();
     let mut services = Services::default();

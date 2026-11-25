@@ -10,21 +10,19 @@ const SHARE: [i16; 3] = [100, 72, 48];
 #[derive(Clone, Copy, Debug)]
 pub struct Skeleton {
     width: i16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl Skeleton {
     pub const fn new(width: i16) -> Self {
-        Self {
-            width,
-            theme: &Theme::PANEL,
-        }
+        Self { width, theme: None }
     }
 }
 
 impl Widget for Skeleton {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let paper = ui.color(self.theme.muted);
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
+        let paper = ui.color(theme.muted);
         let width = self.width;
         ui.column(Style::new().gap(3), |ui| {
             for share in SHARE {

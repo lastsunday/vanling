@@ -43,7 +43,7 @@ Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧
 | `core::ui::widget` | `Widget` trait 与 `Ui::add`，通用词汇，不认页面 |
 | `app::shared::i18n` | `Lang` / `Msg` 与固定词；只出字，不认像素 |
 | `app::shared::ui::state` | `State` 位集 |
-| `app::shared::ui::theme` | `Theme::PANEL`，按钮/输入框的样式解析 |
+| `app::shared::ui::theme` | `Theme::PANEL` / `Theme::LIGHT` 与按钮/输入框的样式解析 |
 | `app::shared::ui::slot` | `Slot` 枚举，替代 `Widget?` |
 | `app::shared::ui::widgets` | 具体组件，一文件一个 |
 | `app::shared::page` | 页面版式：边距、行距、标题、滚动体与读数行 |
@@ -92,9 +92,13 @@ pub struct Theme {
 }
 
 impl Theme {
-    pub const PANEL: Self = Self { /* ... */ };
+    pub const PANEL: Self = Self { /* 深色，开机默认 */ };
+    pub const LIGHT: Self = Self { /* Solarized Light */ };
+    pub const fn of(id: ThemeId) -> &'static Self { /* ... */ }
 }
 ```
+
+`ThemeId { Dark, Light }` 放在 `iot-core::ui::Screen`，由 `DeviceState.theme` 经 `FrameSnapshot.theme` 投影到绘制层；组件默认 `Theme::of(ui.screen().theme)`，页面用 `Theme::of(snapshot.theme)`。`.theme(&Theme)` 仍可给单个组件覆盖。切换只换常量调色板，不生成颜色：浅色页由 `ScreenRenderer::present` 用 `ground` 铺纸并点满背光，`Network` / `Camera` 仍用各自的黑底，`Breath` 与玻璃呼吸期间强制深色。主题和语言一样是运行时状态，不落盘；构建期可用 `IOT_THEME=light` 改开机值。
 
 同一颜色重复 intern 是幂等的；`MAX_COLORS = 16` 是整页共享的上限。新增组件先问“能不能用现有 token”，不能才加色。
 
@@ -139,8 +143,8 @@ Flutter 到这里的映射：
 | `StatefulWidget` | 状态留在页面 / 快照 | 每帧重建 |
 | `WidgetState` | `State(u8)` | 去掉 hover |
 | `WidgetStateProperty<T>` | `fn(&Theme, State) -> T` | 不做属性对象 |
-| `ButtonStyle` | `Theme` 的 `button(...)` | 无运行时主题 |
-| `ThemeData` | `const Theme` | 同上 |
+| `ButtonStyle` | `Theme` 的 `button(...)` | 常量调色板，无样式对象 |
+| `ThemeData` | `const Theme` + `ThemeId` | 切换换常量，不建主题树 |
 | `child` / `children` | 闭包 | 没有 `List<Widget>` |
 | `leading: Widget?` | `Slot` | 避免装箱 |
 | `onTap` | `NodeId` + 页面 `bind` | 输入独立管线 |
@@ -209,7 +213,7 @@ pub enum Slot<'a> {
 
 四个画廊的每个样例都带一行说明（`page::caption`）：名字加这个样例怎么动，例如 `TABLE / TAP A ROW`，中英各一份 `Msg`。`Advanced` / `Extended` 原先的分区词因此删掉——说明行已经报了名字；`Data` 的浮层一带仍用 `page::section`（一条线加名字）隔开。说明行是 muted 的 `nowrap`，不带 tag，点了不动。
 
-`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Input`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` 两个 44×44 chip（`the_language_chips_are_touch_sized` 钉住），点一下改 `DeviceState.lang`；按钮区因此下移一整行。14 个入口排成五行，最后一行要滚动才见得到，命中仍按 offset 反查。
+`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Input`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。14 个入口排成五行，最后一行要滚动才见得到，命中仍按 offset 反查。
 
 `Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
 

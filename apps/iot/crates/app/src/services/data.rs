@@ -386,7 +386,7 @@ impl super::LocalPage for DataPage {
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let lang = snapshot.lang;
     let w = snapshot.pages.data;
-    let theme = Theme::PANEL;
+    let theme = *Theme::of(snapshot.theme);
     page::body(ui, |ui| {
         page::title(ui, Msg::DataTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
@@ -463,14 +463,8 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     }
 }
 
-fn custom(
-    snapshot: &FrameSnapshot,
-    _screen: Screen,
-    slot: u8,
-    canvas: &mut Canvas<'_>,
-    rect: Rect,
-) {
-    let theme = Theme::PANEL;
+fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
+    let theme = *Theme::of(screen.theme);
     let w = snapshot.pages.data;
     let lang = snapshot.lang;
     match slot {

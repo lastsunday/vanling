@@ -101,7 +101,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let breath = snapshot.pages.breath.unwrap_or(GlassBreath::CALM);
     page::body(ui, |ui| {
         page::title(ui, Msg::PageBreath.bytes(lang));
-        page::caption(ui, Msg::BreathHint.bytes(lang), &Theme::PANEL);
+        page::caption(ui, Msg::BreathHint.bytes(lang), Theme::of(snapshot.theme));
         ui.row(Style::new().gap(GAP), |ui| {
             ui.add(
                 Button::new(Msg::Calm.bytes(lang))

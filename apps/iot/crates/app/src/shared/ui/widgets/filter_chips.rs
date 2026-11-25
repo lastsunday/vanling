@@ -10,7 +10,7 @@ pub struct FilterChips<'a> {
     labels: [&'a [u8]; 3],
     tags: [u16; 3],
     on: u8,
-    theme: &'a Theme,
+    theme: Option<&'a Theme>,
 }
 
 impl<'a> FilterChips<'a> {
@@ -19,19 +19,19 @@ impl<'a> FilterChips<'a> {
             labels,
             tags,
             on,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
-        self.theme = theme;
+        self.theme = Some(theme);
         self
     }
 }
 
 impl Widget for FilterChips<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
-        let theme = self.theme;
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = ui.color(theme.muted);
         let accent = ui.color(theme.accent);
         let paper = ui.color(theme.selection);

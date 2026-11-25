@@ -7,6 +7,7 @@ use crate::shared::snapshot::{
 };
 use iot_core::demand::EffectiveDemand;
 use iot_core::light::{MODE_BREATH, MODE_OFF, MODE_SOLID, rgb_hue, scale_brightness};
+use iot_core::ui::ThemeId;
 
 use super::appearance::LightAppearance;
 
@@ -87,6 +88,12 @@ pub(super) fn frame_snapshot(
     } else {
         None
     };
+    // A breath owns the glass; the dark palette keeps the page readable over it.
+    let theme = if state.page() == PageId::Breath || state.glass_breath.is_some() {
+        ThemeId::Dark
+    } else {
+        state.theme
+    };
     FrameSnapshot {
         demand: *demand,
         touch: TouchSnapshot {
@@ -112,6 +119,7 @@ pub(super) fn frame_snapshot(
         page: state.page(),
         backed: state.backed,
         lang: state.lang,
+        theme,
         steady: state.page().steady(),
         link: state.network.link,
         mac: state.network.mac,
@@ -223,6 +231,7 @@ mod tests {
                 touch: _,
                 dropped_intents: _,
                 lang: _,
+                theme: _,
             } = state;
         }
         project_every_field(DeviceState::default());

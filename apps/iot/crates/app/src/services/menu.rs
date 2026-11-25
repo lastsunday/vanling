@@ -2,7 +2,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::TOUCH_MIN;
-use iot_core::ui::{Rect, ScrollId, Style, Ui};
+use iot_core::ui::{Rect, ScrollId, Style, ThemeId, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsIntent};
@@ -29,10 +29,12 @@ const GAP: i16 = 6;
 const COUNT: usize = PageId::ALL.len() - 2;
 const ROWS: usize = COUNT.div_ceil(COLUMNS);
 
-/// The language chips sit outside the grid, so their tags stay clear of the page codes.
+/// The settings chips sit outside the grid, so their tags stay clear of the page codes.
 const TAG_LANG_EN: u16 = 100;
 const TAG_LANG_ZH: u16 = 101;
-const TAGS: usize = COUNT + 2;
+const TAG_THEME_DARK: u16 = 102;
+const TAG_THEME_LIGHT: u16 = 103;
+const TAGS: usize = COUNT + 4;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -214,6 +216,13 @@ impl super::LocalPage for MenuPage {
                 } {
                     return Some(BusinessIntent::Settings(SettingsIntent::SetLang { lang }));
                 }
+                if let Some(theme) = match tag {
+                    TAG_THEME_DARK => Some(ThemeId::Dark),
+                    TAG_THEME_LIGHT => Some(ThemeId::Light),
+                    _ => None,
+                } {
+                    return Some(BusinessIntent::Settings(SettingsIntent::SetTheme { theme }));
+                }
                 let page = PageId::from_code(u8::try_from(tag.checked_sub(1)?).ok()?)?;
                 page.is_backed(state.backed)
                     .then_some(BusinessIntent::Menu(MenuIntent::Choose {
@@ -328,6 +337,20 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                         .tag(TAG_LANG_ZH)
                         .selected(lang == Lang::ZhHans),
                 );
+                ui.add(
+                    Chip::new(Msg::ThemeDark.bytes(lang))
+                        .width(TOUCH_MIN as i16)
+                        .height(TOUCH_MIN as i16)
+                        .tag(TAG_THEME_DARK)
+                        .selected(snapshot.theme == ThemeId::Dark),
+                );
+                ui.add(
+                    Chip::new(Msg::ThemeLight.bytes(lang))
+                        .width(TOUCH_MIN as i16)
+                        .height(TOUCH_MIN as i16)
+                        .tag(TAG_THEME_LIGHT)
+                        .selected(snapshot.theme == ThemeId::Light),
+                );
             },
         );
         page::scroller(ui, AREA, snapshot.pages.menu.area, |ui| {
@@ -356,7 +379,10 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
 }
 
 fn menu_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.backed != next.backed || prev.pages.menu != next.pages.menu
+    prev.lang != next.lang
+        || prev.theme != next.theme
+        || prev.backed != next.backed
+        || prev.pages.menu != next.pages.menu
 }
 
 fn menu_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
@@ -491,9 +517,27 @@ mod tests {
     }
 
     #[test]
-    fn the_language_chips_are_touch_sized() {
+    fn a_theme_chip_asks_for_its_theme() {
         let page = MenuPage::default();
-        for tag in [TAG_LANG_EN, TAG_LANG_ZH] {
+        for (tag, theme) in [
+            (TAG_THEME_DARK, ThemeId::Dark),
+            (TAG_THEME_LIGHT, ThemeId::Light),
+        ] {
+            let rect = page.tags.rect(tag).expect("the chip is laid out");
+            assert_eq!(
+                page.bind(
+                    &tap((rect.x + 2) as u16, (rect.y + 2) as u16),
+                    &DeviceState::default()
+                ),
+                Some(BusinessIntent::Settings(SettingsIntent::SetTheme { theme }))
+            );
+        }
+    }
+
+    #[test]
+    fn the_settings_chips_are_touch_sized() {
+        let page = MenuPage::default();
+        for tag in [TAG_LANG_EN, TAG_LANG_ZH, TAG_THEME_DARK, TAG_THEME_LIGHT] {
             let rect = page.tags.rect(tag).expect("the chip is laid out");
             assert!(
                 rect.w >= TOUCH_MIN as i32 && rect.h >= TOUCH_MIN as i32,

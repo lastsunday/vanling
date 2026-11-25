@@ -10,7 +10,7 @@ pub struct Switch {
     on: bool,
     state: State,
     tag: u16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl Switch {
@@ -19,7 +19,7 @@ impl Switch {
             on,
             state: State::NONE,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -36,20 +36,17 @@ impl Switch {
 
 impl Widget for Switch {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let off = self.state.has(State::DISABLED);
         let track = if off {
-            self.theme.muted
+            theme.muted
         } else if self.on {
-            self.theme.accent
+            theme.accent
         } else {
-            self.theme.muted
+            theme.muted
         };
         let track = ui.color(track);
-        let knob = ui.color(if off {
-            self.theme.muted
-        } else {
-            self.theme.ink
-        });
+        let knob = ui.color(if off { theme.muted } else { theme.ink });
         let left = if self.on { 20 } else { 2 };
         ui.stack(
             Style::new()
@@ -77,7 +74,7 @@ pub struct Checkbox {
     checked: bool,
     state: State,
     tag: u16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl Checkbox {
@@ -86,7 +83,7 @@ impl Checkbox {
             checked,
             state: State::NONE,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -103,19 +100,16 @@ impl Checkbox {
 
 impl Widget for Checkbox {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let disabled = self.state.has(State::DISABLED);
         let edge = ui.color(if disabled {
-            self.theme.muted
+            theme.muted
         } else if self.checked {
-            self.theme.accent
+            theme.accent
         } else {
-            self.theme.muted
+            theme.muted
         });
-        let mark = ui.color(if disabled {
-            self.theme.muted
-        } else {
-            self.theme.accent
-        });
+        let mark = ui.color(if disabled { theme.muted } else { theme.accent });
         ui.stack(
             Style::new()
                 .size(16, 16)
@@ -139,7 +133,7 @@ pub struct Radio {
     selected: bool,
     state: State,
     tag: u16,
-    theme: &'static Theme,
+    theme: Option<&'static Theme>,
 }
 
 impl Radio {
@@ -148,7 +142,7 @@ impl Radio {
             selected,
             state: State::NONE,
             tag: 0,
-            theme: &Theme::PANEL,
+            theme: None,
         }
     }
 
@@ -165,19 +159,16 @@ impl Radio {
 
 impl Widget for Radio {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let disabled = self.state.has(State::DISABLED);
         let edge = ui.color(if disabled {
-            self.theme.muted
+            theme.muted
         } else if self.selected {
-            self.theme.accent
+            theme.accent
         } else {
-            self.theme.muted
+            theme.muted
         });
-        let dot = ui.color(if disabled {
-            self.theme.muted
-        } else {
-            self.theme.accent
-        });
+        let dot = ui.color(if disabled { theme.muted } else { theme.accent });
         ui.stack(
             Style::new()
                 .size(16, 16)
