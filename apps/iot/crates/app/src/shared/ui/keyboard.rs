@@ -278,7 +278,7 @@ pub fn draw(canvas: &mut Canvas<'_>, rect: Rect, text: Text<FIELD_BYTES>, theme:
         let mut face_buf = [0u8; 2];
         let face = face_of(key, text.layer(), text.shift(), &mut face_buf);
         let top = key_rect.y as usize + 4;
-        canvas.set_color(Some(theme.ink));
+        canvas.set_color(Some(theme.foreground));
         canvas.draw_text(face, centre(canvas, face, key_rect), top);
 
         let mut run_buf = [0u8; 4];
@@ -292,7 +292,7 @@ pub fn draw(canvas: &mut Canvas<'_>, rect: Rect, text: Text<FIELD_BYTES>, theme:
         canvas.draw_text(run, left, run_top);
         if let Some(cycling) = cycling.filter(|cycling| key == Key::Char(cycling.face)) {
             let index = usize::from(cycling.index);
-            canvas.set_color(Some(theme.ink));
+            canvas.set_color(Some(theme.foreground));
             canvas.draw_text(&run[index..=index], left + index * GLYPH, run_top);
         }
     }

@@ -197,12 +197,12 @@ impl Metrics {
         (self.size as usize).div_ceil(Self::ROOT as usize)
     }
 
-    /// Rows one line's ink occupies.
+    /// Rows one line's glyphs occupy.
     pub fn height(&self) -> usize {
         self.ascent() + self.descent()
     }
 
-    /// Rows of air the face keeps under its ink, so two lines do not touch. The grid face is
+    /// Rows of air the face keeps under its glyphs, so two lines do not touch. The grid face is
     /// cut to its cell and needs none.
     pub fn leading(&self) -> usize {
         match self.family {
@@ -288,7 +288,7 @@ impl Glyph<'_> {
         &self.bits[row * self.stride..(row + 1) * self.stride]
     }
 
-    pub fn ink(&self, row: usize, column: usize) -> bool {
+    pub fn coverage(&self, row: usize, column: usize) -> bool {
         self.row(row)[column / 8] & (0x80 >> (column % 8)) != 0
     }
 }
@@ -359,7 +359,7 @@ const VMAGIC: &[u8; 4] = b"VLV1";
 const VHEADER: usize = 32;
 /// The table's units per em. A unit is 3/8 px at 24 px.
 const EM: u32 = 64;
-/// One glyph's meta: advance, point range, contour range, and the box the ink occupies.
+/// One glyph's meta: advance, point range, contour range, and the box the glyphs occupy.
 const VMETA: usize = 18;
 
 impl VectorFace {
@@ -367,7 +367,7 @@ impl VectorFace {
         Self
     }
 
-    /// Whether the face carries `ch` as a glyph with ink or as a blank cell.
+    /// Whether the face carries `ch` as a glyph or as a blank cell.
     pub fn has(&self, ch: char) -> bool {
         self.find(ch).is_some()
     }
@@ -488,7 +488,7 @@ pub struct Outline<'a> {
 }
 
 impl Outline<'_> {
-    /// Whether the glyph has any ink at all; a space has none.
+    /// Whether the glyph draws anything at all; a space draws nothing.
     pub fn is_blank(&self) -> bool {
         self.last <= self.first
     }
@@ -609,7 +609,7 @@ mod tests {
     }
 
     /// The line box is what every page's rhythm is built on: if one glyph reached past it,
-    /// that glyph's ink would be shaved by whatever box the caller drew it in.
+    /// that glyph would be shaved by whatever box the caller drew it in.
     #[test]
     fn the_tables_line_box_encloses_every_glyph() {
         let face = VectorFace::new();
@@ -635,7 +635,7 @@ mod tests {
     }
 
     #[test]
-    fn a_vector_line_is_the_ink_box_plus_leading() {
+    fn a_vector_line_is_the_glyph_box_plus_leading() {
         let metrics = Metrics::vector(24);
         assert_eq!(
             (metrics.ascent(), metrics.descent(), metrics.height()),
@@ -673,8 +673,8 @@ mod tests {
             (11, 11, 0, -2)
         );
         assert!(
-            glyph.ink(2, 0) || glyph.ink(2, 10),
-            "the box's frame is inked"
+            glyph.coverage(2, 0) || glyph.coverage(2, 10),
+            "the box's frame is covered"
         );
     }
 }

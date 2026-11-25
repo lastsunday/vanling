@@ -53,7 +53,7 @@ impl<'a> FormField<'a> {
 impl Widget for FormField<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
-        let ink = theme.label(ui, self.state);
+        let fg = theme.label(ui, self.state);
         let muted = ui.color(theme.muted);
         let hint = if self.state.has(State::ERROR) {
             ui.color(theme.danger)
@@ -66,7 +66,7 @@ impl Widget for FormField<'_> {
         }
         ui.column(Style::new().gap(1), |ui| {
             ui.text(self.label, Style::new().nowrap().color(muted));
-            ui.text(self.value, input.color(ink));
+            ui.text(self.value, input.color(fg));
             ui.text(self.hint, Style::new().nowrap().color(hint));
         })
     }

@@ -305,7 +305,7 @@ impl<'a, 's> Ui<'a, 's> {
     }
 
     /// Lays the declaration out and draws it, when there is a canvas to draw into. `paint`
-    /// is the page's own ink for the custom slots it declared.
+    /// is the page's own drawing for the custom slots it declared.
     pub fn paint(
         &mut self,
         constraints: BoxConstraints,
@@ -386,13 +386,13 @@ mod tests {
         ui.paint(BoxConstraints::tight(100 * PX, 100 * PX), &mut |_, _, _| {});
         let canvas = ui.into_canvas().expect("a canvas was handed in");
         let frame = canvas.frame();
-        let ink = |x: usize, y: usize| {
+        let drawn = |x: usize, y: usize| {
             let at = (y * W + x) * 2;
             frame[at] != 0 || frame[at + 1] != 0
         };
-        assert!((0..40).any(|y| (0..W).any(|x| ink(x, y))), "in the box");
+        assert!((0..40).any(|y| (0..W).any(|x| drawn(x, y))), "in the box");
         assert!(
-            !(41..H).any(|y| (0..W).any(|x| ink(x, y))),
+            !(41..H).any(|y| (0..W).any(|x| drawn(x, y))),
             "below the box is empty"
         );
     }
@@ -401,7 +401,7 @@ mod tests {
     fn a_run_wider_than_its_box_is_cut_and_can_be_marked() {
         const W: usize = 80;
         const H: usize = 20;
-        let ink = |overflow: Overflow| -> usize {
+        let drawn = |overflow: Overflow| -> usize {
             let mut frame = [0u8; W * H * 2];
             let mut canvas = Canvas::new(&mut frame, W, H, None);
             let mut ui = Ui::new(&mut canvas, Screen::default());
@@ -414,11 +414,11 @@ mod tests {
                 .filter(|at| frame[at * 2] != 0 || frame[at * 2 + 1] != 0)
                 .count()
         };
-        let clip = ink(Overflow::Clip);
-        assert!(clip > 0, "the cut run still inks");
+        let clip = drawn(Overflow::Clip);
+        assert!(clip > 0, "the cut run still draws");
         assert!(
-            ink(Overflow::Ellipsis) < clip,
-            "the mark is inked, but one glyph less of the run is"
+            drawn(Overflow::Ellipsis) < clip,
+            "the mark is drawn, but one glyph less of the run is"
         );
     }
 
@@ -442,7 +442,7 @@ mod tests {
                 .find(|x| {
                     (0..H).any(|y| frame[(y * W + x) * 2] != 0 || frame[(y * W + x) * 2 + 1] != 0)
                 })
-                .expect("the run inks")
+                .expect("the run draws")
         };
         let start = first(TextAlign::Start);
         assert_eq!(
@@ -479,7 +479,7 @@ mod tests {
         assert_eq!(pixel(12, 8), 0xFFFF, "the paper covers the box");
         assert!(
             (0..W).any(|x| (0..H).any(|y| pixel(x, y) == 0)),
-            "the run is still inked over the paper"
+            "the run is still drawn over the paper"
         );
     }
 
@@ -501,7 +501,7 @@ mod tests {
                 .find(|&x| {
                     (0..H).any(|y| frame[(y * W + x) * 2] != 0 || frame[(y * W + x) * 2 + 1] != 0)
                 })
-                .expect("the run left ink")
+                .expect("the run left a mark")
         };
         assert_eq!(left_of(TextAlign::Start), 0);
         assert!(left_of(TextAlign::Center) > 4, "the run sits in the middle");
@@ -522,16 +522,16 @@ mod tests {
         ui.paint(BoxConstraints::tight(100 * PX, 24 * PX), &mut |_, _, _| {});
         let canvas = ui.into_canvas().expect("a canvas was handed in");
         let frame = canvas.frame();
-        let ink = |x: usize, y: usize| {
+        let drawn = |x: usize, y: usize| {
             let at = (y * W + x) * 2;
             frame[at] != 0 || frame[at + 1] != 0
         };
         assert!(
-            (0..30).any(|x| (0..12).any(|y| ink(x, y))),
-            "the box is inked"
+            (0..30).any(|x| (0..12).any(|y| drawn(x, y))),
+            "the box is drawn"
         );
         assert!(
-            !(30..W).any(|x| (0..12).any(|y| ink(x, y))),
+            !(30..W).any(|x| (0..12).any(|y| drawn(x, y))),
             "nothing leaves the box"
         );
     }
@@ -556,12 +556,12 @@ mod tests {
         ui.paint(BoxConstraints::tight(64 * PX, 60 * PX), &mut |_, _, _| {});
         let canvas = ui.into_canvas().expect("a canvas was handed in");
         let frame = canvas.frame();
-        let ink = |x: usize, y: usize| {
+        let drawn = |x: usize, y: usize| {
             let at = (y * W + x) * 2;
             frame[at] != 0 || frame[at + 1] != 0
         };
         assert!(
-            (24..30).any(|y| (0..W).any(|x| ink(x, y))),
+            (24..30).any(|y| (0..W).any(|x| drawn(x, y))),
             "the descender shows below the line box"
         );
     }
@@ -588,7 +588,7 @@ mod tests {
     const W: usize = 48;
     const H: usize = 24;
 
-    fn ink(run: &[u8], style: Style, spans: &[(usize, usize, RunStyle)]) -> alloc::vec::Vec<u8> {
+    fn raster(run: &[u8], style: Style, spans: &[(usize, usize, RunStyle)]) -> alloc::vec::Vec<u8> {
         let mut frame = alloc::vec![0u8; W * H * 2];
         {
             let mut canvas = Canvas::new(&mut frame, W, H, None);
@@ -628,7 +628,7 @@ mod tests {
 
     #[test]
     fn a_span_recolours_only_its_own_bytes() {
-        let frame = ink(b"AB", Style::new(), &[(0, 1, RunStyle::default())]);
+        let frame = raster(b"AB", Style::new(), &[(0, 1, RunStyle::default())]);
         let red = crate::light::rgb565(crate::light::Rgb(0xF0, 0x20, 0x20)).to_be_bytes();
         let red_in = |from: usize, to: usize| {
             (from..to).any(|x| {
@@ -643,22 +643,26 @@ mod tests {
     }
 
     #[test]
-    fn a_heavy_weight_lays_down_more_ink_and_a_taller_size_more_still() {
-        let plain = count(&ink(b"HHHH", Style::new(), &[]));
-        let bold = count(&ink(
+    fn a_heavy_weight_lays_down_more_coverage_and_a_taller_size_more_still() {
+        let plain = count(&raster(b"HHHH", Style::new(), &[]));
+        let bold = count(&raster(
             b"HHHH",
             Style::new().font_weight(FontWeight::Bold),
             &[],
         ));
-        let large = count(&ink(b"HHHH", Style::new().font_size(Length::Px(24)), &[]));
+        let large = count(&raster(
+            b"HHHH",
+            Style::new().font_size(Length::Px(24)),
+            &[],
+        ));
         assert!(bold > plain, "bold {bold} vs plain {plain}");
         assert!(large > bold, "24 px {large} vs bold {bold}");
     }
 
     #[test]
     fn an_underline_draws_a_rule_below_the_baseline() {
-        let plain = row_count(&ink(b"HHHH", Style::new(), &[]), 11);
-        let underlined = row_count(&ink(b"HHHH", Style::new().underline(), &[]), 11);
+        let plain = row_count(&raster(b"HHHH", Style::new(), &[]), 11);
+        let underlined = row_count(&raster(b"HHHH", Style::new().underline(), &[]), 11);
         assert_eq!(plain, 0);
         assert!(underlined >= 20, "the rule spans the run: {underlined} px");
     }
@@ -672,7 +676,7 @@ mod tests {
             DecorationStyle::Dashed,
             DecorationStyle::Wavy,
         ] {
-            let frame = ink(
+            let frame = raster(
                 b"HHHH",
                 Style::new().underline().decoration_style(style),
                 &[],

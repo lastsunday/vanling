@@ -33,7 +33,7 @@ impl Widget for Segmented<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = ui.color(theme.muted);
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let muted = ui.color(theme.muted);
         let paper = ui.color(theme.selection);
         ui.row(
@@ -54,7 +54,7 @@ impl Widget for Segmented<'_> {
                         .tag(self.tags[index])
                         .text_align(TextAlign::Center)
                         .background(if on { paper } else { ui.color(theme.ground) })
-                        .color(if on { ink } else { muted });
+                        .color(if on { fg } else { muted });
                     ui.text(label, style);
                 }
             },

@@ -1,4 +1,4 @@
-//! The ink: what each laid-out node puts on the canvas.
+//! The fg: what each laid-out node puts on the canvas.
 
 use super::canvas::Canvas;
 use super::color::{Color, Palette};
@@ -88,7 +88,7 @@ fn draw_text(
     if style.nowrap {
         // One line at its natural width; whatever leaves the box sideways is clipped, not
         // wrapped. The box's own height is not a clip: a descender reaches below it, and only
-        // the ancestor (a scroll viewport, or the page) decides where the ink stops.
+        // the ancestor (a scroll viewport, or the page) decides where the fg stops.
         let width = metrics.measure(run) as i32;
         let top = rect.y + (rect.h - line_height).max(0) / 2;
         if rect.x < 0 || top < 0 {
@@ -132,8 +132,8 @@ fn draw_text(
             spans,
             0,
         );
-        let ink = palette.get(style.color);
-        draw_glyph(canvas, '…', end, top, metrics, style, ink);
+        let fg = palette.get(style.color);
+        draw_glyph(canvas, '…', end, top, metrics, style, fg);
         canvas.pop_clip();
         return;
     }
@@ -185,12 +185,12 @@ fn draw_text(
         );
         if paragraph.truncated && last {
             let ellipsis = metrics.advance('…') as i32;
-            let ink = palette.get(style.color);
-            draw_glyph(canvas, '…', end + extra, y, metrics, style, ink);
+            let fg = palette.get(style.color);
+            draw_glyph(canvas, '…', end + extra, y, metrics, style, fg);
             draw_decorations(
                 canvas,
                 style,
-                palette.get(style.decoration_color).or(ink),
+                palette.get(style.decoration_color).or(fg),
                 end + extra,
                 end + extra + ellipsis,
                 y,
@@ -244,12 +244,12 @@ fn paint_run(
         extra,
         |canvas, step| match step {
             Step::Glyph(ch, pen, run_style) => {
-                let ink = palette.get(run_style.color);
-                draw_glyph(canvas, ch, pen, top, metrics, run_style, ink);
+                let fg = palette.get(run_style.color);
+                draw_glyph(canvas, ch, pen, top, metrics, run_style, fg);
             }
             Step::Segment(run_style, left, right) => {
-                let ink = palette.get(run_style.color);
-                let decoration = palette.get(run_style.decoration_color).or(ink);
+                let fg = palette.get(run_style.color);
+                let decoration = palette.get(run_style.decoration_color).or(fg);
                 draw_decorations(canvas, run_style, decoration, left, right, top, metrics);
             }
         },
@@ -326,9 +326,9 @@ fn draw_glyph(
     top: i32,
     metrics: Metrics,
     style: Style,
-    ink: Option<Color>,
+    fg: Option<Color>,
 ) {
-    canvas.set_color(ink);
+    canvas.set_color(fg);
     if style.weight().is_heavy() {
         canvas.draw_char_heavy_at(ch, left as isize, top as usize, metrics);
     } else {
@@ -347,7 +347,7 @@ fn highlight(canvas: &mut Canvas<'_>, color: Color, left: i32, right: i32, top: 
     canvas.set_color(None);
 }
 
-/// Underline, overline and strike-through across the ink between `left` and `right`.
+/// Underline, overline and strike-through across the fg between `left` and `right`.
 fn draw_decorations(
     canvas: &mut Canvas<'_>,
     style: Style,

@@ -262,13 +262,13 @@ pub fn draw(view: &FeedView<'_>, canvas: &mut Canvas<'_>, rect: Rect, theme: &Th
         i32::from(FOOTER_H),
     );
     if footer.bottom() > rect.y && footer.y < rect.bottom() {
-        let (word, ink) = match view.more {
+        let (word, fg) = match view.more {
             More::Idle => (view.words.load, theme.muted),
             More::Running => (view.words.load, theme.accent),
             More::End => (view.words.end, theme.muted),
             More::Failed => (view.words.failed, theme.danger),
         };
-        centered(canvas, footer, word, ink);
+        centered(canvas, footer, word, fg);
     }
 
     if view.rows.is_empty() {
@@ -302,9 +302,9 @@ pub fn draw(view: &FeedView<'_>, canvas: &mut Canvas<'_>, rect: Rect, theme: &Th
     canvas.set_color(None);
 }
 
-fn centered(canvas: &mut Canvas<'_>, rect: Rect, run: &[u8], ink: Color) {
+fn centered(canvas: &mut Canvas<'_>, rect: Rect, run: &[u8], fg: Color) {
     let width = canvas.measure(run) as i32;
-    canvas.set_color(Some(ink));
+    canvas.set_color(Some(fg));
     canvas.draw_text(
         run,
         (rect.x + (rect.w - width) / 2).max(0) as usize,

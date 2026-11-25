@@ -21,7 +21,7 @@ A Flutter widget tree means one Widget per row, which does not work here: `Ui` l
 | **Widget** | `Ui` declares nodes; layout and paint walk one tree | Page headers, forms, dialogs, a few rows | 1–5 |
 | **Cell** | `Canvas` draws directly, taking one custom slot | Long lists, key grids, charts, gauges, scrollbars | 0 |
 
-The test is whether the row count grows with data. A fixed few rows are Widgets; one to N rows are Cells. A Cell still follows Flutter's slot design (`ListTile`'s `leading`/`title`/`subtitle`/`trailing`); only the ink lands on `Canvas`.
+The test is whether the row count grows with data. A fixed few rows are Widgets; one to N rows are Cells. A Cell still follows Flutter's slot design (`ListTile`'s `leading`/`title`/`subtitle`/`trailing`); only the drawing lands on `Canvas`.
 
 ## Hard limits
 
@@ -50,7 +50,7 @@ Two hard rules for widgets: one instance stays within five nodes; `Theme` keeps 
 | `app::shared::ui::slot` | The `Slot` enum, replacing `Widget?` |
 | `app::shared::ui::widgets` | Concrete widgets, one file each |
 | `app::shared::page` | Page furniture: margins, line rhythm, title, scrolling body, reading row |
-| `app::shared::surface` | `Panel`: lays a declaration out into boxes and inks them |
+| `app::shared::surface` | `Panel`: lays a declaration out into boxes and paints them |
 | `services/<page>` | Composes widgets and binds intents |
 
 A widget takes props only: it does not read `DeviceState`, take callbacks, or embed user-visible text. The page translates snapshot state into `State` and `&[u8]` before calling.
@@ -82,7 +82,7 @@ There is no two-way binding (Slint/QML's `<=>`). Flutter's `TextEditingControlle
 ```rust
 pub struct Theme {
     pub ground: Color,
-    pub ink: Color,
+    pub foreground: Color,
     pub muted: Color,
     pub accent: Color,
     pub accent_pressed: Color,
@@ -186,7 +186,7 @@ Built and living in `shared/ui/widgets`:
 
 Type comes in three steps: page titles at 20 px vector (`page::title`), button and chip labels at 14 px vector, body copy and readings on the 12 px bitmap. The bitmap face has one size: `Metrics::at(13..=24)` jumps to 24 px, where an eight-letter label like `ATTITUDE` no longer fits a 98 px button, so larger type has to be vector. Painting falls back per run: one missing glyph drops the whole run to the bitmap face. `every_word_the_panel_prints_has_a_vector_glyph` pins every `Msg::ALL` word at 14 and 20 px; rerun `iot-tool outline` before adding copy.
 
-Text grows a layout, but only the nodes that did not fix their size: with no `width`, a text node takes the run's advance width and `line_height` (ink plus leading), so a column gets taller and a row gets wider. A `width` on a `nowrap` run clips it instead, and a `Button` stays 98×44 however large its label is; changing the type size means changing the layout constants with it. The panel is a fixed 320×240: growth comes out of the `grow` nodes and then runs off the panel, it never scales the layout down.
+Text grows a layout, but only the nodes that did not fix their size: with no `width`, a text node takes the run's advance width and `line_height` (glyphs plus leading), so a column gets taller and a row gets wider. A `width` on a `nowrap` run clips it instead, and a `Button` stays 98×44 however large its label is; changing the type size means changing the layout constants with it. The panel is a fixed 320×240: growth comes out of the `grow` nodes and then runs off the panel, it never scales the layout down.
 
 `Style::overflow(Overflow)` covers only a `nowrap` run wider than its box, the usable half of Flutter's `TextOverflow`: `Clip` (the default) cuts at the box edge, `Ellipsis` cuts and ends the visible run with `…`; the box never grows. `.ellipsis()` is shorthand for `nowrap + Ellipsis`, used by `Banner` / `Button` / `EmptyState` / `FilterChips` / `Segmented` / `Stepper` so a label that does not fit stays inside. Wrapping runs are unaffected and still stop at `max_lines`.
 

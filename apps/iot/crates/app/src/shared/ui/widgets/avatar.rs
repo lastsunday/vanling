@@ -27,7 +27,7 @@ impl Widget for Avatar<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let paper = ui.color(theme.muted);
-        let ink = ui.color(theme.ground);
+        let fg = ui.color(theme.ground);
         ui.text(
             self.text,
             Style::new()
@@ -36,7 +36,7 @@ impl Widget for Avatar<'_> {
                 .text_align(TextAlign::Center)
                 .background(paper)
                 .nowrap()
-                .color(ink),
+                .color(fg),
         )
     }
 }

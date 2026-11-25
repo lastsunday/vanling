@@ -366,7 +366,7 @@ impl Descriptor {
         self
     }
 
-    /// The page's own ink for the custom slots its declaration leaves.
+    /// The page's own drawing for the custom slots its declaration leaves.
     pub(super) fn with_custom(mut self, custom: Custom) -> Self {
         self.custom = custom;
         self

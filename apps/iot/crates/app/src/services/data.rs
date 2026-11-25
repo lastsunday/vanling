@@ -487,7 +487,7 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
                 let count = i32::try_from(BARS.len()).unwrap_or(1).max(1);
                 let slot_w = rect.w / count;
                 let left = rect.x + i32::from(column) * slot_w;
-                canvas.set_color(Some(theme.ink));
+                canvas.set_color(Some(theme.foreground));
                 canvas.draw_line(
                     left as isize,
                     (rect.bottom() - 1) as isize,
@@ -501,7 +501,7 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
             let mut buf = [0u8; 6];
             let text = format_u16(u16::from(w.gauge), &mut buf);
             let width = canvas.measure(text) as i32;
-            canvas.set_color(Some(theme.ink));
+            canvas.set_color(Some(theme.foreground));
             canvas.draw_text(
                 text,
                 (rect.x + (rect.w - width) / 2).max(0) as usize,

@@ -505,7 +505,7 @@ bench 的 `Act` 序列在前面加了一步（打字关联 → **点 band 0（�
 
 这一句只有在「点下去会开键盘」的那种实现下才发不出来（把门去掉，宿主机那条 walk 测试立刻红：`a row took a pick while a link was up`）。读回的**不是**「页面上没有选中行」—— 打字那一步本来就选中过一行，而链路升起只清草稿、不清那一行 —— 所以这一句比的是**点之前与点之后一样**，即这一击什么也没改。
 
-弹窗那一半的**结构**在宿主机上，四条各自可测的事实：问题挂着时 `page::Part::hidden` 不画列表与工具条、`page::walk` 根本不把它们交出来、绘制顺序由 `Part::IN_ORDER` 钉住、`fill_surface` 逐像素写满整个矩形（`core/src/stamp.rs` 三条测试，把填充换回「反色」那条就红：`(6,10)` 处 `left=4358 ground / right=61177 ink`）。**画什么、按什么顺序画**这一层这一轮也从面板搬进了 core：`page::walk(setup, draw)` 只把该画的交出来（测试钉住交出的顺序、以及问题挂着时列表与工具条**根本不被交出**），面板剩下的只是 `match` 每个部分长什么样 —— 因为面板是唯一「答错了看不出来」的地方（宿主机编不到它）。**像素本身（弹窗整体观感、色带、对比）仍然只有眼睛能判**。
+弹窗那一半的**结构**在宿主机上，四条各自可测的事实：问题挂着时 `page::Part::hidden` 不画列表与工具条、`page::walk` 根本不把它们交出来、绘制顺序由 `Part::IN_ORDER` 钉住、`fill_surface` 逐像素写满整个矩形（`core/src/stamp.rs` 三条测试，把填充换回「反色」那条就红：`(6,10)` 处 `left=4358 ground / right=61177`（后者是字形像素））。**画什么、按什么顺序画**这一层这一轮也从面板搬进了 core：`page::walk(setup, draw)` 只把该画的交出来（测试钉住交出的顺序、以及问题挂着时列表与工具条**根本不被交出**），面板剩下的只是 `match` 每个部分长什么样 —— 因为面板是唯一「答错了看不出来」的地方（宿主机编不到它）。**像素本身（弹窗整体观感、色带、对比）仍然只有眼睛能判**。
 
 这一轮的产品镜像（不给网络、`IOT_BOOT_PAGE=network`）也在板上开过：`[CREDS] 0 saved network(s)` → `[IOT] boot page is Network` → 扫到 2 条 → `the list is unchanged, so the page is not redrawn` → 停在那里等面板。同一份页面代码在没有 bench 的那一支上照常跑，`[DISPLAY] main stack 65,912 B`。
 
@@ -1044,7 +1044,7 @@ C6 只有一颗 WS2812，没有屏幕，所以配网状态只能由这颗灯说�
 - **`SETUP` 看不出会断网**：有链路时那一格上一轮按「动词写目的地」写成 `SETUP`，可是面板档没有 AP —— 进设置模式就等于离开这条链路，一个只写目的地的词把代价藏起来了。改回 `LEAVE`：框问 `LEAVE "cafe"?`，正文仍是 `THE LINK GOES DOWN`，两答 `KEEP` | `LEAVE`。落点没变（`Outcome::Left` → `await_network()` 的面板档），出来时左格 `CANCEL` 把已存网络连回来 —— `LEAVE`/`CANCEL` 成对。切档仍写目的地（`AP`/`PANEL`）：不切过去就看不到那边，而离开这件事的意义**就是**代价本身，所以它是一条例外。
 - **网页那行的 `BSSID` 改叫 `AP MAC`**：页头已经是 `Device <本机 MAC>`，行里那串是**热点**的 MAC。`AP MAC` 说清是谁的，不用术语也不和页头混。**线上字段名仍是 `"bssid"`** —— 那是协议，不是标签。
 - **离开链路回面板那一档，不是回手机上**：`front` 原来在 `link()` 里是 `let mut front = front;`，和任务同寿，只有面板的 `AP`/`PANEL` 会改它 —— 链路起来、链路走后都不复位。于是用手机配过网的设备 `front` 停在 AP 档，之后在面板上按 `LEAVE`，`await_network()` 直接把 AP 又拉起来：面板上点的动作，下一个模式开在手机上。`Setup` 的注释只承诺「跨过被拒的凭据」（手机重输口令还留在手机页），从没说过要跨过成功入网。修法后来落成一条纯规则（现在内联在 `network/link.rs` 的 `Stopped` 分支）：面板 `LEAVE` 回 build 的起始档（有屏 = 面板；无屏 = AP），被拒的凭据留当前档。两条启动日志也补上了档位（`on the {:?} front`），否则下一次这种问题串口答不出来。
-- **`AP MAC` 和地址挤成一条**：标签与值原本是**一个** `textContent`（`'AP MAC ' + bssid`），一个普通空格在 `.72rem` 的灰字里只有 3 px，读起来就是 `AP MACA4:CF:…`。拆成 `.tag` + `.addr` 两个 `span`，间距交给 `gap: .5rem`，地址提到 `--ink`；页头 `Device <MAC>` 的 `<b>` 一并提亮，两行同一套「灰标签 + 亮值」。
+- **`AP MAC` 和地址挤成一条**：标签与值原本是**一个** `textContent`（`'AP MAC ' + bssid`），一个普通空格在 `.72rem` 的灰字里只有 3 px，读起来就是 `AP MACA4:CF:…`。拆成 `.tag` + `.addr` 两个 `span`，间距交给 `gap: .5rem`，地址提到 `--text`；页头 `Device <MAC>` 的 `<b>` 一并提亮，两行同一套「灰标签 + 亮值」。
 
 `[测试]` `a_leave_names_the_network_the_link_is_on`：`format_question(Leave, link)` = `LEAVE "cafe"?`；链路还没被接受（`Connecting`，没有 `ap`）时只写 `LEAVE`；`Confirm::Leave.network(link)` 就是链路的 AP —— 框后面被反白的行和问句点的是同一个名字。`format_verb` / `format_body` 的词与正文不变（`LEAVE` / `THE LINK GOES DOWN`）。工具条那格现在直接画 `format_verb(Confirm::Leave)`，和框里的答案同一个来源 —— 邀请和按钮不能再各说各的（`the_boxes_words_are_the_verbs_own_and_fit_the_box` 盯着这两处）。
 

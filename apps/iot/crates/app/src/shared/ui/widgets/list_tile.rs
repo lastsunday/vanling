@@ -67,16 +67,16 @@ impl<'a> ListTile<'a> {
             canvas.set_color(Some(theme.selection));
             canvas.fill_rect(rect);
         }
-        let ink = if self.state.has(State::DISABLED) {
+        let fg = if self.state.has(State::DISABLED) {
             theme.muted
         } else {
-            theme.ink
+            theme.foreground
         };
         let mut left = rect.x + 4;
         if !self.leading.is_none() {
             left += self.leading.draw(canvas, left, rect.y + 2, theme) + 4;
         }
-        canvas.set_color(Some(ink));
+        canvas.set_color(Some(fg));
         canvas.draw_text(
             self.title,
             left.max(0) as usize,

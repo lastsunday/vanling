@@ -62,7 +62,11 @@ impl Pager<'_> {
             // One card is four pixels of air plus its own words: nothing it says may reach the
             // neighbour, whatever the language does to the length.
             canvas.push_clip(card_rect);
-            canvas.set_color(Some(if focused { theme.ink } else { theme.muted }));
+            canvas.set_color(Some(if focused {
+                theme.foreground
+            } else {
+                theme.muted
+            }));
             canvas.draw_text(
                 card.title,
                 (card_rect.x + MARGIN as i32).max(0) as usize,

@@ -1,5 +1,5 @@
 //! The portable page surface: a `Canvas`, its screen, and the dispatch from a page's
-//! declaration to ink. Frame data arrives from `services::paint`; the surface owns no page.
+//! declaration to painting. Frame data arrives from `services::paint`; the surface owns no page.
 
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS, RIGHT};
@@ -8,7 +8,7 @@ use iot_core::ui::{BoxConstraints, Canvas, PX, Rect, Screen, Ui};
 /// What a page declares: its picture, as the boxes and runs it wants at the screen's size.
 pub type View = for<'a, 's> fn(&FrameSnapshot, &mut Ui<'a, 's>);
 
-/// A page's own ink for the custom slots its declaration leaves: the screen it is drawn for,
+/// A page's own drawing for the custom slots its declaration leaves: the screen it is drawn for,
 /// the slot, and the rectangle layout gave it.
 pub type Custom = fn(&FrameSnapshot, Screen, u8, &mut Canvas<'_>, Rect);
 
@@ -90,7 +90,7 @@ impl<'a> Panel<'a> {
         let len = digits.len().min(run.len() - 4);
         run[4..4 + len].copy_from_slice(&digits[..len]);
         // The page's last node may have left a colour on the canvas; the footer is the panel's
-        // own and always inks in the default.
+        // own and always draws in the default.
         self.canvas.set_color(None);
         self.canvas
             .draw_text_right(&run[..4 + len], RIGHT as isize, CONTENT_BOTTOM);

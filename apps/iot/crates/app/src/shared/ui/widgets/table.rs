@@ -20,7 +20,7 @@ impl Table<'_> {
     pub fn draw(self, canvas: &mut Canvas<'_>, rect: Rect, theme: &Theme) {
         let column = rect.w / 3;
         let muted = theme.muted;
-        let ink = theme.ink;
+        let fg = theme.foreground;
         canvas.set_color(Some(muted));
         canvas.draw_line(
             rect.x as isize,
@@ -36,7 +36,7 @@ impl Table<'_> {
             let top =
                 rect.y + i32::from(HEADER_H) + i32::try_from(row).unwrap_or(0) * i32::from(ROW_H);
             let text_top = top + (i32::from(ROW_H) - LINE as i32) / 2;
-            canvas.set_color(Some(if row % 2 == 0 { ink } else { muted }));
+            canvas.set_color(Some(if row % 2 == 0 { fg } else { muted }));
             for (index, cell) in cells.iter().enumerate() {
                 let left = rect.x + i32::try_from(index).unwrap_or(0) * column + 2;
                 canvas.draw_text(cell, left.max(0) as usize, text_top.max(0) as usize);

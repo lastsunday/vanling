@@ -16,7 +16,7 @@ use super::font::{Chars, Face, FontFamily, Glyph, Metrics, Outline, VectorFace};
 /// shipped glyph holds 328; a wider one trips `no_outline_is_wider_than_the_canvas_scratch`.
 pub(crate) const OUTLINE_POINTS: usize = 384;
 
-/// The coverage cache's glyph box, sized for the text page's 24 px face; larger glyphs
+/// The glyph cache's box, sized for the text page's 24 px face; larger glyphs
 /// rasterize straight into the frame.
 pub const GLYPH_BOX: usize = 24;
 
@@ -25,10 +25,10 @@ pub const GLYPH_SLOTS: usize = 192;
 
 /// Coverage is counted in sixteenths, so a pixel needs five bits: a full pixel is 16, which
 /// four bits cannot hold.
-const INK_BITS: usize = 5;
-const GLYPH_STRIDE: usize = (GLYPH_BOX * INK_BITS).div_ceil(8);
+const COVERAGE_BITS: usize = 5;
+const GLYPH_STRIDE: usize = (GLYPH_BOX * COVERAGE_BITS).div_ceil(8);
 
-/// The widest and tallest ink the uncached path draws; a bigger face would overrun the row
+/// The widest and tallest glyph the uncached path draws; a bigger face would overrun the row
 /// buffer and trips an assertion.
 const MAX_GLYPH_WIDTH: usize = 64;
 const MAX_GLYPH_ROWS: usize = 256;
@@ -77,13 +77,13 @@ impl Scratch {
 /// The largest corner any widget asks for; the array of row insets is sized by it.
 const MAX_RADIUS: u8 = 16;
 
-/// Where a glyph sits and how big its ink box is, in panel pixels.
+/// Where a glyph sits and how big its coverage box is, in panel pixels.
 #[derive(Clone, Copy)]
 struct Placement {
     /// Pen origin.
     left: i32,
     baseline: i32,
-    /// Ink box top-left and size.
+    /// Coverage box top-left and size.
     x: i32,
     y: i32,
     width: usize,
@@ -94,17 +94,17 @@ struct Placement {
 struct GlyphSlot {
     /// `u64::MAX` when free; otherwise the code point, size and weight.
     key: u64,
-    ink: [u8; GLYPH_STRIDE * GLYPH_BOX],
+    coverage: [u8; GLYPH_STRIDE * GLYPH_BOX],
 }
 
 impl GlyphSlot {
     const EMPTY: Self = Self {
         key: u64::MAX,
-        ink: [0; GLYPH_STRIDE * GLYPH_BOX],
+        coverage: [0; GLYPH_STRIDE * GLYPH_BOX],
     };
 }
 
-/// The coverage every (code point, size, weight) has already rasterized to. A page lays a
+/// The coverage each (code point, size, weight) has already rasterized to. A page lays a
 /// glyph on whole-pixel coordinates, so a scroll can blend the slot instead of re-walking the
 /// outline. Heap-only: the main stack has no room (`@/records/iot/hardware-constraints.md`).
 pub struct GlyphCache {
@@ -157,14 +157,16 @@ impl GlyphCache {
         let Self { slots, scratch, .. } = self;
         let slot = &mut slots[index];
         slot.key = key;
-        slot.ink.fill(0);
+        slot.coverage.fill(0);
         rasterize(
             outline,
             size,
             at,
             heavy,
             scratch,
-            |column, row, coverage| ink_put(&mut slot.ink, GLYPH_STRIDE, column, row, coverage),
+            |column, row, coverage| {
+                coverage_put(&mut slot.coverage, GLYPH_STRIDE, column, row, coverage)
+            },
         );
         index
     }
@@ -187,7 +189,7 @@ pub struct Canvas<'a> {
     depth: usize,
     glyphs: Option<&'a mut GlyphCache>,
     /// The rectangles this frame is allowed to touch; `None` means the whole canvas, so a
-    /// partial repaint still only inks what changed.
+    /// partial repaint still only draws what changed.
     damage: Option<FrameDamage>,
 }
 
@@ -339,7 +341,7 @@ impl<'a> Canvas<'a> {
     }
 
     /// Lays a glyph down a pixel at a time, each set bit becoming a `scale`×`scale` block.
-    /// `heavy` adds one column (a bit is inked when it or its left neighbour is set), the same
+    /// `heavy` adds one column (a bit is covered when it or its left neighbour is set), the same
     /// widening two strikes give without double-striking. Nothing inside the box is bounds-checked.
     fn draw_glyph_at(
         &mut self,
@@ -362,9 +364,9 @@ impl<'a> Canvas<'a> {
                 let row = (y as isize - top) as usize / scale;
                 for x in x0..x1 {
                     let column = (x as isize - left) as usize / scale;
-                    let inked = column < glyph.width && glyph.ink(row, column)
-                        || heavy && column > 0 && glyph.ink(row, column - 1);
-                    if inked {
+                    let covered = column < glyph.width && glyph.coverage(row, column)
+                        || heavy && column > 0 && glyph.coverage(row, column - 1);
+                    if covered {
                         self.mark(x, y);
                     }
                 }
@@ -479,7 +481,7 @@ impl<'a> Canvas<'a> {
                     rows,
                 },
             );
-            let ink = &cache.slots[index].ink;
+            let coverage = &cache.slots[index].coverage;
             for_windows(damage, (x0, y0, x1, y1), |x0, y0, x1, y1| {
                 blit(
                     frame,
@@ -488,7 +490,7 @@ impl<'a> Canvas<'a> {
                     (x0, y0, x1, y1),
                     (box_left, box_top),
                     GLYPH_STRIDE,
-                    ink,
+                    coverage,
                 );
             });
             return;
@@ -766,12 +768,12 @@ fn corner_rows(rect: Rect, radius: u8) -> Option<Corners> {
     })
 }
 
-/// Adds the coverage a scanline span from `a` to `b` gives the pixels of `ink`, in quarter
-/// columns relative to `origin`; the last pixel takes only the fraction the span reaches.
-/// Walks `outline`'s contours once, sampling four sub-scanlines per row and handing every
-/// inked pixel to `put`. Points are scaled into [`OUTLINE_POINTS`] once and each edge is filed
-/// under the first row that can reach it, so a row visits only the edges still crossing it —
-/// rescaling per row cost 238 ms a frame.
+/// Rasterizes `outline` into a coverage row in quarter columns relative to its origin: each
+/// scanline span adds its coverage to the pixels it reaches, the last one taking only the
+/// fraction the span covers. Walks the contours once, sampling four sub-scanlines per row and
+/// handing every covered pixel to `put`. Points are scaled into [`OUTLINE_POINTS`] once and
+/// each edge is filed under the first row that can reach it, so a row visits only the edges
+/// still crossing it — rescaling per row cost 238 ms a frame.
 fn rasterize(
     outline: &Outline<'_>,
     size: u16,
@@ -788,7 +790,7 @@ fn rasterize(
         width,
         rows,
     } = at;
-    /// Coverage of a fully inked pixel: four sub-scanlines of four quarter-columns.
+    /// Coverage of a fully covered pixel: four sub-scanlines of four quarter-columns.
     const FULL: u8 = 16;
     let scale = |units: i32| (units * i32::from(size) * 4 + 32) / 64;
     let (ox, oy) = (left * 4, baseline * 4);
@@ -846,7 +848,7 @@ fn rasterize(
         heads[file] = local as i16;
     }
     let mut active_len = 0usize;
-    let mut ink = [0u8; MAX_GLYPH_WIDTH];
+    let mut coverage = [0u8; MAX_GLYPH_WIDTH];
     let columns = (width + usize::from(heavy)).min(MAX_GLYPH_WIDTH);
     let merged = heavy && width < MAX_GLYPH_WIDTH;
     debug_assert!(
@@ -855,7 +857,7 @@ fn rasterize(
     );
     for (row, head) in heads.iter().enumerate().take(rows) {
         let pixel = y0 + row as i32;
-        ink[..width].fill(0);
+        coverage[..width].fill(0);
         let scans = [pixel * 4 + 1, pixel * 4 + 3, pixel * 4 + 5, pixel * 4 + 7];
         let mut id = *head;
         while id >= 0 {
@@ -897,20 +899,20 @@ fn rasterize(
             let crossings = &mut xs[sub][..counts[sub]];
             crossings.sort_unstable();
             for pair in crossings.as_chunks::<2>().0 {
-                add_span(&mut ink, pair[0], pair[1], x0 * 4, width);
+                add_span(&mut coverage, pair[0], pair[1], x0 * 4, width);
             }
         }
         if merged {
-            ink[width] = 0;
+            coverage[width] = 0;
             for column in (0..=width).rev() {
-                let left = if column == 0 { 0 } else { ink[column - 1] };
-                ink[column] = over(ink[column], left);
+                let left = if column == 0 { 0 } else { coverage[column - 1] };
+                coverage[column] = over(coverage[column], left);
             }
         }
-        for (column, coverage) in ink[..columns].iter().enumerate() {
-            if *coverage > 0 {
-                debug_assert!(*coverage <= FULL);
-                put(column, row, *coverage);
+        for (column, alpha) in coverage[..columns].iter().enumerate() {
+            if *alpha > 0 {
+                debug_assert!(*alpha <= FULL);
+                put(column, row, *alpha);
             }
         }
     }
@@ -937,31 +939,31 @@ fn over(a: u8, b: u8) -> u8 {
 }
 
 /// Reads one five-bit sample from a packed row.
-fn ink_get(ink: &[u8], stride: usize, x: usize, y: usize) -> u8 {
-    let bit = x * INK_BITS;
+fn coverage_get(coverage: &[u8], stride: usize, x: usize, y: usize) -> u8 {
+    let bit = x * COVERAGE_BITS;
     let index = y * stride + bit / 8;
     let shift = bit % 8;
-    let mut word = u16::from(ink[index]) >> shift;
-    if shift + INK_BITS > 8 && index + 1 < ink.len() {
-        word |= u16::from(ink[index + 1]) << (8 - shift);
+    let mut word = u16::from(coverage[index]) >> shift;
+    if shift + COVERAGE_BITS > 8 && index + 1 < coverage.len() {
+        word |= u16::from(coverage[index + 1]) << (8 - shift);
     }
     (word & 0x1F) as u8
 }
 
 /// Writes one five-bit sample into a packed row.
-fn ink_put(ink: &mut [u8], stride: usize, x: usize, y: usize, value: u8) {
-    let bit = x * INK_BITS;
+fn coverage_put(coverage: &mut [u8], stride: usize, x: usize, y: usize, value: u8) {
+    let bit = x * COVERAGE_BITS;
     let index = y * stride + bit / 8;
     let shift = bit % 8;
     let mask = 0x1Fu16 << shift;
-    let mut word = u16::from(ink[index]);
-    if index + 1 < ink.len() {
-        word |= u16::from(ink[index + 1]) << 8;
+    let mut word = u16::from(coverage[index]);
+    if index + 1 < coverage.len() {
+        word |= u16::from(coverage[index + 1]) << 8;
     }
     word = (word & !mask) | (u16::from(value) << shift);
-    ink[index] = word as u8;
-    if shift + INK_BITS > 8 {
-        ink[index + 1] = (word >> 8) as u8;
+    coverage[index] = word as u8;
+    if shift + COVERAGE_BITS > 8 {
+        coverage[index + 1] = (word >> 8) as u8;
     }
 }
 
@@ -974,16 +976,16 @@ fn blit(
     window: (usize, usize, usize, usize),
     origin: (i32, i32),
     stride: usize,
-    ink: &[u8],
+    coverage: &[u8],
 ) {
     let (x0, y0, x1, y1) = window;
     for y in y0..y1 {
         let row = (y as i32 - origin.1) as usize;
         for x in x0..x1 {
             let column = (x as i32 - origin.0) as usize;
-            let coverage = ink_get(ink, stride, column, row);
-            if coverage > 0 {
-                blend_pixel(frame, frame_width, color, x, y, coverage);
+            let alpha = coverage_get(coverage, stride, column, row);
+            if alpha > 0 {
+                blend_pixel(frame, frame_width, color, x, y, alpha);
             }
         }
     }
@@ -1028,7 +1030,7 @@ fn blend_pixel(
 }
 
 /// Calls `f` once per rectangle of `damage` that meets the box, or once with the box itself
-/// when nothing restricts it. Each window is what the caller may ink.
+/// when nothing restricts it. Each window is what the caller may coverage.
 fn for_windows(
     damage: Option<FrameDamage>,
     (x0, y0, x1, y1): (usize, usize, usize, usize),
@@ -1063,7 +1065,7 @@ fn in_damage(damage: Option<FrameDamage>, x: usize, y: usize) -> bool {
     }
 }
 
-fn add_span(ink: &mut [u8], a: i32, b: i32, origin: i32, width: usize) {
+fn add_span(out: &mut [u8], a: i32, b: i32, origin: i32, width: usize) {
     let end = width as i32 * 4;
     let a = (a - origin).clamp(0, end) as usize;
     let b = (b - origin).clamp(0, end) as usize;
@@ -1073,16 +1075,16 @@ fn add_span(ink: &mut [u8], a: i32, b: i32, origin: i32, width: usize) {
     let (mut pixel, first) = (a / 4, (a % 4) as u8);
     let last = (b - 1) / 4;
     if pixel == last {
-        ink[pixel] = ink[pixel].saturating_add((b - a) as u8);
+        out[pixel] = out[pixel].saturating_add((b - a) as u8);
         return;
     }
-    ink[pixel] = ink[pixel].saturating_add(4 - first);
+    out[pixel] = out[pixel].saturating_add(4 - first);
     pixel += 1;
     while pixel < last {
-        ink[pixel] = ink[pixel].saturating_add(4);
+        out[pixel] = out[pixel].saturating_add(4);
         pixel += 1;
     }
-    ink[last] = ink[last].saturating_add(((b - 1) % 4 + 1) as u8);
+    out[last] = out[last].saturating_add(((b - 1) % 4 + 1) as u8);
 }
 
 #[cfg(test)]
@@ -1157,19 +1159,19 @@ mod tests {
             canvas.set_color(Some(Color::rgb(0xFF, 0xFF, 0xFF)));
             canvas.draw_char_at('中', 0, 0, Metrics::vector(24));
         }
-        let ink: vec::Vec<u16> = (0..24)
+        let coverage: vec::Vec<u16> = (0..24)
             .flat_map(|y| (0..24).map(move |x| (x, y)))
             .map(|(x, y)| pixel(&bytes, x, y))
             .filter(|pixel| *pixel != 0)
             .collect();
-        assert!(!ink.is_empty(), "the glyph drew nothing");
+        assert!(!coverage.is_empty(), "the glyph drew nothing");
         assert!(
-            ink.iter().any(|pixel| *pixel != 0xFFFF),
+            coverage.iter().any(|pixel| *pixel != 0xFFFF),
             "an antialiased edge is neither empty nor opaque"
         );
         assert!(
             (24..WIDTH).all(|x| (0..HEIGHT).all(|y| pixel(&bytes, x, y) == 0)),
-            "the ink stays within the 24 px advance"
+            "the coverage stays within the 24 px advance"
         );
     }
 
@@ -1187,13 +1189,13 @@ mod tests {
     }
 
     #[test]
-    fn a_span_outside_the_ink_buffer_adds_nothing() {
-        let mut ink = [0u8; 4];
-        add_span(&mut ink, -30, -10, 0, 4);
-        add_span(&mut ink, 20, 40, 0, 4);
-        assert_eq!(ink, [0u8; 4]);
-        add_span(&mut ink, -2, 30, 0, 4);
-        assert_eq!(ink, [4u8; 4], "a span crossing the buffer fills it");
+    fn a_span_outside_the_coverage_buffer_adds_nothing() {
+        let mut coverage = [0u8; 4];
+        add_span(&mut coverage, -30, -10, 0, 4);
+        add_span(&mut coverage, 20, 40, 0, 4);
+        assert_eq!(coverage, [0u8; 4]);
+        add_span(&mut coverage, -2, 30, 0, 4);
+        assert_eq!(coverage, [4u8; 4], "a span crossing the buffer fills it");
     }
 
     #[test]
@@ -1204,12 +1206,12 @@ mod tests {
             canvas.set_color(Some(Color::rgb(0xFF, 0xFF, 0xFF)));
             canvas.draw_char_at('中', 2, 0, Metrics::vector(24));
         }
-        // The face's ink sits where only the clip can say; take the first inked pixel from the
+        // The face's coverage sits where only the clip can say; take the first covered pixel from the
         // unclipped mark rather than guessing a window the outline may miss.
         let (x, y) = (0..HEIGHT)
             .flat_map(|y| (0..WIDTH).map(move |x| (x, y)))
             .find(|(x, y)| pixel(&whole, *x, *y) != 0)
-            .expect("the glyph drew ink");
+            .expect("the glyph drew coverage");
         let mut bytes = frame();
         {
             let mut canvas = Canvas::new(&mut bytes, WIDTH, HEIGHT, None);
@@ -1297,7 +1299,7 @@ mod tests {
     }
 
     #[test]
-    fn a_glyph_only_inks_the_damaged_rows() {
+    fn a_glyph_only_draws_the_damaged_rows() {
         let mut bytes = frame();
         let mut damage = FrameDamage::NONE;
         damage.add(crate::drivers::surface::DamageRect::new(
@@ -1345,16 +1347,16 @@ mod tests {
     fn a_fill_covers_what_was_drawn_and_stops_at_the_footer() {
         const TALL: usize = CONTENT_BOTTOM + 8;
         let ground = rgb565(GROUND).to_be_bytes();
-        let ink = invert_rgb565(rgb565(GROUND)).to_be_bytes();
+        let coverage = invert_rgb565(rgb565(GROUND)).to_be_bytes();
         let mut bytes = vec![0u8; WIDTH * TALL * 2];
         for pixel in bytes.as_chunks_mut::<2>().0 {
             pixel.copy_from_slice(&ground);
         }
         for x in 6..12 {
             let offset = (10 * WIDTH + x) * 2;
-            bytes[offset..offset + 2].copy_from_slice(&ink);
+            bytes[offset..offset + 2].copy_from_slice(&coverage);
         }
-        bytes[((10 * WIDTH) + 1) * 2..((10 * WIDTH) + 1) * 2 + 2].copy_from_slice(&ink);
+        bytes[((10 * WIDTH) + 1) * 2..((10 * WIDTH) + 1) * 2 + 2].copy_from_slice(&coverage);
 
         let mut canvas = Canvas::new(&mut bytes, WIDTH, TALL, Some(GROUND));
         canvas.fill_rect(Rect::new(4, 8, 16, CONTENT_BOTTOM as i32));
@@ -1362,12 +1364,16 @@ mod tests {
         for y in 8..CONTENT_BOTTOM {
             for x in 4..20 {
                 let offset = (y * WIDTH + x) * 2;
-                assert_eq!(bytes[offset..offset + 2], ink, "({x}, {y}) is the surface");
+                assert_eq!(
+                    bytes[offset..offset + 2],
+                    coverage,
+                    "({x}, {y}) is the surface"
+                );
             }
         }
         assert_eq!(
             pixel(&bytes, 1, 10),
-            u16::from_be_bytes(ink),
+            u16::from_be_bytes(coverage),
             "the word beside the box survives"
         );
         assert_eq!(

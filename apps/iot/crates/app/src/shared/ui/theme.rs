@@ -19,7 +19,7 @@ pub enum ButtonKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Theme {
     pub ground: Color,
-    pub ink: Color,
+    pub foreground: Color,
     pub muted: Color,
     pub accent: Color,
     pub accent_pressed: Color,
@@ -37,7 +37,7 @@ impl Theme {
     /// The dark palette the panel boots with.
     pub const PANEL: Self = Self {
         ground: Color::rgb(0x00, 0x00, 0x00),
-        ink: Color::rgb(0xFF, 0xFF, 0xFF),
+        foreground: Color::rgb(0xFF, 0xFF, 0xFF),
         muted: Color::rgb(0x88, 0x88, 0x88),
         accent: Color::rgb(0x4C, 0xB8, 0xFF),
         accent_pressed: Color::rgb(0x2C, 0x7C, 0xB8),
@@ -52,7 +52,7 @@ impl Theme {
     /// Solarized Light: the same roles on paper instead of the lamp's colour.
     pub const LIGHT: Self = Self {
         ground: Color::rgb(0xFD, 0xF6, 0xE3),
-        ink: Color::rgb(0x58, 0x6E, 0x75),
+        foreground: Color::rgb(0x58, 0x6E, 0x75),
         muted: Color::rgb(0x65, 0x7B, 0x83),
         accent: Color::rgb(0x26, 0x8B, 0xD2),
         accent_pressed: Color::rgb(0x1E, 0x6F, 0xA8),
@@ -72,8 +72,8 @@ impl Theme {
         }
     }
 
-    pub fn ink(&self, ui: &mut Ui<'_, '_>) -> ColorId {
-        ui.color(self.ink)
+    pub fn foreground(&self, ui: &mut Ui<'_, '_>) -> ColorId {
+        ui.color(self.foreground)
     }
 
     pub fn muted(&self, ui: &mut Ui<'_, '_>) -> ColorId {
@@ -166,7 +166,7 @@ impl Theme {
         if state.has(State::DISABLED) {
             ui.color(self.muted)
         } else {
-            ui.color(self.ink)
+            ui.color(self.foreground)
         }
     }
 
@@ -181,7 +181,7 @@ mod tests {
     use iot_core::ui::{BoxConstraints, Canvas, PX, Screen};
 
     #[test]
-    fn a_pressed_filled_button_changes_paper_not_ink() {
+    fn a_pressed_filled_button_changes_paper_not_the_label() {
         let mut frame = [0u8; 80 * 60 * 2];
         let mut canvas = Canvas::new(&mut frame, 80, 60, None);
         let mut ui = Ui::new(&mut canvas, Screen::default());

@@ -78,10 +78,10 @@ impl Widget for Chip<'_> {
             let paper = ui.color(theme.selection);
             box_style = box_style.background(paper);
         }
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let label = Style::new()
             .nowrap()
-            .color(ink)
+            .color(fg)
             .text_align(TextAlign::Center)
             .font_size(Length::Px(14))
             .font_family(FontFamily::Vector);

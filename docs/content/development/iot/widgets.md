@@ -79,7 +79,7 @@ Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧
 ```rust
 pub struct Theme {
     pub ground: Color,
-    pub ink: Color,
+    pub foreground: Color,
     pub muted: Color,
     pub accent: Color,
     pub accent_pressed: Color,

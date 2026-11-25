@@ -68,7 +68,7 @@ impl Sheet<'_> {
             canvas.fill_rect(Rect::new(card.x + (card.w - 28) / 2, card.y + PAD, 28, 3));
         }
         canvas.push_clip(card);
-        canvas.set_color(Some(theme.ink));
+        canvas.set_color(Some(theme.foreground));
         canvas.draw_text(
             self.title,
             (card.x + PAD).max(0) as usize,
@@ -85,7 +85,7 @@ impl Sheet<'_> {
                 canvas.set_color(Some(theme.selection));
                 canvas.fill_rect(row_rect);
             }
-            canvas.set_color(Some(theme.ink));
+            canvas.set_color(Some(theme.foreground));
             canvas.push_clip(row_rect);
             canvas.draw_text(
                 row,

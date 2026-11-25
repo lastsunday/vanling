@@ -94,8 +94,8 @@ pub fn scroller(
 
 /// One gallery sample's name and, when it has one, its gesture: a muted line above the sample.
 pub fn caption(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
-    let ink = ui.color(theme.muted);
-    ui.text(run, Style::new().nowrap().color(ink));
+    let fg = ui.color(theme.muted);
+    ui.text(run, Style::new().nowrap().color(fg));
 }
 
 /// A named band of samples: a rule, then the name.

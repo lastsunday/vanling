@@ -1,4 +1,4 @@
-//! The Network page's bands, and the ink each one is drawn with.
+//! The Network page's bands, and the colours each one is drawn with.
 
 pub(super) mod content;
 pub(super) mod header;
@@ -14,7 +14,7 @@ use iot_core::geometry::ControlRect;
 use iot_core::ui::Canvas;
 use iot_core::ui::panel::LINE;
 
-/// One pixel of ink around `rect`'s own edge, inside it.
+/// One pixel of colour around `rect`'s own edge, inside it.
 pub(super) fn draw_frame(canvas: &mut Canvas<'_>, rect: ControlRect) {
     let (x, y) = (rect.x as isize, rect.y as isize);
     let (right, bottom) = (x + rect.w as isize - 1, y + rect.h as isize - 1);

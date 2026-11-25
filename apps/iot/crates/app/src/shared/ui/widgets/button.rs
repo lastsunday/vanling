@@ -61,10 +61,10 @@ impl Widget for Button<'_> {
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = theme.on_button(ui, self.kind, self.state);
+        let fg = theme.on_button(ui, self.kind, self.state);
         let label = Style::new()
             .ellipsis()
-            .color(ink)
+            .color(fg)
             .text_align(TextAlign::Center)
             .font_size(Length::Px(14))
             .font_family(FontFamily::Vector);

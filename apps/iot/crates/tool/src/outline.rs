@@ -21,7 +21,7 @@
 //! ```
 //!
 //! Ascent/descent is the line box, not the typographic pair: each is widened to enclose
-//! every cut glyph's ink.
+//! every cut glyph.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -111,8 +111,8 @@ pub fn write() -> Result<(), String> {
     }
 
     // The typographic pair is the one line height is meant to come from; hhea on this face
-    // reserves CJK ink headroom and would set every line a third taller than the text. The
-    // pair is widened below to the ink this table actually carries: `g` reaches 15 units
+    // reserves CJK glyph headroom and would set every line a third taller than the text. The
+    // pair is widened below to the glyphs this table actually carries: `g` reaches 15 units
     // under the baseline while the typographic descender reserves 8, so the pair alone would
     // shave every descender.
     let (ascender, descender) = (
@@ -121,15 +121,18 @@ pub fn write() -> Result<(), String> {
         face.typographic_descender()
             .unwrap_or_else(|| face.descender()),
     );
-    let (ink_top, ink_bottom) = glyphs.iter().fold((0i16, 0i16), |(top, bottom), glyph| {
+    let (glyph_top, glyph_bottom) = glyphs.iter().fold((0i16, 0i16), |(top, bottom), glyph| {
         (top.max(glyph.ymax), bottom.min(glyph.ymin))
     });
     let ascent = u16::try_from((f64::from(ascender) * EM / units).round() as i32)
         .map_err(|_| "ascent out of range")?
-        .max(u16::try_from(ink_top.max(0)).map_err(|_| "ink ascent out of range")?);
+        .max(u16::try_from(glyph_top.max(0)).map_err(|_| "glyph ascent out of range")?);
     let descent = u16::try_from((f64::from(-descender) * EM / units).round() as i32)
         .map_err(|_| "descent out of range")?
-        .max(u16::try_from(-i32::from(ink_bottom.min(0))).map_err(|_| "ink descent out of range")?);
+        .max(
+            u16::try_from(-i32::from(glyph_bottom.min(0)))
+                .map_err(|_| "glyph descent out of range")?,
+        );
     let table = encode(&glyphs, &codes, ascent, descent)?;
     let path = table_path();
     std::fs::create_dir_all(path.parent().expect("the table has a directory"))

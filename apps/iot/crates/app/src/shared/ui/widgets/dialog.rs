@@ -39,7 +39,7 @@ impl Dialog<'_> {
         canvas.stroke_round_rect(card, 4);
         canvas.push_clip(card);
         let width = canvas.measure(self.title) as i32;
-        canvas.set_color(Some(theme.ink));
+        canvas.set_color(Some(theme.foreground));
         canvas.draw_text(
             self.title,
             (card.x + (card.w - width) / 2).max(0) as usize,

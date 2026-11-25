@@ -171,7 +171,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     let w = snapshot.pages.feedback;
     let theme = *Theme::of(snapshot.theme);
     page::body(ui, |ui| {
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let muted = ui.color(theme.muted);
         page::title(ui, Msg::FeedbackTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
@@ -203,7 +203,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 if w.skeleton {
                     ui.add(Skeleton::new(CONTENT_W));
                 } else {
-                    ui.text(Msg::Saved.bytes(lang), Style::new().nowrap().color(ink));
+                    ui.text(Msg::Saved.bytes(lang), Style::new().nowrap().color(fg));
                     ui.text(Msg::Detail.bytes(lang), Style::new().nowrap().color(muted));
                     ui.text(Msg::Ended.bytes(lang), Style::new().nowrap().color(muted));
                 }

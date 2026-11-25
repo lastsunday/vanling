@@ -60,7 +60,7 @@ impl DamageRect {
 ///
 /// The surface ships only these, so a scroll of two text regions costs a few kilobytes on the
 /// wire instead of the frame's 153 600. `FULL` is the safe answer a painter that does not
-/// describe its ink gets; `NONE` says nothing was drawn.
+/// describe its pixels gets; `NONE` says nothing was drawn.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct FrameDamage {
     rects: [DamageRect; MAX_DAMAGE_RECTS],
@@ -114,7 +114,7 @@ impl Default for FrameDamage {
     }
 }
 
-/// Product-side drawing for a screen. The board owns the buffer; the app decides the ink.
+/// Product-side drawing for a screen. The board owns the buffer; the app decides what is drawn.
 ///
 /// The painter is mutable because it keeps the vector glyph cache between frames
 /// ([`Canvas::with_glyphs`](crate::ui::Canvas::with_glyphs)).
@@ -130,7 +130,7 @@ pub trait ScreenPainter {
     );
 
     /// The pixels the panel has to receive for this frame, which can be more than the ones the
-    /// last `paint` inked: a blit moves rows the page never draws again. Defaults to the whole
+    /// last `paint` drew: a blit moves rows the page never draws again. Defaults to the whole
     /// frame, which every surface can ship.
     fn damage(&self) -> FrameDamage {
         FrameDamage::FULL
@@ -179,7 +179,7 @@ pub trait ScreenSurface: RgbLight + CameraTarget {
     }
 
     /// Draws the frame the snapshot describes over the colour the last fill left. The board
-    /// supplies its buffer and the app's painter decides the ink. `force` redraws even when no
+    /// supplies its buffer and the app's painter decides what is drawn. `force` redraws even when no
     /// colour moved — the product's repaint gate asks for that. Answers whether a frame is now
     /// pending for [`Self::flush`].
     ///

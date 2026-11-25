@@ -148,7 +148,7 @@ pub enum TextAlign {
 /// `nowrap` run can use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum Overflow {
-    /// Cut the ink at the box edge; the box itself never grows past what it was given.
+    /// Cut the coverage at the box edge; the box itself never grows past what it was given.
     #[default]
     Clip,
     /// Cut at the box edge and end the visible run with an ellipsis.
@@ -187,7 +187,7 @@ impl FontWeight {
         self as u16 + 1
     }
 
-    /// Whether this weight is drawn one column wider than the face's own ink.
+    /// Whether this weight is drawn one column wider than the face's own coverage.
     pub const fn is_heavy(self) -> bool {
         matches!(self, Self::Bold | Self::ExtraBold | Self::Black)
     }

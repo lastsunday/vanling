@@ -40,9 +40,9 @@ impl Widget for IconButton {
         let mut buf = [0u8; 4];
         let run = self.glyph.encode_utf8(&mut buf).as_bytes();
         let box_style = theme.button(ui, ButtonKind::Text, self.state).tag(self.tag);
-        let ink = theme.on_button(ui, ButtonKind::Text, self.state);
+        let fg = theme.on_button(ui, ButtonKind::Text, self.state);
         ui.column(box_style, |ui| {
-            ui.text(run, Style::new().nowrap().color(ink));
+            ui.text(run, Style::new().nowrap().color(fg));
         })
     }
 }

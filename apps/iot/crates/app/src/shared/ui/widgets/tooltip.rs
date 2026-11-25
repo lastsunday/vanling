@@ -26,7 +26,7 @@ impl Widget for Tooltip<'_> {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let paper = ui.color(theme.ground);
         let edge = ui.color(theme.accent);
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         ui.column(
             Style::new()
                 .pad(2)
@@ -35,7 +35,7 @@ impl Widget for Tooltip<'_> {
                 .background(paper)
                 .color(edge),
             |ui| {
-                ui.text(self.text, Style::new().nowrap().color(ink));
+                ui.text(self.text, Style::new().nowrap().color(fg));
             },
         )
     }

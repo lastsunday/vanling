@@ -37,11 +37,11 @@ impl<'a> AppBar<'a> {
 impl Widget for AppBar<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let muted = ui.color(theme.muted);
         let head = Style::new()
             .nowrap()
-            .color(ink)
+            .color(fg)
             .font_size(Length::Px(14))
             .font_family(FontFamily::Vector);
         let action = Style::new()

@@ -46,7 +46,7 @@ impl SwipeAction<'_> {
         let left = rect.x - shift + 6;
         canvas.set_color(Some(theme.accent));
         canvas.draw_char(self.mark, left as isize, (rect.y + 10).max(0) as usize);
-        canvas.set_color(Some(theme.ink));
+        canvas.set_color(Some(theme.foreground));
         canvas.draw_text(
             self.title,
             (left + 12).max(0) as usize,

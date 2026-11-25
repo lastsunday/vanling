@@ -49,7 +49,7 @@ impl Widget for Toast<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let paper = ui.color(theme.muted);
-        let ink = ui.color(theme.ground);
+        let fg = ui.color(theme.ground);
         let mut style = Style::new()
             .nowrap()
             .radius(CORNER)
@@ -58,7 +58,7 @@ impl Widget for Toast<'_> {
             .tag(self.tag)
             .text_align(TextAlign::Center)
             .background(paper)
-            .color(ink);
+            .color(fg);
         if self.width > 0 {
             style = style.width(self.width);
         }

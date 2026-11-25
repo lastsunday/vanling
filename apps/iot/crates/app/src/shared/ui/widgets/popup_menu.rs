@@ -60,7 +60,7 @@ impl PopupMenu<'_> {
                 canvas.set_color(Some(theme.selection));
                 canvas.fill_rect(row);
             }
-            canvas.set_color(Some(theme.ink));
+            canvas.set_color(Some(theme.foreground));
             canvas.push_clip(row);
             canvas.draw_text(
                 item,

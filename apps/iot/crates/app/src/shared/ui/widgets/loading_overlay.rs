@@ -63,7 +63,7 @@ impl Widget for LoadingOverlay<'_> {
             ui.height() as i16
         };
         let dim = ui.color(theme.overlay);
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let ground = ui.color(theme.ground);
         ui.stack(Style::new().width(width).height(height), |ui| {
             ui.node(
@@ -84,7 +84,7 @@ impl Widget for LoadingOverlay<'_> {
                         .nowrap()
                         .text_align(TextAlign::Center)
                         .tag(self.tag)
-                        .color(ink),
+                        .color(fg),
                 );
             }
         })

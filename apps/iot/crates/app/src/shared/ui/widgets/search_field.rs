@@ -58,7 +58,7 @@ impl Widget for SearchField<'_> {
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = theme.label(ui, state);
+        let fg = theme.label(ui, state);
         let muted = ui.color(theme.muted);
         let mut buf = [0u8; RUN];
         let text = if self.value.is_empty() {
@@ -74,7 +74,7 @@ impl Widget for SearchField<'_> {
         }
         ui.row(box_style.middle().gap(4), |ui| {
             ui.text(b"?", Style::new().nowrap().color(muted));
-            ui.text(&buf[..len], Style::new().nowrap().color(ink));
+            ui.text(&buf[..len], Style::new().nowrap().color(fg));
         })
     }
 }

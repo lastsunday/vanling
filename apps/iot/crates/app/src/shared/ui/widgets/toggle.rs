@@ -46,7 +46,7 @@ impl Widget for Switch {
             theme.muted
         };
         let track = ui.color(track);
-        let knob = ui.color(if off { theme.muted } else { theme.ink });
+        let knob = ui.color(if off { theme.muted } else { theme.foreground });
         let left = if self.on { 20 } else { 2 };
         ui.stack(
             Style::new()

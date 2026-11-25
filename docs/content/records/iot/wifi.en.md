@@ -1040,7 +1040,7 @@ The modal's half is **structural** and host-testable, four facts apiece: while a
 `page::Part::hidden` does not draw the list or the strip, `page::walk` never hands them out at all,
 `Part::IN_ORDER` pins the drawing order, and `fill_surface` writes every pixel of the rectangle
 (`core/src/stamp.rs`, three tests; put the fill back to "reverse" and that one goes red: at `(6,10)`
-`left=4358 ground / right=61177 ink`).
+`left=4358 ground / right=61177` (the latter is the glyph pixel)).
 **What is drawn, and in what order**, moved from the panel into core this round:
 `page::walk(setup, draw)` hands out only what is showing (tests pin the order it hands them out
 in, and that the list and the strip are **not handed out at all** while a question is up), leaving
@@ -2257,7 +2257,7 @@ What was wrong on the bench was two words, not two mechanisms:
 - **`AP MAC` and the address read as one run.** The label and the value were a **single**
   `textContent` (`'AP MAC ' + bssid`); one plain space at `.72rem` and `--dim` is about 3 px, so the
   line read `AP MACA4:CF:…`. They are two spans now (`.tag` + `.addr`), the space is a
-  `gap: .5rem` the layout owns, and the address is `--ink`; the head's `Device <MAC>` lifted its
+  `gap: .5rem` the layout owns, and the address is `--text`; the head's `Device <MAC>` lifted its
   `<b>` to the same colour, so both lines read "dim label, lit value".
 
 `[test]` `a_leave_names_the_network_the_link_is_on`: `format_question(Leave, link)` is

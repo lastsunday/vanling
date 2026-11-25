@@ -41,7 +41,7 @@ pub fn draw(canvas: &mut Canvas<'_>, rect: Rect, value: u8, theme: &Theme) {
         canvas.draw_line(x0 as isize, y0 as isize, x1 as isize, y1 as isize);
     }
     let (x, y) = point(lit);
-    canvas.set_color(Some(theme.ink));
+    canvas.set_color(Some(theme.foreground));
     canvas.draw_line(cx as isize, cy as isize, x as isize, y as isize);
     canvas.set_color(None);
 }

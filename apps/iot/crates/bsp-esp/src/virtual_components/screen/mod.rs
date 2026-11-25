@@ -34,7 +34,7 @@ pub(super) struct Pending {
     pub(super) color: Option<Rgb>,
     pub(super) render: Duration,
     /// The ground write inside `render`: one pass over every pixel, so it is reported apart
-    /// from the page's own ink.
+    /// from the page's own drawing.
     pub(super) fill: Duration,
     /// The pixels this frame changed, which is what the bus ships.
     pub(super) damage: FrameDamage,

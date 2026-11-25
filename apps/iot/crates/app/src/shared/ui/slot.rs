@@ -34,12 +34,12 @@ impl<'a> Slot<'a> {
         match self {
             Self::None => {}
             Self::Text(run) | Self::Mark(run) => {
-                let ink = if matches!(self, Self::Mark(_)) {
+                let fg = if matches!(self, Self::Mark(_)) {
                     theme.muted
                 } else {
-                    theme.ink
+                    theme.foreground
                 };
-                canvas.set_color(Some(ink));
+                canvas.set_color(Some(fg));
                 canvas.draw_text(run, left.max(0) as usize, top.max(0) as usize);
             }
             Self::Badge(run) => {
@@ -50,7 +50,7 @@ impl<'a> Slot<'a> {
                 canvas.draw_text(run, (left + 2).max(0) as usize, top.max(0) as usize);
             }
             Self::Glyph(glyph) => {
-                canvas.set_color(Some(theme.ink));
+                canvas.set_color(Some(theme.foreground));
                 canvas.draw_char(glyph, left as isize, top.max(0) as usize);
             }
         }

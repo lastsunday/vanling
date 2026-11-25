@@ -11,9 +11,9 @@ pub const MAX_LINES: usize = 32;
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct Line {
     pub start: usize,
-    /// End of the line's ink; trailing spaces are outside it.
+    /// End of the line's coverage; trailing spaces are outside it.
     pub end: usize,
-    /// Columns the ink occupies.
+    /// Columns the coverage occupies.
     pub width: usize,
     /// Places a justified line may widen: its spaces and the breaks between ideographs.
     pub gaps: u16,
@@ -38,7 +38,7 @@ impl Default for Paragraph {
     }
 }
 
-/// Rows one line occupies at `metrics`: its ink box plus the face's leading.
+/// Rows one line occupies at `metrics`: its coverage box plus the face's leading.
 pub fn line_height(metrics: Metrics) -> usize {
     metrics.height() + metrics.leading()
 }
@@ -90,8 +90,8 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize, metrics: Metrics) -> Pa
             }
             if pen + cluster.width > width && !first {
                 broke = Some(match last_break {
-                    Some((start, ink_end, ink_width, ink_gaps)) if start > at => {
-                        (start, ink_end, ink_width, ink_gaps, false)
+                    Some((start, glyph_end, glyph_width, glyph_gaps)) if start > at => {
+                        (start, glyph_end, glyph_width, glyph_gaps, false)
                     }
                     _ => (cluster.start, end, pen, gaps, true),
                 });
@@ -109,9 +109,9 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize, metrics: Metrics) -> Pa
             previous = Some(cluster.class);
             first = false;
         }
-        let (next, ink_end, ink_width, ink_gaps, hard) = match broke {
-            Some((next, ink_end, ink_width, ink_gaps, hard)) => {
-                (next, ink_end, ink_width, ink_gaps, hard)
+        let (next, glyph_end, glyph_width, glyph_gaps, hard) = match broke {
+            Some((next, glyph_end, glyph_width, glyph_gaps, hard)) => {
+                (next, glyph_end, glyph_width, glyph_gaps, hard)
             }
             None => {
                 if end > at {
@@ -124,9 +124,9 @@ pub fn wrap(text: &[u8], width: usize, max_lines: usize, metrics: Metrics) -> Pa
         let _ = hard;
         paragraph.lines[paragraph.count] = Line {
             start: at,
-            end: ink_end,
-            width: ink_width,
-            gaps: ink_gaps,
+            end: glyph_end,
+            width: glyph_width,
+            gaps: glyph_gaps,
         };
         paragraph.count += 1;
         at = next;
@@ -354,7 +354,7 @@ mod tests {
     }
 
     #[test]
-    fn trailing_spaces_are_not_ink_and_do_not_earn_a_line() {
+    fn trailing_spaces_draw_nothing_and_do_not_earn_a_line() {
         let paragraph = wrap(b"AB   ", 12, MAX_LINES, Metrics::default());
         assert_eq!(paragraph.count, 1);
         assert_eq!(paragraph.lines[0].width, 12);

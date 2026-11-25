@@ -73,31 +73,31 @@ impl ScreenPainter for AppPainter {
             .as_ref()
             .filter(|prev| prev.theme == frame.theme)
             .and_then(|prev| descriptor(frame.page).scroll_shift(prev, frame));
-        let ink = match shift {
+        let repaint = match shift {
             Some(shift) => {
                 scroll_blit(target.frame, target.width, &shift);
-                let (mut ink, mut ship) =
+                let (mut repaint, mut ship) =
                     scroll_damage(&shift, target.width as u16, target.height as u16);
                 // The badge sits below every scroll box, so the blit leaves it intact; it is
                 // still damage so its fps reading keeps moving while the page scrolls.
                 if self.overlay {
-                    ink.add(footer_damage());
+                    repaint.add(footer_damage());
                     ship.add(footer_damage());
                 }
                 // Text is drawn by turning the ground over, so a band that is painted twice
                 // would toggle: every painted band starts from the ground again.
                 if let Some(ground) = target.ground {
-                    clear_damage(target.frame, target.width, ground, ink);
+                    clear_damage(target.frame, target.width, ground, repaint);
                 }
                 self.damage = ship;
-                ink
+                repaint
             }
             None => {
                 self.damage = FrameDamage::FULL;
                 FrameDamage::FULL
             }
         };
-        let mut panel = self.panel(target, context, ink, frame.theme);
+        let mut panel = self.panel(target, context, repaint, frame.theme);
         paint(frame.page, frame, &mut panel);
         self.last = Some(*frame);
     }
@@ -143,7 +143,7 @@ impl ScreenPainter for AppPainter {
 }
 
 /// Moves each region's pixels by its shift, in place. The rows that leave the box are dropped;
-/// the rows that enter it are what the page inks again.
+/// the rows that enter it are what the page repaints again.
 fn scroll_blit(frame: &mut [u8], width: usize, shift: &ScrollShift) {
     let stride = width * 2;
     for (view, &delta) in shift.views().iter().zip(shift.shifts()) {
@@ -171,11 +171,11 @@ fn scroll_blit(frame: &mut [u8], width: usize, shift: &ScrollShift) {
     }
 }
 
-/// What a scroll frame changed: rows to ink again, and rows the panel has to receive. The panel
+/// What a scroll frame changed: rows to repaint again, and rows the panel has to receive. The panel
 /// is GRAM and cannot move its own pixels, so the second set is the whole box. A shift as tall
 /// as the box reuses no row.
 fn scroll_damage(shift: &ScrollShift, width: u16, height: u16) -> (FrameDamage, FrameDamage) {
-    let (mut ink, mut ship) = (FrameDamage::NONE, FrameDamage::NONE);
+    let (mut repaint, mut ship) = (FrameDamage::NONE, FrameDamage::NONE);
     for (view, &delta) in shift.views().iter().zip(shift.shifts()) {
         if delta == 0 {
             continue;
@@ -187,9 +187,9 @@ fn scroll_damage(shift: &ScrollShift, width: u16, height: u16) -> (FrameDamage, 
         } else {
             rect.y
         };
-        add_damage(&mut ink, rect.x, y, rect.w, rows, width, height);
+        add_damage(&mut repaint, rect.x, y, rect.w, rows, width, height);
         add_damage(&mut ship, rect.x, rect.y, rect.w, rect.h, width, height);
-        for damage in [&mut ink, &mut ship] {
+        for damage in [&mut repaint, &mut ship] {
             add_damage(
                 damage,
                 view.gutter.x,
@@ -210,7 +210,7 @@ fn scroll_damage(shift: &ScrollShift, width: u16, height: u16) -> (FrameDamage, 
             );
         }
     }
-    (ink, ship)
+    (repaint, ship)
 }
 
 /// The footer band the debug badge draws in. It sits below every scroll box, so a scroll
@@ -414,11 +414,11 @@ mod tests {
     }
 
     #[test]
-    fn the_panel_gets_the_whole_box_but_the_page_inks_only_the_strip() {
+    fn the_panel_gets_the_whole_box_but_the_page_repaints_only_the_strip() {
         let (width, height) = (WIDTH as u16, HEIGHT as u16);
-        let (ink, ship) = scroll_damage(&shift([6, -4]), width, height);
-        assert_eq!(boxes(ink, 10), vec![(64, 6)]);
-        assert_eq!(boxes(ink, 170), vec![(40, 4)]);
+        let (repaint, ship) = scroll_damage(&shift([6, -4]), width, height);
+        assert_eq!(boxes(repaint, 10), vec![(64, 6)]);
+        assert_eq!(boxes(repaint, 170), vec![(40, 4)]);
         assert_eq!(boxes(ship, 10), vec![(40, 30)]);
         assert_eq!(boxes(ship, 170), vec![(40, 30)]);
         assert_eq!(
@@ -438,8 +438,8 @@ mod tests {
             painter.keeps_frame(&after),
             "a fast flick must not refill and repaint the whole page"
         );
-        let (ink, ship) = scroll_damage(&shift([30, 30]), WIDTH as u16, HEIGHT as u16);
-        assert_eq!(boxes(ink, 10), vec![(40, 30)], "the whole box re-inks");
+        let (repaint, ship) = scroll_damage(&shift([30, 30]), WIDTH as u16, HEIGHT as u16);
+        assert_eq!(boxes(repaint, 10), vec![(40, 30)], "the whole box repaints");
         assert_eq!(boxes(ship, 10), vec![(40, 30)]);
         assert_eq!(ship.rects().len(), 6);
     }
@@ -507,7 +507,7 @@ mod tests {
         for offset in (1..=40).step_by(2) {
             steps.push((offset as i16, 0));
         }
-        // A jump at least as tall as the box: no row is reusable, so the box re-inks whole.
+        // A jump at least as tall as the box: no row is reusable, so the box repaints whole.
         steps.push((40, 40));
         for offset in (1..=40).step_by(2) {
             steps.push((40, offset as i16));

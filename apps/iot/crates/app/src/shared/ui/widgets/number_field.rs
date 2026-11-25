@@ -34,7 +34,7 @@ impl Widget for NumberField {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let edge = ui.color(theme.muted);
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let mut digits = [0u8; 6];
         let mut style = Style::new()
             .height(TOUCH_MIN as i16)
@@ -55,7 +55,7 @@ impl Widget for NumberField {
                     .nowrap()
                     .tag(self.tags[0])
                     .text_align(TextAlign::Center)
-                    .color(ink),
+                    .color(fg),
             );
             ui.text(
                 format_u16(self.value, &mut digits),
@@ -64,7 +64,7 @@ impl Widget for NumberField {
                     .basis(0)
                     .nowrap()
                     .text_align(TextAlign::Center)
-                    .color(ink),
+                    .color(fg),
             );
             ui.text(
                 b"+",
@@ -74,7 +74,7 @@ impl Widget for NumberField {
                     .nowrap()
                     .tag(self.tags[1])
                     .text_align(TextAlign::Center)
-                    .color(ink),
+                    .color(fg),
             );
         })
     }

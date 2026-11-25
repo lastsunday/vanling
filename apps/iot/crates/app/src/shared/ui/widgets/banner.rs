@@ -37,7 +37,7 @@ impl<'a> Banner<'a> {
 impl Widget for Banner<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let accent = ui.color(theme.accent);
         let paper = ui.color(theme.selection);
         let mark = Style::new().nowrap().color(accent);
@@ -51,7 +51,7 @@ impl Widget for Banner<'_> {
                 .background(paper),
             |ui| {
                 ui.text(b"!", mark);
-                ui.text(self.message, Style::new().ellipsis().color(ink));
+                ui.text(self.message, Style::new().ellipsis().color(fg));
                 ui.node(Style::new().grow(1));
                 ui.text(
                     self.action,

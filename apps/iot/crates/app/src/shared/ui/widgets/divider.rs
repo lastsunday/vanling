@@ -38,7 +38,7 @@ impl Widget for Divider {
         } else {
             ui.width() as i16
         };
-        let ink = ui.color(theme.muted);
-        ui.node(Style::new().width(width).height(1).background(ink))
+        let fg = ui.color(theme.muted);
+        ui.node(Style::new().width(width).height(1).background(fg))
     }
 }

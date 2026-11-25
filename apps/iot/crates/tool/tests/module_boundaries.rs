@@ -439,7 +439,7 @@ fn a_service_does_not_import_another_service() {
     }
 }
 
-/// The shared vocabulary paints for every page but names none: a page's ink is its own.
+/// The shared vocabulary paints for every page but names none: a page's drawing is its own.
 #[test]
 fn the_shared_vocabulary_names_no_page() {
     let mut files = shipping_sources(&app_src().join("shared/ui"));

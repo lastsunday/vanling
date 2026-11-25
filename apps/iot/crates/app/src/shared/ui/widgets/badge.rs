@@ -15,10 +15,10 @@ pub enum Tone {
 /// How the badge lays its paper down; the tone picks the colour.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Variant {
-    /// Solid tone paper with ink that reads on it.
+    /// Solid tone paper with a label that reads on it.
     #[default]
     Filled,
-    /// A tinted paper under tone-coloured ink.
+    /// A tinted paper under a tone-coloured label.
     Light,
     /// No paper, a one-pixel tone outline.
     Outline,
@@ -61,24 +61,24 @@ impl<'a> Badge<'a> {
 impl Widget for Badge<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
-        let (paper, ink) = match self.tone {
+        let (paper, fg) = match self.tone {
             Tone::Neutral => (theme.muted, theme.ground),
             Tone::Accent => (theme.accent, theme.on_accent),
             Tone::Danger => (theme.danger, theme.on_accent),
         };
-        // Light and outline keep the tone as ink, so the paper is the only thing that moves.
+        // Light and outline keep the tone as the label, so the paper is the only thing that moves.
         let edge = match self.tone {
             Tone::Neutral => theme.muted,
             Tone::Accent => theme.accent,
             Tone::Danger => theme.danger,
         };
-        let (style, ink) = match self.variant {
-            Variant::Filled => (Style::new().background(ui.color(paper)), ink),
+        let (style, fg) = match self.variant {
+            Variant::Filled => (Style::new().background(ui.color(paper)), fg),
             Variant::Light => (Style::new().background(ui.color(theme.selection)), edge),
             Variant::Outline => (Style::new().bordered(), edge),
         };
-        let ink = ui.color(ink);
-        ui.text(self.text, style.radius(3).pad(2).nowrap().color(ink))
+        let fg = ui.color(fg);
+        ui.text(self.text, style.radius(3).pad(2).nowrap().color(fg))
     }
 }
 
@@ -134,7 +134,7 @@ mod tests {
     }
 
     #[test]
-    fn a_light_badge_tints_the_paper_under_the_tone_ink() {
+    fn a_light_badge_tints_the_paper_under_the_tone_label() {
         let (light, rect) = render(Variant::Light, Tone::Accent);
         let (filled, _) = render(Variant::Filled, Tone::Accent);
         assert_ne!(padding(&light, rect), padding(&filled, rect));

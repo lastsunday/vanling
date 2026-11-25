@@ -44,18 +44,18 @@ impl<'a> Accordion<'a> {
 impl Widget for Accordion<'_> {
     fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let muted = ui.color(theme.muted);
         let paper = ui.color(theme.selection);
         ui.column(
             Style::new().pad(3).gap(1).background(paper).tag(self.tag),
             |ui| {
                 ui.row(Style::new().height(TOUCH_MIN as i16 - 6).middle(), |ui| {
-                    ui.text(self.title, Style::new().nowrap().color(ink));
+                    ui.text(self.title, Style::new().nowrap().color(fg));
                     ui.node(Style::new().grow(1));
                     ui.text(
                         if self.open { b"-" } else { b"+" },
-                        Style::new().nowrap().color(ink),
+                        Style::new().nowrap().color(fg),
                     );
                 });
                 if self.open {

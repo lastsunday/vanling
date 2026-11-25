@@ -56,7 +56,7 @@ impl Widget for TextField<'_> {
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = theme.label(ui, state);
+        let fg = theme.label(ui, state);
         let mut buf = [0u8; RUN];
         let mut len = self.value.len().min(RUN - 1);
         buf[..len].copy_from_slice(&self.value[..len]);
@@ -65,7 +65,7 @@ impl Widget for TextField<'_> {
             len += 1;
         }
         ui.column(box_style, |ui| {
-            ui.text(&buf[..len], Style::new().nowrap().color(ink));
+            ui.text(&buf[..len], Style::new().nowrap().color(fg));
         })
     }
 }
@@ -111,14 +111,14 @@ impl Widget for Select<'_> {
         if self.width > 0 {
             box_style = box_style.width(self.width);
         }
-        let ink = theme.label(ui, State::NONE);
+        let fg = theme.label(ui, State::NONE);
         let mut buf = [0u8; RUN];
         let mut len = self.value.len().min(RUN - 2);
         buf[..len].copy_from_slice(&self.value[..len]);
         buf[len..len + 2].copy_from_slice(b" v");
         len += 2;
         ui.column(box_style, |ui| {
-            ui.text(&buf[..len], Style::new().nowrap().color(ink));
+            ui.text(&buf[..len], Style::new().nowrap().color(fg));
         })
     }
 }

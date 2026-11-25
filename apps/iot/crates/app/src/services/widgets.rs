@@ -547,8 +547,8 @@ fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
 }
 
 fn caption(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
-    let ink = ui.color(theme.muted);
-    ui.text(run, Style::new().nowrap().color(ink));
+    let fg = ui.color(theme.muted);
+    ui.text(run, Style::new().nowrap().color(fg));
 }
 
 /// The field prints the draft, and falls back to its own name only while empty.

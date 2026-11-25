@@ -28,7 +28,7 @@ impl Keypad {
 
     pub fn draw(self, canvas: &mut Canvas<'_>, rect: Rect, theme: &Theme) {
         let edge = theme.muted;
-        let ink = theme.ink;
+        let fg = theme.foreground;
         let paper = theme.selection;
         let cell_w = rect.w / 3;
         let cell_h = rect.h / 4;
@@ -51,7 +51,7 @@ impl Keypad {
             let glyph = [key[0]];
             let left = cell.x + (cell.w - canvas.measure(&glyph) as i32) / 2;
             let top = cell.y + (cell.h - LINE as i32) / 2;
-            canvas.set_color(Some(ink));
+            canvas.set_color(Some(fg));
             canvas.draw_text(&glyph, left.max(0) as usize, top.max(0) as usize);
         }
         canvas.set_color(None);

@@ -47,7 +47,7 @@ impl<W: Widget> Widget for Indicator<'_, W> {
             let at = Style::new().absolute().right(-REACH).top(-REACH);
             match self.label {
                 Some(label) => {
-                    let ink = ui.color(theme.on_accent);
+                    let fg = ui.color(theme.on_accent);
                     ui.text(
                         label,
                         at.height(PILL)
@@ -57,7 +57,7 @@ impl<W: Widget> Widget for Indicator<'_, W> {
                             .nowrap()
                             .text_align(TextAlign::Center)
                             .background(paper)
-                            .color(ink),
+                            .color(fg),
                     );
                 }
                 None => {

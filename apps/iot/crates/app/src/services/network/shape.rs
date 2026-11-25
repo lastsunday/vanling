@@ -88,7 +88,7 @@ pub enum ToolbarCell {
 pub const TOOLBAR_CELLS: usize = 2;
 
 /// The seam between two cells, taken out of the cells rather than out of the slots, so the
-/// slots stay an exact division of the panel and only the ink moves.
+/// slots stay an exact division of the panel and only the pixels move.
 pub const TOOLBAR_GAP: usize = 8;
 
 const _: () = assert!(

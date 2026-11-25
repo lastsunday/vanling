@@ -141,9 +141,9 @@ const GOLDEN: [(&str, bool, u32); 34] = [
 ];
 
 /// The one path the board takes that the golden table does not: every page through a real glyph
-/// cache, three frames deep, so a reused slot and a flushed cache both have to land the same ink.
+/// cache, three frames deep, so a reused slot and a flushed cache both have to land the same pixels.
 #[test]
-fn every_page_draws_the_same_ink_through_the_glyph_cache() {
+fn every_page_draws_the_same_pixels_through_the_glyph_cache() {
     let mut cache = GlyphCache::new();
     for _ in 0..3 {
         for page in PageId::ALL {
@@ -186,10 +186,10 @@ fn every_page_draws_the_picture_the_golden_table_expects() {
 }
 
 #[test]
-fn a_theme_switch_reaches_the_ink() {
+fn a_theme_switch_reaches_the_pixels() {
     for page in PageId::ALL {
         // Input prints nothing on a release build; Camera and Network keep their own black
-        // ground and ink by inverting it, so the palette does not reach them.
+        // ground and text by inverting it, so the palette does not reach them.
         if matches!(page, PageId::Input | PageId::Camera | PageId::Network) {
             continue;
         }
@@ -205,7 +205,7 @@ fn a_theme_switch_reaches_the_ink() {
 }
 
 #[test]
-fn a_language_switch_reaches_the_ink() {
+fn a_language_switch_reaches_the_pixels() {
     // Input and Text print readout keys and the face's own specimen, which do not move.
     let speaking = [
         PageId::Splash,
@@ -225,7 +225,7 @@ fn a_language_switch_reaches_the_ink() {
         PageId::Breath,
     ];
     for page in speaking {
-        let ink = |lang| {
+        let render = |lang| {
             render_snapshot(
                 &FrameSnapshot {
                     page,
@@ -236,8 +236,8 @@ fn a_language_switch_reaches_the_ink() {
             )
         };
         assert_ne!(
-            ink(Lang::En),
-            ink(Lang::ZhHans),
+            render(Lang::En),
+            render(Lang::ZhHans),
             "{page:?} reads its words from the snapshot"
         );
     }

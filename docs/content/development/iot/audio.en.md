@@ -155,7 +155,7 @@ A bar's height measures "how far from silence", not "how far from the top". The 
 
 Labelling the scale as "top is 0, decreasing downward" would put every tick an octave away from where the bar actually ends, and it would be hard to spot: every row would still have something on it.
 
-### One-ink overprinting has no second grey
+### Single-colour overprinting has no second grey
 
 The overlay is an inverted `draw_pixel`; there is no second level of grey.
 

@@ -511,7 +511,7 @@ fn a_nowrap_run_stays_on_one_line() {
 }
 
 #[test]
-fn padding_insets_a_run_without_being_counted_as_ink() {
+fn padding_insets_a_run_without_counting_as_a_glyph() {
     let mut ui = page(100, 40);
     let mut id = NodeId::NONE;
     ui.column(Style::new(), |ui| {

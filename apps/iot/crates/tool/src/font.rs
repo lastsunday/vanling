@@ -105,7 +105,7 @@ pub fn merge(full: &Path, chars: &Path, allow_missing: bool) -> Result<(), Strin
             (Ok(index), Ok(at)) => {
                 let (ours, theirs) = (&glyphs[index], &release[at]);
                 // The advance is the cell the page's layout depends on; a regional variant may
-                // legitimately place the same ink inside a different box, so only that is held.
+                // legitimately place the same glyph inside a different box, so only that is held.
                 if ours.advance != theirs.advance {
                     return Err(format!(
                         "U+{code:04X} advances {} here and {} in {}",

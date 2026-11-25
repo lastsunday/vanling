@@ -62,7 +62,7 @@ impl Widget for EmptyState<'_> {
         } else {
             ui.color(theme.muted)
         };
-        let ink = ui.color(theme.ink);
+        let fg = ui.color(theme.foreground);
         let muted = ui.color(theme.muted);
         let mut style = Style::new().gap(2).center().tag(self.tag);
         if self.width > 0 {
@@ -80,7 +80,7 @@ impl Widget for EmptyState<'_> {
                 self.title,
                 Style::new()
                     .ellipsis()
-                    .color(ink)
+                    .color(fg)
                     .text_align(TextAlign::Center),
             );
             ui.text(
