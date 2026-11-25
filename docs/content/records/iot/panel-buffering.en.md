@@ -4,8 +4,8 @@ description = "A PSRAM staging copy raised the panel from 24 to 28 fps but doubl
 weight = 25
 sort_by = "weight"
 [extra]
-source_file_hash = "ea0591fe4478e233c4f77fe8a944830754ad1f44"
-translated_at = "2026-11-24T13:24:40Z"
+source_file_hash = "b8d3d2cfd938cfe6bb0e103a89f6a8db1f92813a"
+translated_at = "2026-11-25T14:49:09Z"
 +++
 
 <!-- doc-audience: ai -->

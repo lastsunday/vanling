@@ -2,8 +2,8 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "29d1b978971f1fa294663544824bb52a43a1f3b0"
-translated_at = "2026-11-24T07:59:58Z"
+source_file_hash = "96ae4b901e9f6ee28ac3a5c857c8483a60699ee0"
+translated_at = "2026-11-25T14:49:09Z"
 +++
 
 # UI Widgets
