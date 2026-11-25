@@ -70,6 +70,7 @@ fn a_strip_leave_on_a_board_with_no_screen_is_done_rather_than_asked_about() {
             ..Backed::NONE
         },
         surface_roles: [SurfaceRole::Lamp, SurfaceRole::Absent],
+        boot_page: PageId::Network,
         ..Default::default()
     });
     link_up(&mut manager, b"neighbour");

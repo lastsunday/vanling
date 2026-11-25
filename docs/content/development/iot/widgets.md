@@ -98,7 +98,7 @@ impl Theme {
 }
 ```
 
-`ThemeId { Dark, Light }` 放在 `iot-core::ui::Screen`，由 `DeviceState.theme` 经 `FrameSnapshot.theme` 投影到绘制层；组件默认 `Theme::of(ui.screen().theme)`，页面用 `Theme::of(snapshot.theme)`。`.theme(&Theme)` 仍可给单个组件覆盖。切换只换常量调色板，不生成颜色：浅色页由 `ScreenRenderer::present` 用 `ground` 铺纸并点满背光，`Network` / `Camera` 仍用各自的黑底，`Breath` 与玻璃呼吸期间强制深色。主题和语言一样是运行时状态，不落盘；构建期可用 `IOT_THEME=light` 改开机值。
+`ThemeId { Dark, Light }` 放在 `iot-core::ui::Screen`，由 `DeviceState.theme` 经 `FrameSnapshot.theme` 投影到绘制层；组件默认 `Theme::of(ui.screen().theme)`，页面用 `Theme::of(snapshot.theme)`。`.theme(&Theme)` 仍可给单个组件覆盖。切换只换常量调色板，不生成颜色：浅色页由 `ScreenRenderer::present` 用 `ground` 铺纸，屏幕背光只取 `Backlight` 的设置（0 即全黑），`Network` / `Camera` 仍用各自的黑底，`Lighting` 与玻璃呼吸期间强制深色。主题和语言一样是运行时状态，不落盘；构建期可用 `IOT_THEME=light` 改开机值。
 
 同一颜色重复 intern 是幂等的；`MAX_COLORS = 16` 是整页共享的上限。新增组件先问“能不能用现有 token”，不能才加色。
 
@@ -181,7 +181,7 @@ Flutter 到这里的映射：
 
 `Text` / `RichText` 不需要包装：`ui.text` 与 `ui.span` 就是词汇本身。
 
-字号三档：页标题 20 px 矢量（`page::title`）、按钮与 chip 标签 14 px 矢量、正文与读数 12 px 点阵。点阵表只有 12 px 一档，`Metrics::at(13..=24)` 整档跳到 24 px，`ATTITUDE` 这类 8 字标签会超出 98 px 按钮，所以大字号只能走矢量。绘制按整段回退：段里缺一个字，整段退回点阵。`every_word_the_panel_prints_has_a_vector_glyph` 把 `Msg::ALL` 的每个词在 14 / 20 px 下钉死；新文案先重跑 `iot-tool outline`。
+字号只有点阵的整倍档：页标题、按钮标签与 `Text` 页正文 24 px（`page::title`），其余读数 12 px。`Metrics::at(13..=24)` 整档跳到 24 px，没有 14 / 20 px；24 px 是两倍字面，`ATTITUDE` 这类 8 字标签占 96 px，98 px 的按钮内宽装得下。缺字画 □，没有整段回退；`every_word_the_panel_prints_has_a_bitmap_glyph` 把 `Msg::ALL` × `Lang::ALL` 的每个字钉在 `Face::has` 上，新文案缺字先重跑 `iot-tool font --merge <bdf> --chars <list>`。
 
 文本能撑大布局，但只撑得开没写死尺寸的节点：不写 `width` 时文本节点取整段前进宽度、高度取 `line_height`（字高 + 行距），于是列跟着变高、行跟着变宽；写了 `width` 的 `nowrap` 段按给定宽度裁切，`Button` 的 98×44 不会因为标签变大而长个，换字号就得同时改布局常量。面板固定 320×240，撑出来的空间先从 `grow` 节点里扣，扣完就溢出面板，不会整体缩放。
 
@@ -210,10 +210,12 @@ pub enum Slot<'a> {
 | `Extended` | 输入画廊：`SearchField` / `FilterChips` / `FormField` / `NumberField` / `Keypad`；搜索框聚焦后整页换成键盘 |
 | `Data` | 数据 / 浮层画廊：`Table` / `Chart` / `Gauge` / `SwipeAction` / `EmptyState`、`Dialog` / `PopupMenu` / `Sheet`；点行、点柱、点表盘共用页面状态 |
 | `List` | `Feed` 演示：下拉刷新、上拉加载、左滑删除、空态 |
+| `Lighting` | 灯效页：范围三选一（关闭 / 本页 / 所有页）、样式三选一（呼吸 / 常亮 / 变色）、周期 / 色相 / 最亮三个滑块，另有一行独立背光（0 即全黑）；页底说明随范围与样式换。整页强制深色 |
+| `Headless` | 无屏板（C6）的落地页：没有画布，只有灯珠与按钮；不进菜单，也不占 `PageId::ALL` |
 
 四个画廊的每个样例都带一行说明（`page::caption`）：名字加这个样例怎么动，例如 `TABLE / TAP A ROW`，中英各一份 `Msg`。`Advanced` / `Extended` 原先的分区词因此删掉——说明行已经报了名字；`Data` 的浮层一带仍用 `page::section`（一条线加名字）隔开。说明行是 muted 的 `nowrap`，不带 tag，点了不动。
 
-`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动仍落在 `Input`；`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。14 个入口排成五行，最后一行要滚动才见得到，命中仍按 offset 反查。
+`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动落在 `Headless`；有屏时请求 `Headless` 退回 `Input`，`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。15 个入口排成五行，最后一行要滚动才见得到，命中仍按 offset 反查。
 
 `Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
 
@@ -368,7 +370,7 @@ impl Msg {
 - 读数标签槽 `page::LABEL = 24 px`，等于 4 个 ASCII 格或 2 个汉字；超长截断，所以标签用短键。
 - 长文案走 `page::title`（整行）或 `EmptyState` 的两行。
 - `text::fit` 的 `~` 是兜底，不是设计；每条读数标签都要有宽度测试。
-- 点阵 `ui12.bin` 覆盖 GB2312 + Big5；矢量表只覆盖 `vector-sample.txt`，缺字时整行退回点阵。新文案要重跑 `iot-tool outline`。
+- 点阵 `ui12.bin` 覆盖 GB2312 + Big5；缺字画 □。新文案要重跑 `iot-tool font --merge <bdf> --chars <list>`，并让 `every_word_the_panel_prints_has_a_bitmap_glyph` 通过。
 - SSID、MAC、IP、日志是数据，不翻。
 
 不做：RTL、ICU 复数/性别/插值、locale 数字格式。

@@ -5,7 +5,7 @@ use crate::shared::intent::AudioIntent;
 use crate::state::test_support::*;
 
 #[test]
-fn a_button_click_on_the_audio_page_records_and_elsewhere_moves_the_color() {
+fn a_button_click_records_on_the_audio_page_and_does_nothing_elsewhere() {
     let click = op(InputEvent::Button(ButtonEvent::Click));
     assert_eq!(
         translate(
@@ -16,21 +16,17 @@ fn a_button_click_on_the_audio_page_records_and_elsewhere_moves_the_color() {
         Some(BusinessIntent::Audio(AudioIntent::Start)),
         "on the audio page the button is the record control, the same as the tap"
     );
-    let color = BusinessIntent::Light {
-        instance: 0,
-        action: LightAction::NextColor { forward: true },
-    };
     for page in [PageId::Input, PageId::Attitude, PageId::Camera] {
         assert_eq!(
             translate(&click, &state_on(page, BREATH), &Services::default()),
-            Some(color),
-            "{page:?} is not a control page, so the colour still walks"
+            None,
+            "{page:?} is not a control page, so the button does nothing"
         );
     }
 }
 
 #[test]
-fn a_tap_on_the_audio_page_records_and_elsewhere_moves_the_color() {
+fn a_tap_records_on_the_audio_page_and_does_nothing_elsewhere() {
     let tap = tap_gesture(0);
     assert_eq!(
         translate(
@@ -47,6 +43,7 @@ fn a_tap_on_the_audio_page_records_and_elsewhere_moves_the_color() {
     );
     assert_eq!(
         target_in(tap, &state_on(PageId::Attitude, BREATH)),
-        target(tap, BREATH)
+        None,
+        "the attitude page has no light verb"
     );
 }

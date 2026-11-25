@@ -1,7 +1,7 @@
 //! A page head: the title, a gap, and one action on the trailing edge.
 
 use iot_core::ui::panel::TOUCH_MIN;
-use iot_core::ui::{FontFamily, Length, NodeId, Style, TextAlign, Ui, Widget};
+use iot_core::ui::{Length, NodeId, Style, TextAlign, Ui, Widget};
 
 use crate::shared::ui::theme::Theme;
 
@@ -39,11 +39,7 @@ impl Widget for AppBar<'_> {
         let theme = self.theme.unwrap_or_else(|| Theme::of(ui.screen().theme));
         let fg = ui.color(theme.foreground);
         let muted = ui.color(theme.muted);
-        let head = Style::new()
-            .nowrap()
-            .color(fg)
-            .font_size(Length::Px(14))
-            .font_family(FontFamily::Vector);
+        let head = Style::new().nowrap().color(fg).font_size(Length::Px(12));
         let action = Style::new()
             .nowrap()
             .color(muted)

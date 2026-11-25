@@ -81,9 +81,7 @@ fn draw_text(
     if rect.w <= 0 || rect.h <= 0 {
         return;
     }
-    // One face per box: a run the vector table cannot cover falls back whole, so a line is
-    // never half outlines and half pixels.
-    let metrics = style.metrics().covering(run);
+    let metrics = style.metrics();
     let line_height = typeset::line_height(metrics) as i32;
     if style.nowrap {
         // One line at its natural width; whatever leaves the box sideways is clipped, not

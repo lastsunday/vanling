@@ -13,6 +13,8 @@ translated_at = "2026-11-24T07:59:58Z"
 
 # Advanced widgets and Feed
 
+> 2026-11-25: the vector face was removed and only the 12 / 24 px bitmap remains. The `vector.bin`, `vector-sample.txt` and `iot-tool outline` references below describe that time, now replaced by magnifying `ui12.bin`.
+
 Every advanced widget that `docs/content/development/iot/widgets.md` used to list as a plan is implemented, plus `Feed`: one component that is a list, pull-to-refresh and load-more at once. Three demo pages replace the single basic gallery, and the menu grows from 9 entries to 12 — still four rows, with about 24 px of scroll left over.
 
 ## Scope

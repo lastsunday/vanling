@@ -4,15 +4,16 @@
 pub mod advanced;
 pub mod attitude;
 pub mod audio;
-pub mod breath;
 pub mod camera;
 pub mod data;
 pub mod env;
 pub mod extended;
 pub mod feedback;
 pub mod gallery;
+pub mod headless;
 pub mod input;
 pub mod light;
+pub mod lighting;
 pub mod list;
 pub mod menu;
 pub mod nav;
@@ -23,30 +24,28 @@ pub mod splash;
 pub mod text;
 pub mod widgets;
 
-use crate::shared::intent::{
-    BusinessIntent, InputIntent, LightAction, MenuIntent, NavigationIntent,
-};
+use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, NavigationIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::FrameSnapshot;
 use crate::shared::snapshot::PageSnapshot;
 use crate::shared::snapshot::ScrollShift;
 use crate::shared::surface::{Custom, Panel, View, no_custom};
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
 use iot_core::light::Rgb;
 use iot_core::ui::Ui;
 
 use self::advanced::AdvancedPage;
 use self::attitude::AttitudePage;
 use self::audio::AudioPage;
-use self::breath::BreathPage;
 use self::camera::CameraPage;
 use self::data::DataPage;
 use self::env::EnvPage;
 use self::extended::ExtendedPage;
 use self::feedback::FeedbackPage;
+use self::headless::HeadlessPage;
 use self::input::InputPage;
 use self::light::LightService;
+use self::lighting::LightingPage;
 use self::list::ListPage;
 use self::menu::MenuPage;
 use self::nav::NavService;
@@ -122,7 +121,8 @@ pub struct Services {
     extended: ExtendedPage,
     data: DataPage,
     list: ListPage,
-    breath: BreathPage,
+    lighting: LightingPage,
+    headless: HeadlessPage,
 }
 
 /// The dispatch key: a page the panel can stop on, or one of the device's own services.
@@ -154,7 +154,8 @@ impl Services {
             PageId::Extended => &self.extended,
             PageId::Data => &self.data,
             PageId::List => &self.list,
-            PageId::Breath => &self.breath,
+            PageId::Lighting => &self.lighting,
+            PageId::Headless => &self.headless,
         }
     }
 
@@ -216,8 +217,8 @@ impl Services {
             BusinessIntent::List(_) => self
                 .service_mut(ServiceId::Page(PageId::List))
                 .apply(intent, state),
-            BusinessIntent::Breath(_) => self
-                .service_mut(ServiceId::Page(PageId::Breath))
+            BusinessIntent::Lighting(_) => self
+                .service_mut(ServiceId::Page(PageId::Lighting))
                 .apply(intent, state),
             BusinessIntent::Settings(_) => {
                 self.service_mut(ServiceId::Settings).apply(intent, state)
@@ -244,7 +245,8 @@ impl Services {
             ServiceId::Page(PageId::Extended) => &mut self.extended,
             ServiceId::Page(PageId::Data) => &mut self.data,
             ServiceId::Page(PageId::List) => &mut self.list,
-            ServiceId::Page(PageId::Breath) => &mut self.breath,
+            ServiceId::Page(PageId::Lighting) => &mut self.lighting,
+            ServiceId::Page(PageId::Headless) => &mut self.headless,
             ServiceId::Navigation => &mut self.nav,
             ServiceId::Light => &mut self.light,
             ServiceId::Settings => &mut self.settings,
@@ -291,7 +293,8 @@ impl Services {
             PageId::Extended => &mut self.extended,
             PageId::Data => &mut self.data,
             PageId::List => &mut self.list,
-            PageId::Breath => &mut self.breath,
+            PageId::Lighting => &mut self.lighting,
+            PageId::Headless => &mut self.headless,
         }
     }
 }
@@ -435,7 +438,8 @@ pub fn descriptor(page: PageId) -> Descriptor {
         PageId::Extended => ExtendedPage::descriptor(),
         PageId::Data => DataPage::descriptor(),
         PageId::List => ListPage::descriptor(),
-        PageId::Breath => BreathPage::descriptor(),
+        PageId::Lighting => LightingPage::descriptor(),
+        PageId::Headless => HeadlessPage::descriptor(),
     }
 }
 
@@ -444,25 +448,6 @@ pub fn descriptor(page: PageId) -> Descriptor {
 pub fn paint(page: PageId, snapshot: &FrameSnapshot, panel: &mut Panel<'_>) {
     let descriptor = descriptor(page);
     panel.view(snapshot, descriptor.view, descriptor.custom);
-}
-
-/// The lamp's table, for the pages whose only verb is the light. `None` when the gesture means
-/// nothing there.
-fn lamp(op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
-    match op.event {
-        InputEvent::Button(ButtonEvent::Click) | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
-            state.light_intent(op, LightAction::NextColor { forward: true })
-        }
-        InputEvent::Button(ButtonEvent::DoubleClick) => state.light_intent(op, LightAction::Step),
-        InputEvent::Button(ButtonEvent::LongPress)
-        | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-            state.light_intent(op, LightAction::Cycle)
-        }
-        InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-            state.light_swipe(op, direction)
-        }
-        _ => None,
-    }
 }
 
 #[cfg(test)]

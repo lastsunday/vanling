@@ -1066,7 +1066,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tap_on_empty_space_is_not_the_lamp() {
+    fn a_tap_on_empty_space_binds_nothing() {
         let page = WidgetsPage::default();
         assert_eq!(page.bind(&tap(0, 0), &DeviceState::default()), None);
         let area = page.scroll.areas()[0].rect;

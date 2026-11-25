@@ -429,7 +429,8 @@ fn page_name(page: PageId) -> Msg {
         PageId::Extended => Msg::PageExtended,
         PageId::Data => Msg::PageData,
         PageId::List => Msg::PageList,
-        PageId::Breath => Msg::PageBreath,
+        PageId::Lighting => Msg::PageLighting,
+        PageId::Headless => Msg::Brand,
     }
 }
 
@@ -659,7 +660,7 @@ mod tests {
 
     #[test]
     fn every_name_fits_a_button() {
-        let metrics = iot_core::ui::font::Metrics::vector(16);
+        let metrics = iot_core::ui::font::Metrics::at(12);
         for page in PageId::ALL {
             for lang in crate::shared::i18n::Lang::ALL {
                 let name = page_name(page).bytes(*lang);

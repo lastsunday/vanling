@@ -102,7 +102,7 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
         PageId::Extended,
         PageId::Data,
         PageId::List,
-        PageId::Breath,
+        PageId::Lighting,
         PageId::Menu,
     ] {
         feed_input(&mut manager, triple_click());
@@ -122,13 +122,13 @@ fn the_splash_is_never_where_the_device_lands() {
 }
 
 #[test]
-fn a_board_with_no_screen_does_not_come_up_on_the_menu() {
+fn a_board_with_no_screen_comes_up_headless() {
     let lamp_only = landed(DeviceManager::boot(Boot {
         surface_roles: [SurfaceRole::Lamp, SurfaceRole::Absent],
         boot_page: PageId::Menu,
         ..Default::default()
     }));
-    assert_eq!(lamp_only.state().page(), PageId::Input);
+    assert_eq!(lamp_only.state().page(), PageId::Headless);
 
     let screened = landed(DeviceManager::boot(Boot {
         surface_roles: [SurfaceRole::Screen, SurfaceRole::Absent],

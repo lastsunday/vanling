@@ -37,8 +37,11 @@ pub enum PageId {
     Data,
     /// The feed demo: pull to refresh, release to load more, swipe to delete.
     List,
-    /// The glass-breath demo: the one page that lets a breath reach the pixels.
-    Breath,
+    /// The lighting demo: the one page that lets a breath reach the pixels, and edits it.
+    Lighting,
+    /// The board with no panel: the button and the lamp are the whole interface. Never in
+    /// [`Self::ALL`], so no other page navigates to it.
+    Headless,
 }
 
 impl PageId {
@@ -229,8 +232,16 @@ static LIST: Route = Route {
     timeout_ms: None,
 };
 
-static BREATH: Route = Route {
-    path: "breath",
+static LIGHTING: Route = Route {
+    path: "lighting",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
+static HEADLESS: Route = Route {
+    path: "headless",
     needs: |_| true,
     claim: motion_background,
     bootable: true,
@@ -257,7 +268,7 @@ impl PageId {
         Self::Extended,
         Self::Data,
         Self::List,
-        Self::Breath,
+        Self::Lighting,
     ];
 
     /// The page's row. One exhaustive match: a variant with no route is a compile error.
@@ -281,7 +292,8 @@ impl PageId {
             Self::Extended => &EXTENDED,
             Self::Data => &DATA,
             Self::List => &LIST,
-            Self::Breath => &BREATH,
+            Self::Lighting => &LIGHTING,
+            Self::Headless => &HEADLESS,
         }
     }
 
@@ -315,6 +327,9 @@ impl PageId {
     /// Case- and whitespace-insensitive lookup by [`Self::path`], const for build-time pages.
     pub const fn from_path(path: &str) -> Option<Self> {
         let wanted = path.trim_ascii().as_bytes();
+        if eq_ignore_ascii_case(HEADLESS.path.as_bytes(), wanted) {
+            return Some(Self::Headless);
+        }
         let mut index = 0;
         while index < Self::ALL.len() {
             let page = Self::ALL[index];
@@ -348,6 +363,9 @@ impl PageId {
 
     /// The page a wire code names, if it names one.
     pub const fn from_code(code: u8) -> Option<Self> {
+        if code == Self::Headless.code() {
+            return Some(Self::Headless);
+        }
         let mut index = 0;
         while index < Self::ALL.len() {
             let page = Self::ALL[index];
@@ -417,6 +435,18 @@ mod tests {
     }
 
     #[test]
+    fn the_headless_page_is_named_but_never_walked_to() {
+        assert_eq!(PageId::from_path("headless"), Some(PageId::Headless));
+        assert_eq!(PageId::from_path(" HEADLESS "), Some(PageId::Headless));
+        assert!(!PageId::ALL.contains(&PageId::Headless));
+        assert_eq!(
+            PageId::from_code(PageId::Headless.code()),
+            Some(PageId::Headless),
+            "the wire code names it for boot and the host walk, not for the menu"
+        );
+    }
+
+    #[test]
     fn no_two_pages_share_a_path() {
         for (position, page) in PageId::ALL.iter().enumerate() {
             for other in &PageId::ALL[position + 1..] {
@@ -470,7 +500,7 @@ mod tests {
             PageId::Extended,
             PageId::Data,
             PageId::List,
-            PageId::Breath,
+            PageId::Lighting,
             PageId::Menu,
         ];
         assert_eq!(lap(Backed::NONE), bare);
@@ -486,7 +516,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
-                PageId::Breath,
+                PageId::Lighting,
                 PageId::Menu
             ]
         );
@@ -502,7 +532,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
-                PageId::Breath,
+                PageId::Lighting,
                 PageId::Menu
             ]
         );
@@ -518,7 +548,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
-                PageId::Breath,
+                PageId::Lighting,
                 PageId::Menu
             ]
         );
@@ -534,7 +564,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
-                PageId::Breath,
+                PageId::Lighting,
                 PageId::Menu
             ]
         );
@@ -550,7 +580,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
-                PageId::Breath,
+                PageId::Lighting,
                 PageId::Menu
             ]
         );
@@ -570,7 +600,7 @@ mod tests {
                 PageId::Extended,
                 PageId::Data,
                 PageId::List,
-                PageId::Breath,
+                PageId::Lighting,
                 PageId::Menu
             ]
         );

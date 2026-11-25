@@ -19,8 +19,8 @@ pub struct CameraPage;
 impl super::Service for CameraPage {}
 
 impl super::LocalPage for CameraPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
-        super::lamp(op, state)
+    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+        None
     }
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {

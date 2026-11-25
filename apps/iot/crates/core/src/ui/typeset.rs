@@ -38,9 +38,9 @@ impl Default for Paragraph {
     }
 }
 
-/// Rows one line occupies at `metrics`: its coverage box plus the face's leading.
+/// Rows one line occupies at `metrics`: its coverage box.
 pub fn line_height(metrics: Metrics) -> usize {
-    metrics.height() + metrics.leading()
+    metrics.height()
 }
 
 /// The width the run takes on one line at `metrics`.

@@ -81,7 +81,7 @@ weight = 10
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
 | `services/` | 产品服务（页面与设备自己的 `nav`/`light`/`settings`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`/`Settings`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页，否则先答跨页绑定（setup 长按、三击）再问页；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
-| `services/{menu,input,attitude,camera,env,splash,text,widgets}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区，`menu`/`widgets` 用 `TagTable` 反查命中 |
+| `services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区，`menu`/`widgets`/`lighting` 用 `TagTable` 反查命中；`headless` 没有 `view`，只绑按钮与灯珠 |
 | `services/settings.rs` | 设备自己的记录：面板语言 `DeviceState.lang` 与调色板 `DeviceState.theme`，只有页面报 `SettingsIntent` 能写 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译、动作条与命中；`shape.rs` 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；`view/` 按带拆（`header` / `content` / `overlay`，词在 `text.rs`），带之间的层序由 `shape::Band` 决定；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |
@@ -89,7 +89,7 @@ weight = 10
 | `shared/model/` | 工作者写入、渲染循环读取的记录，一域一文件；`device.rs` 是聚合体 `DeviceState`，`shared/snapshot.rs` 持有 `FrameSnapshot` 与页面发布的 `PageSnapshot`，`network_view/` 是 Network 页的视图（页面拥有、快照复制、链路不读） |
 | `shared/route/{mod,nav}.rs` | 路由表与 `Navigator`：`PageId` 是目的地，`route()` 是穷尽 `match`，`ALL` 是唯一次序（按钮也照它走） |
 | `shared/intent/` | 入站消息：`InputIntent`/`BusinessIntent` 与各页问句，含跨页的 `Confirm`；灯光动词 `LightAction` 与 `BusinessIntent::Light { instance, action }` 在这里定义；`keyboard.rs` 是 Network 页敲字用的键位词汇（`Key`/`Layer`/`Cycling`、多击窗口、每层候选字符表） |
-| `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词 |
+| `shared/model/light.rs` | 灯光记录：模式、呼吸表与调色板；`LightState::apply` 把 `LightAction` 落到新模式，`can` 说明该模式认不认这个动词；`GlowScope` 定呼吸能铺到哪些页，`Backlight` 是屏幕背光的唯一来源 |
 | `shared/snapshot.rs` | 产品快照：一张图融合每个子系统的状态，含音频/播放快照与页面发布的 `PageSnapshot` |
 | `shared/i18n/` | 面板文案：`Lang`、`Msg` 与不翻译的固定词；叶子，只依赖 `core` |
 | `shared/ui/` | 组件与交互词汇：`State`/`Theme`/`Slot`、滚动状态、键盘、命中表与 `widgets/`；不读快照 |
@@ -153,9 +153,11 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 `text` 页在构造时断行一次：`typeset::wrap` 的每行按字节范围与宽度存进快照，声明时各是一个 `nowrap` + 显式宽度的文本节点；`layout_text` 对 nowrap 且宽度已定的节点跳过 `max_content`，一帧不再逐字查字模表。`\n`、`\r`、`\r\n` 都按硬换行处理。
 
-文字有两套面：12 px 点阵（`Face`，只有整倍放大）与矢量轮廓（`VectorFace`，按给定尺寸精确缩放）。`text` 页正文用矢量面 24 px，字模行与覆盖行仍用点阵；矢量表由 `cargo run -p iot-tool -- outline` 从 Noto Sans Mono CJK SC Regular（OFL-1.1）裁出，码点集合就是正文样张 `core/assets/font/vector-sample.txt`，表只存折线与 1/64 em 坐标；行盒取 typographic 升降与全表墨迹包络的较大者，再加字号 1/8 的 leading（24 px → 30）。`Style::font_size(Length)` 定尺寸：`Px` 精确、`Dp` 是 5/4 px（2.0" 320×240 = 200 dpi 的 DPR）、`Rem` 是根字号 12 px 的百分之一；字重、字体族、装饰线与斜体压在 `Style::text_flags` 的一个 `u16` 里。颜色是 ARGB32：`Style`/`RunStyle` 存 16 槽调色板的 `ColorId`（声明期去重），`Canvas` 按覆盖率把字墨 src-over 混合到 RGB565；`Ui::span` 最多 8 条，只改颜色、装饰线与底色，不改行度量。矢量面缺任一字形时整行退回点阵（`Metrics::covering`），一行不会半矢量半点阵。矢量字形落在整像素上，因此覆盖率只取决于码点、字号与字重：`Canvas` 把 ≤24 px 的字形按 `(char, size, weight)` 收进 `GlyphCache`（堆上，约 69 KiB），首次栅格化后每帧只 `blit`；重墨先按 `over(a,b)=a+b-ab/16` 与左移一列合并成一张掩码再落一次，所以反色地面上不会互相抵消。更大的字号与未挂缓存的画布直接栅格化，超过 64×256 px 会触发断言而不是静默不画。
+文字只有一张面：12 px 点阵 Fusion Pixel（`Face`），GB2312 + Big5 共 15,466 字形；`Metrics` 只按整倍放大给步进与行高，字号因此只有 12 / 24 / 36 三档，`13..=24` 取 24。`text` 页正文、页标题与按钮标签用 24 px，其余用 12 px，缺字画 □（`MISSING`）。`Style::font_size(Length)` 定尺寸：`Px` 精确、`Dp` 是 5/4 px（2.0" 320×240 = 200 dpi 的 DPR）、`Rem` 是根字号 12 px 的百分之一；字重、装饰线与斜体压在 `Style::text_flags` 的一个 `u16` 里。颜色是 ARGB32：`Style`/`RunStyle` 存 16 槽调色板的 `ColorId`（声明期去重），`Canvas` 按覆盖率把字墨 src-over 混合到 RGB565；`Ui::span` 最多 8 条，只改颜色、装饰线与底色，不改行度量。`every_word_the_panel_prints_has_a_bitmap_glyph` 把 `Msg::ALL` × `Lang::ALL` 的每个字钉在 `Face::has` 上；新文案缺字先重跑 `iot-tool font --merge <bdf> --chars <list>`。
 
-页面可以用 `PageId::steady()` 声明稳态：`FrameSnapshot::steady` 让屏幕背光常 100（只有关灯才降 0），灯带停在声明颜色的相位 0 不再呼吸；页面自己的滚动仍按 `animating()` 保持 `TimeDriven`。今天的稳态集只有 `text`，`only_the_reading_page_holds_the_light_still` 钉住这一点。
+页面可以用 `PageId::steady()` 声明稳态：`FrameSnapshot::steady` 让灯带停在声明颜色的相位 0 不再呼吸；屏幕背光不再跟着它走，只取 `Backlight` 的设置。页面自己的滚动仍按 `animating()` 保持 `TimeDriven`。今天的稳态集只有 `text`，`only_the_reading_page_holds_the_light_still` 钉住这一点。
+
+`Lighting` 页是灯效的唯一入口：`GlowScope { Off, Page, Everywhere }`（默认 `Page`）存在 `DeviceState.glow`，投影成 `FrameSnapshot.glow`；样式 `GlowPattern { Breath, Steady, Cycle }` 与参数由页面私有的 `LightingView.breath` 发布，`Off` 不铺，`Page` 只在 `Lighting` 页铺，`Everywhere` 在所有页铺。`Backlight { pct }`（默认 100）独立于灯效，`level() = pct` 是屏幕背光的唯一来源，0 即全黑。无屏板落在 `PageId::Headless`：它不进 `PageId::ALL`、不进菜单，只把按钮与灯珠接起来；有屏时请求 `Headless` 退回 `Input`。`PageId::from_code` 仍认它的 wire code，供开机与宿主机走查使用。
 
 ### 渲染管线：声明一次，布局一次，落墨一次
 
@@ -167,9 +169,9 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 | `ui::declare` | `Ui` 的声明构建器与落墨驱动：`view` 期间攒树，结束后布局一次、按槽回调，再画字与盒子 | `Ui::{row, column, stack, wrap, scroll, text, span, custom, paint, headless, rects}` |
 | `ui::paint` | 每个已布局节点的墨：文字 run（按 span 换色与装饰线）、自绘槽、底色与裁剪；单行不换行的 run 直接画 | `NodeKind`、`RunStyle`、`draw_text` |
 | `ui::typeset` | UAX #14 子集 + CLReq 禁则：行首不落 `。`、行尾不留 `「`；测量与绘制共用同一个断行器，`…` 截断 | `Paragraph { lines, count, truncated }`、`wrap`、`next_char` |
-| `ui::font` | 两套面：12 px 点阵 Fusion Pixel，GB2312 + Big5（15,466 字形）；矢量轮廓按 1/64 em 存折线。`Metrics` 按 `(family, size)` 给行高与步进；ASCII 步进 6 px、汉字 12 px（点阵），升部 10 行 | `Face`、`VectorFace`、`Metrics` |
+| `ui::font` | 12 px 点阵 Fusion Pixel，GB2312 + Big5（15,466 字形），整倍放大到 24 / 36 px。`Metrics` 按字号给行高与步进；ASCII 步进 6 px、汉字 12 px，升部 10 行 | `Face`、`Metrics` |
 | `ui::panel` | 从字面推出的面板度量：320×240、页脚 12 行、行距 13、触控最小 44 px、左右边距 | `PANEL_COLUMNS`、`CONTENT_BOTTOM`、`LINE`、`ROW_PITCH`、`TOUCH_MIN` |
-| `ui::canvas` | 像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，矢量轮廓按 4 条子扫描线取覆盖，不超过 24 px 的字形按 `(char, size, weight)` 缓存进 `GlyphCache`；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char_at, draw_char_heavy_at, draw_text_at, push_clip, with_glyphs}`、`GlyphCache` |
+| `ui::canvas` | 像素、裁剪与填充/描边；ARGB32 按覆盖率 src-over 到 RGB565，点阵按整倍放大落墨，重墨与左移一列合并后只落一次；RGB565 打包与反色也在这里 | `Canvas::{fill_rect, stroke_rect, draw_char_at, draw_char_heavy_at, draw_text_at, push_clip}` |
 
 页面组合有两条硬规矩：读数行一律走 `page::reading`（标签 4 格 + 值右对齐 7 格，行长恒定），列的宽度写死而不靠 `grow`——flex 的起点是内容宽，位数一变就重新分配，整块文本跟着跳；自绘叶子放进 `stack`，用 `absolute().right/bottom` 贴边，声明在文字之后（z 序在上）。
 
@@ -181,7 +183,7 @@ bench             → { lib::run_with, services::network::{controller, shape}, s
 
 重绘地板挡住的那一帧不会再出现：`Differ` 对一次变化只报一次，所以 `ScreenRenderer` 另存「玻璃上真正有的那一帧」（`shown`），每次拿它跟最新帧比，地板到点就把欠下的那一帧补画；`owed()` 让循环保持 `TimeDriven`，不会在玻璃还欠一帧时 park。
 
-`Services` 持有十一个页面，外加设备自己的三件事：`NavService`（页栈）、`LightService`（灯）与 `SettingsService`（面板语言）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余各组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
+`Services` 持有十八个页面，外加设备自己的三件事：`NavService`（页栈）、`LightService`（灯）与 `SettingsService`（面板语言）。公开 `bind`/`get`/`apply`/`snapshot`/`enter`/`leave`，没有按页取字段的访问器。扫描落地后，列表先写进记录，再由 `LinkIntent::Scan` 走同一条分派表让 Network 页把草稿夹进新列表——没有专门的扫描钩子。`Services::apply` 是唯一的业务分派表：一个 `BusinessIntent` 组一条臂：`Link` 写 `NetworkState`、`Network` 写 `NetworkView`，两条记录同属 `NetworkPage`，所以合成一条，其余各组各归一个；表是穷尽 `match`，加一组不编译。新增页面＝建 `services/<page>/`、在 `Services` 加一个字段、在 `get`/`get_mut`、`service_mut` 与 `descriptor(page)` 的 `match` 里各加一条臂，再写 `bind` 与 `descriptor`（认领意图的页再写 `apply`）；漏一条编译不过，`iot-tool/tests/page_table.rs` 守着这条模板。新增一个不是页面的服务＝加字段、加一条 `ServiceId` 变体、写 `apply`，再让 `Services::apply` 指向它。
 
 生命周期由 `state/manager/write.rs` 在一次业务意图落完状态后比较 `state.page()`：变了就先 `leave(旧页)` 再 `enter(新页)`，启动时 `Splash` 也算一次 `enter`。钩子与 `has_screen()` 无关（无屏板子的页面照样收到），但只能读写页面自己的字段。Network 页在 `on_hide` 里收起键盘与确认框，保留用户选中的行与草稿，所以离开再回来不会重新弹出键盘。
 

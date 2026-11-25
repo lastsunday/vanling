@@ -10,8 +10,8 @@ use iot_core::drivers::network::{LinkPhase, SetupHost};
 use iot_core::ui::ThemeId;
 
 use super::{
-    AudioState, Backed, GlassBreath, LightState, MAX_LIGHTS, MotionState, NetworkState, Notice,
-    NoticeKind, PlaybackState, SurfaceRole, TouchState,
+    AudioState, Backed, Backlight, GlowScope, LightState, MAX_LIGHTS, MotionState, NetworkState,
+    Notice, NoticeKind, PlaybackState, SurfaceRole, TouchState,
 };
 
 /// All state owned by the device manager: one record per domain, each living in the module
@@ -27,9 +27,10 @@ pub struct DeviceState {
     /// link hears it once as `SplashOver`.
     pub setup_requested: bool,
     pub lights: [LightState; MAX_LIGHTS],
-    /// A breath raised over every page, for an alarm or the demo's "every page" switch. `None`
-    /// leaves the glass to the page that is up.
-    pub glass_breath: Option<GlassBreath>,
+    /// The panel's backlight, independent of what the glass is showing.
+    pub backlight: Backlight,
+    /// Where the breathing glass may appear; the lighting page edits it.
+    pub glow: GlowScope,
     /// What each slot's surface is for, fixed by the wiring rather than by the current
     /// appearance. Not part of `backed`: presence and role answer different questions.
     pub surface_roles: [SurfaceRole; MAX_LIGHTS],
@@ -119,17 +120,26 @@ impl DeviceState {
         }
     }
 
-    /// The page that becomes the boot page: one the build may not come up on, the board
-    /// cannot back, or one that needs a screen the board did not wire, falls back to
-    /// [`PageId::Input`].
+    /// The page that becomes the boot page. A board with no panel lands on [`PageId::Headless`]
+    /// and a board with one never does; anything the build may not come up on, or the board
+    /// cannot back, falls back to [`PageId::Input`].
     pub(crate) fn landed_on(page: PageId, backed: Backed, screen: bool) -> PageId {
-        if page == PageId::Menu && !screen {
-            return PageId::Input;
+        if page == PageId::Headless {
+            return if screen {
+                PageId::Input
+            } else {
+                PageId::Headless
+            };
+        }
+        if !screen && matches!(page, PageId::Menu | PageId::Input) {
+            return PageId::Headless;
         }
         if page.bootable() && page.is_backed(backed) {
             page
-        } else {
+        } else if screen {
             PageId::Input
+        } else {
+            PageId::Headless
         }
     }
 }

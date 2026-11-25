@@ -14,7 +14,7 @@ use crate::shared::ui::scroll::{
     BAR, Drag, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift, thumb as scroll_thumb,
 };
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::font::{Face, FontFamily, Metrics as FontMetrics};
+use iot_core::ui::font::{Face, Metrics as FontMetrics};
 use iot_core::ui::text::format_u16;
 use iot_core::ui::{Color, FontWeight, Length, Rect, RunStyle, ScrollId, Style, Ui};
 
@@ -269,7 +269,7 @@ impl super::LocalPage for TextPage {
 }
 
 fn wrap_line_px() -> i16 {
-    let height = iot_core::ui::typeset::line_height(FontMetrics::vector(u16::from(WRAP_PX)));
+    let height = iot_core::ui::typeset::line_height(FontMetrics::at(u16::from(WRAP_PX)));
     i16::try_from(height).unwrap_or(i16::MAX)
 }
 
@@ -280,7 +280,7 @@ fn text_layout(width: i32) -> TextSnapshot {
         WRAP_RUN,
         width,
         TEXT_LINES,
-        FontMetrics::vector(u16::from(WRAP_PX)),
+        FontMetrics::at(u16::from(WRAP_PX)),
     );
     let mut text = TextSnapshot::default();
     for (slot, line) in text
@@ -356,8 +356,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 let mut style = Style::new()
                     .nowrap()
                     .width(width_of(line.width))
-                    .font_size(Length::Px(i16::from(WRAP_PX)))
-                    .font_family(FontFamily::Vector);
+                    .font_size(Length::Px(i16::from(WRAP_PX)));
                 if index == 0 {
                     style = style.font_weight(FontWeight::Bold).underline();
                 }
@@ -623,7 +622,7 @@ mod tests {
             RUN,
             width,
             iot_core::ui::typeset::MAX_LINES,
-            FontMetrics::vector(u16::from(WRAP_PX)),
+            FontMetrics::at(u16::from(WRAP_PX)),
         );
         let lines = &paragraph.lines[..paragraph.count];
         let starts: alloc::vec::Vec<usize> = lines.iter().map(|line| line.start).collect();
@@ -642,8 +641,8 @@ mod tests {
     }
 
     #[test]
-    fn the_wrap_paragraph_is_covered_by_the_vector_face() {
-        let face = iot_core::ui::font::VectorFace::new();
+    fn the_wrap_paragraph_is_covered_by_the_bitmap_face() {
+        let face = iot_core::ui::font::Face::new();
         let missing: alloc::string::String = core::str::from_utf8(WRAP_RUN)
             .expect("the sample is UTF-8")
             .chars()
@@ -651,7 +650,7 @@ mod tests {
             .collect();
         assert!(
             missing.is_empty(),
-            "the vector table lacks {missing}; rerun `cargo run -p iot-tool -- outline`"
+            "the bitmap table lacks {missing}; rerun `cargo run -p iot-tool -- font`"
         );
     }
 

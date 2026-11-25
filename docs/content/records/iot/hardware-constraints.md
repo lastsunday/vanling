@@ -398,29 +398,26 @@ ESP_RTOS_CONFIG_SW_TASK_OVERFLOW_DETECTION = "true"
 软件 canary 在每次上下文切换时检查栈底以下的哨兵，并以出错的任务名 panic——比静默破坏内存好。
 ---
 
-## 面板的字模：12 px 点阵 + 24 px 矢量正文（`[测试]`，2026-11-21）
+## 面板的字模：12 px 点阵与整倍放大（`[测试]`，2026-11-25）
 
 字模在 `apps/iot/crates/core/src/ui/font.rs`，表是 `crates/core/assets/font/ui12.bin`（486,881 B），由 `cargo run -p iot-tool -- font` 从 `crates/tool/assets/fonts/ui12.bdf`（2.1 MB，随字体附 MIT 与 OFL 两份许可）裁出。BDF 是 TakWolf 的 Fusion Pixel 12px Mono：`zh_Hans` 的 GB2312 7,475 个字形为底，再用 `font --merge` 并入 `zh_hant` 的 Big5 全表（`big5.txt`，13,706 个码点），共 15,466 个字形。Big5 有 866 个码点（805 个次常用汉字 + 61 个符号）上游 `zh_hant` 本身没有字形，按 `MISSING` 画 □；其余 12,840 个都有。`SIZE 12 75 75`、`FONT_ASCENT 10`、`FONT_DESCENT 2`。
 
 - **表格式 `VLF1`**：32 B 头（字形数、行高、升部、降部）+ 每字形码点 `u16`、打包度量 `u32`、位图偏移 `u32`、位图。码点有序，二分查找；`Face::glyph/advance/measure/glyphs` 是唯一入口。
 - **等宽**：ASCII 步进 6 列，汉字 12 列——一个汉字正好两格，网络名、口令与中英混排都落在同一张网格上。行高 12、行距 13（`LINE`/`ROW_PITCH`），升部 10 行、降部 2 行。
+- **字号只有整倍**：`Metrics::at(size)` 把 12 px 表放大 `size.div_ceil(12)` 倍，于是 13..=24 都取 24 px，36 取 36 px；没有 14 / 20 px。页标题、按钮与 chip 标签用 24 px，正文与读数用 12 px。`Metrics::height/ascent/descent` 是 `Face` 值 × 倍数，`typeset::line_height` 等于字高，不再另加 leading。
 - **面板度量跟着字面走**：页脚 12 行（`FOOTER_ROWS`）、内容底边 228（`CONTENT_BOTTOM`）、左右边距 10（`MARGIN`）、触控最小 44 px（`TOUCH_MIN`）。`panel.rs` 的 `FACE_HEIGHT == LINE` 与 `the_panel_is_measured_in_the_face_it_draws_with` 把「字号改了而版面没改」挡在编译/测试里。
 - **网络页的按压目标因此变高**：列表 3 行 × 45 px（`LIST_ROW_H >= TOUCH_MIN`），动作条顶边 184，键格 45 px，确认框 118 px、每行 34 格。网络名按像素截断（`ui::text::fit`），缓冲区按 UTF-8 字节而不是字形数：`NAME_BYTES = SSID_BYTES + 1`（截断标记占一字节）、`DIALOG_BYTES` 另留前缀与引号。
-- **回归**：`font.rs` 钉住两套表的表头与度量（点阵 ASCII/汉字步进、缺字 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框；矢量面 `中`=24 / `A`=12 px @24、升/降 21/3、`covering` 整行回退），`panel.rs` 钉住负号与字号一致，`typeset.rs` 钉住禁则与截断，`declare.rs` 钉住底色/span/装饰线/字号与滚动盒裁剪，`canvas.rs` 钉住矢量落墨的包围盒、AA 边缘、缺字回退与裁剪，`services/text.rs` 钉住样张被矢量面全覆盖，`services/tests.rs` 的 18 行黄金哈希钉住整页像素（`text` 行随本页改动更新，其余 16 行未变）。
-
-- **矢量表 `VLV1`**：`crates/core/assets/font/vector.bin`（88,274 B，181 个字形 / 20,756 个折线点），由 `cargo run -p iot-tool -- outline` 用 `ttf-parser` 从 `crates/tool/assets/fonts/NotoSansMonoCJKsc-Regular.otf`（16,393,784 B，OFL-1.1，许可见同目录 `LICENSES/noto/OFL.txt`）裁出；码点集合就是 `core/assets/font/vector-sample.txt`，工具与页面共用这一份。Noto Sans Mono CJK 同时覆盖 CJK 与半角 Latin，因此不再需要 Hack；MiSans、HarmonyOS Sans 因禁止修改再分发而不引入。
-- **表内容**：32 B 头（字形数、码点数、em = 64、四段偏移、typographic 升/降 56/8）+ 码点→字形对 + 每字形 18 B 元（步进、点区间、轮廓区间、包围盒）+ `(i16 x, i16 y)` 点（1/64 em，y 向上）+ 轮廓终点（绝对点号）。坐标不存 1/4 em：24 px 下那是 6 px 的格，圆弧会被量化成台阶。
-- **行高包住墨迹再加字号的 1/8**：表头存 OS/2 typographic 升/降与全表墨迹包络的较大者（`g` 的 `ymin = -15` 比 typographic 降部更深），`Metrics::height() = ascent + descent`，`typeset::line_height = height + size/8`（24 px → 30）。只取 typographic 对（56 + 8 = 1 em）会把矢量行压到 24 px，`g`、`，` 等降部被自己的行盒切掉。`Metrics::ascent/descent` 对点阵是 `Face` 值 × 整倍放大，对矢量是 `units * size / 64` 四舍五入。
-- **矢量面缺任一码点就整行退回点阵**（`Metrics::covering`），一行不会半矢量半点阵；正文里出现表外字符时 `the_wrap_paragraph_is_covered_by_the_vector_face` 会报出缺哪个字并提示重跑工具。
-- **字号与单位**：`Style::font_size(Length)` 落成 `u8` 像素值；`Px` 精确，`Dp` = 5/4 px（2.0" 320×240 = 200 dpi，逻辑像素按 160 dpi 定义），`Rem` = 1/100 × 12 px，`Percent` 按根字号解释；`Auto` 与解析不出的百分比退回 12 px。
+- **2026-11-25 移除矢量链路**：曾为 24 px 正文单独裁 `vector.bin`（368 字形 / 194,558 B）并从 16 MB Noto Sans Mono CJK SC OTF 生成；S3 实测 24 px 矢量正文首帧 52–55 ms、加 69 KiB 堆上 `GlyphCache` 后稳态 30 ms，而整倍放大的点阵没有逐字光栅化。现在只保留 `ui12.bin`：删掉 OTF、`iot-tool outline`、`ttf-parser`、`vector.bin` 与 `GlyphCache`/光栅器；24 px 正文与标题直接查同一张表并放大两倍。
+- **回归**：`font.rs` 钉住表头与度量（点阵 ASCII/汉字步进、缺字 fallback、非法 UTF-8 不卡住、`中` 保持 BDF 字框、24 px = 两倍、36 px = 三倍），`panel.rs` 钉住负号与字号一致，`typeset.rs` 钉住禁则与截断，`declare.rs` 钉住底色/span/装饰线/字号与滚动盒裁剪，`canvas.rs` 钉住重墨只落一次与裁剪，`services/text.rs` 钉住样张被点阵面全覆盖，`services/tests.rs` 的 34 行黄金哈希（17 页 × 调试徽标开/关）钉住整页像素。
 - **颜色与 span**：`Color(u32)` 是 ARGB32；`Style`/`RunStyle` 只存 `ColorId`（声明期 16 槽调色板去重，溢出在 debug 断言），`Canvas` 落墨时按覆盖率 src-over 到 RGB565，半透明因此与底下的像素混合。`Ui::span` 最多 8 条，只改颜色/装饰线/底色，不改行度量。
-- **静态占用**：两张表合计 575,155 B 在 flash；`Ui` 11,896 B（60 节点 × 160 B + 文本 2 KB + span 表，上限 12,288 B），`Style` 84 B，`Length` 4 B。
+- **字号与单位**：`Style::font_size(Length)` 落成 `u8` 像素值；`Px` 精确，`Dp` = 5/4 px（2.0" 320×240 = 200 dpi，逻辑像素按 160 dpi 定义），`Rem` = 1/100 × 12 px，`Percent` 按根字号解释；`Auto` 与解析不出的百分比退回 12 px。
+- **静态占用**：一张表 486,881 B 在 flash；`Ui` 11,896 B（60 节点 × 160 B + 文本 2 KB + span 表，上限 12,288 B），`Style` 84 B，`Length` 4 B。
 
-字模在 flash：`ui12.bin` 486,881 B、`vector.bin` 88,274 B；BDF 与 OTF 只在工具侧，不进镜像。
+字模在 flash：`ui12.bin` 486,881 B；BDF 只在工具侧，不进镜像。
 
-## Text 页：两段独立滚动区，正文 24 px 矢量（`[测试]`，2026-11-21）
+## Text 页：两段独立滚动区，正文 24 px 点阵（`[测试]`，2026-11-25）
 
-Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排的换行长文（矢量面 24 px），`GLYPHS` 是逐行 12 px 字模样张。两块各 306×90 px，内容 336 / 216 px，可滚 246 / 126 px；正文样张在 24 px 下断成 25 行，页面把 25 行全部声明出来（窗口正好填满，不再出现 `…`；更长的段落仍在第 25 行截断）。
+Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排的换行长文（点阵 24 px，整两倍），`GLYPHS` 是逐行 12 px 字模样张。两块各 306×90 px；正文样张在 24 px 下断成 25 行、共 600 px，可滚 510 px，页面把 25 行全部声明出来（更长的段落仍在第 25 行截断）。
 
 - **布局不夹偏移**：`Style::scroll_area(id)` 只命名并记录矩形与可滚距离，`Ui::scroll_info(id)` 读回；限界与回弹留在页面的 `ScrollState`，因为只有它知道越界多远。
 - **构造时量两次**：面板 320×228 与内容都是静态的；第一次空跑拿到区宽，`typeset::wrap` 按该宽度断一次，第二次带着断好的行再布局并 `measure` 两区矩形与行程。
@@ -431,21 +428,17 @@ Text 页把长内容拆成两段命名滚动区：`WRAP` 是一段中英混排�
 - **回弹**：越界上限是 `viewport/4`（区装得下或关掉回弹时为 0），越界后额外 ×0.5 阻尼，松手后每 tick 补一半差距，≤1 px 吸附。`ScrollConfig { bounce, bar }` 是页面唯一的开关，两者都不改布局，所以切换无需重测。
 - **滚动条**：右侧 2 px 槽常驻；thumb 高 `max(8, viewport²/(viewport+max))`，位置 `(viewport-height)·clamp(offset,0,max)/max`，`max == 0` 或关掉时隐藏。thumb 用 `bordered()` 而不是 `filled()`——Text 页不声明底色，`fill_rect` 没有 ground 可翻，2 px 边框读起来是实心且与字形一样反色。
 - **动起来**：`PageSystem` 按墙钟增量调 `LocalPage::tick`（首帧 0，夹到 `MAX_CATCH_UP_MS = 5·STEP_MS`），不再每次循环固定 `STEP_MS`：一次 52 ms 的光栅化曾让滑行只推进 20 ms，滚动正好在最慢的页上慢三倍。`FrameSnapshot::animating()` 让渲染器保持 `TimeDriven`；`Repaint::WhenOrOverlay` 在 Text 自己的 20 ms 步长内补画收尾那一帧（共享地板是 40 ms，但滚动帧只搬运已有像素、不重新栅格化，本页因此可以按帧循环的节拍走；40 ms 会让一次拖动两帧才动一次，读起来就是卡）。
-- **稳态页**：`PageId::steady()` 只对 Text 返回真，快照带 `steady`；屏幕背光因此常 100（关灯才降 0），灯带停在声明颜色的相位 0 不再呼吸，页面滚动仍按 `animating()` 计时。`render/screen` 与 `render/lamp` 各有测试钉住这一点，`shared/route` 的 `only_the_reading_page_holds_the_light_still` 钉住稳态集合。
+- **稳态页**：`PageId::steady()` 只对 Text 返回真，快照带 `steady`；灯带停在声明颜色的相位 0 不再呼吸，页面滚动仍按 `animating()` 计时。屏幕背光不再由它决定，只取 `Backlight` 的设置（0 即全黑；12% 的软件底已于 2026-11-25 删除）。`render/lamp` 钉住灯带这一点，`shared/route` 的 `only_the_reading_page_holds_the_light_still` 钉住稳态集合。
 - **排版样例**：正文首行加粗 + 下划线，前 6 个字节用红色 span（`RunStyle::color` + `decoration_color`）；span 只换颜色/装饰线，不改行度量，断行结果与无 span 时相同。
-- **粗体只落一次**：首行加粗不是把字形在 `left`、`left+1` 各落一次——在反色地面上第二次会把第一次的像素翻回去，首行因此发空。现在位图面按 `coverage(x)|coverage(x-1)`、矢量面按 `over(a,b)=a+b-ab/16` 合成一张覆盖掩码后只落一次；字形缓存键加入 weight，heavy 只在其多出的一列仍装进 24×24 槽时缓存。`canvas` 测试钉住重墨内部不被反色抵消、缓存与不缓存逐字节相等；黄金表只有 `text` 两行更新。
+- **粗体只落一次**：首行加粗不是把字形在 `left`、`left+1` 各落一次——在反色地面上第二次会把第一次的像素翻回去，首行因此发空。现在按 `coverage(x)|coverage(x-1)` 合成一张覆盖掩码后只落一次。`canvas` 测试钉住重墨内部不被反色抵消；黄金表只有 `text` 两行更新。
 - **布局只量一次**：flex 跳过带显式 `basis` 的子节点的自然主轴测量（该值本来就被丢弃），零横向空间的滚动盒不排内容。Text 页的段落只在构造时 `wrap` 一次，声明是一行一个 `nowrap` + 显式宽度的节点，`layout_text` 对它们跳过 `max_content`，一帧不再逐字查字模表；18 行整页黄金哈希守着旧像素。
 - **`[实测]` S3（12 px 点阵版，2026-11-20）**（240 MHz，`IOT_BOOT_PAGE=text`，DEBUG 日志）：首窗 `11 repaints in 2107 ms, held the executor 184 ms (8%), worst render 19 ms (fill 1), worst wait 21 ms, worst write 15 ms`，稳态 `5–7 repaints in 2019–2560 ms, held 79–111 ms (3–5%), worst render 15–16 ms (fill 1)`；改前同页是 `6 repaints in 2220 ms, held 1559 ms (70%), worst render 265 ms`。主栈 86,216 B、峰值 30,364 B，无 panic。静止页不重绘，拖动时的逐帧开销只能靠手指实测。
-- **`[实测]` S3（24 px 矢量版，缓存前，2026-11-21）**（240 MHz，`IOT_BOOT_PAGE=text`，DEBUG 日志）：首窗 `6 repaints in 2355 ms, held the executor 67 ms (2%), worst render 52 ms (fill 1), worst wait 637 ms, worst write 16 ms`，次窗 `3 repaints in 15478 ms, held 160 ms (1%), worst render 54 ms`；主栈 86,216 B、峰值 30,108 B，无 panic，背光正常。52–54 ms 已靠近 40 ms 重绘地板，滚动时一帧就是这个量级。
-- **第一版光栅器是 238 ms，改法是少做重复工作**：旧实现每画一个字形都把全部轮廓点按字号缩放四遍（四条子扫描线各一遍），每个像素行再扫一遍全部边；S3 上一帧 212 次矢量落墨、628k 次边遍历，`worst render 238 ms`。现在每个字形只缩放一次（`scaled`，1.5 KB），边按“采样窗口第一次够到它”的行分桶，逐行只遍历仍跨行的边（`heads`/`chain`/`active`），四种子扫描线共用一次边遍历。181 个字形逐像素哈希与旧实现完全一致，黄金表未动；主栈峰值不变（渲染在 86 KB 主栈上）。
-- **`[实测]` S3（24 px 矢量 + 字形缓存，2026-11-21）**（240 MHz，`IOT_BOOT_PAGE=text IOT_LOG_LEVEL=debug`）：首窗 `6 repaints in 2367 ms, held the executor 75 ms (3%), worst render 55 ms (fill 1), worst wait 645 ms, worst write 16 ms`——首帧是冷缓存，成本仍是逐字栅格化；之后的窗口 `3 repaints in 11884 ms, held 90 ms (0%), worst render 30 ms`。主栈 86,216 B、峰值 34,268 B，无 panic。稳态绘制从 52–54 ms 降到 30 ms。
-- **字形覆盖率缓存**（2026-11-21）：字形落在整像素坐标上，覆盖率只取决于码点与字号（轮廓在自己盒内的亚像素相位固定），所以 `GlyphCache` 按 `(char, size, weight)` 收 192 个 24×24 槽，每像素 5 bit——覆盖率 0..=16，4 bit 会把满墨的最后一格变成半透明。首次落墨时栅格化进槽，之后只 `blit`；表在堆上（约 69 KiB，S3 的 PSRAM 堆，C6 无屏不分配），因为主栈余量只有几百 B。宿主 release 下 3,620 次 24 px 落墨 42.7 ms → 16.3 ms（11.8 → 4.5 µs/字形）；`a_cached_glyph_lands_on_the_outline_s_pixels` 把 181 个字形在三个位置各画一遍，与不走缓存的帧逐字节相等。
 - **镜像大小**（`moon run iot:image`，2026-11-22）：S3 `1,798,672 / 6,291,456 B (28.59%)`，C6 `1,614,288 / 6,291,456 B (25.66%)`；两张表进镜像后仍有 4.4 MB / 4.6 MB 余量。
 - **`[实测]` 烧录后启动**（2026-11-21，显式 `IOT_PORT`）：S3 `[DISPLAY] stack peak 34,280 B of 82,840 B`、`[STACK] core 1 peak 2,160 B of 24,576 B`，首窗 `9 repaints in 2031 ms, held 544 ms (26%), worst render 62 ms (fill 1), worst wait 19 ms, worst write 15 ms (longest chunk 1 ms)`（冷缓存）；C6 打到 `[WATCHDOG] the first frame was shown and the network path settled; this boot is healthy`，无 panic。
 - **滚动帧：落墨只写窄条，上屏写整框**（2026-11-21）：`AppPainter` 比较上一帧的两个滚动区偏移，`memmove` 已有像素后算两份 `FrameDamage`。**落墨集**只含进入视口的窄条、头部读数与 thumb，`Canvas` 按它裁剪落墨、`clear_damage` 按它铺回 ground，所以滚动帧不重新栅格化。**上屏集**把整个滚动框连同 header 与 thumb 交给 `St7789`：面板是 GRAM，不会自己搬像素，只写窄条会让框里其余行停在拖动开始时的内容上——旧文字成条残留、新内容从旁边滑过。快甩（`|delta| ≥ rect.h`）不再退回整帧：进入条钳到框高、`scroll_blit` 自行跳过，于是整框重墨但只上屏这个框；换页仍走整帧。两集都 ≤7 块（两区各 3 块 + footer），`St7789` 用 `CASET`/`RASET` 逐块写。实测几何下两区同时滚动的上屏量是 `2×(306×90 + 310×13 + 2×90)` ≈ 127 KB，加 footer 约 135 KB，按 80 MHz 约 12.7–13.5 ms（**推算，未实测**：滚动帧的 `worst write` 要手指按住才录得到）——接近整帧 153.6 KB，省下的是栅格化（30–55 ms → 搬像素约 1 ms），不是线上字节。底色改变、换页与相机帧仍走整帧，`ScreenPainter::reset` 让画布忘掉不可复用的上一帧。**调试徽标曾让这条路整条失效**：`keeps_frame` 一看到 overlay 就返回 false，产品镜像（`OVERLAY = true`）因此每帧整帧重绘，S3 实测拖动时 ~35 ms/帧、约 20 fps；现在徽标只把底部 320×12 的 footer 加进两份 damage，滚动帧仍搬运像素，徽标读数也继续刷新。`render::screen::painter` 钉住符号、上下搬运、两集块数与整框/窄条高度、清 ground、overlay 下仍保留滚动帧、footer 带尺寸，以及「把上屏集应用到模拟面板后与 buffer 逐字节相等」；`ui::canvas` 钉住脏矩形外的填充/字形不落墨。
 - **抬手按按下点找区会永久占住一区**（2026-11-22）：`TextPage::bind` 原来用按下点 `area_at` 解析 Release，而 `Press` 在框外（header、margin、间隙、footer）不生成意图；手指在框外按下、拖进框后由 `Drag` 认领，抬手时按下点仍在框外，Release 直接 `None`，`drag[slot]` 再不释放——该区之后慢拖全被 `claim` 拒绝，快甩因 Release 落空走 `scroll()` 兜底还能动，换页 `on_hide` 才复位。现在 Release 先按 id 在已认领的 `drag` 里取 area，取不到才退回按下点；`a_press_outside_a_box_that_drags_in_still_releases_it` 钉住「框外按下 → 拖进 → 抬手 → 再慢拖必须动」。
 - **只写脏矩形的第一版把面板写黑**（2026-11-21）：`write_rect` 发完 `0x2C` 后直接调 `write_chunk`，而 `write_chunk` 不碰 DC——`emit_command` 在无参数时把 DC 留在低电平，于是整块矩形的像素被当成命令字节送进 ST7789。抗锯齿覆盖率、accent 红与 thumb 让这几千字节里必然出现 `0x01`（SWRESET）、`0x28`（DISPOFF）一类命令；面板被复位后应用只再发 `0x2A/0x2B/0x2C`，不会重新初始化，所以第一次滚动就黑屏且不再恢复（不是 panic：串口仍在打 `[DISPLAY]`/`[INPUT]`）。现在 DC 由 `write_chunk` 自己拉高——它的两个调用方（整帧的 `write_pixels` 与矩形的 `write_rect`）都只发像素数据。同一条失败路径也不再冻结：`flush_pending` 写失败时按这一帧的 ground 重填并置 `page_dirty`，下一次重绘整页，而不是留下 `NeedsPaint` 让 `repaint` 因 `painted_color()` 为 `None` 一直早退——稳态页的底色不再变化，也就没有别的东西会重填。
-- **回归**：`services::text::tests` 钉住两区都可滚且互不影响、滑点在区内才路由、拖动跟手、丢 `Press` 的 `Drag` 认领（基线不跳）、框外按下拖进后抬手仍释放该区、抬手滑行不补行、拖完停住再抬手不滑（距最后样本 >30 ms）、长按不甩、快速滑动仍补 3 行、拖动后的点击不补行、横向/区外忽略、`on_hide` 归零、样张无缺字、节点数与文本字节上限、ASCII 单格与样张对齐、双指端到端各拖一区、抬一指另一指继续、两区同甩、第三指忽略、样张被矢量面全覆盖、25 行与 56 节点预算；`drivers::input` 钉住幻点拒绝后 `Press` 报首次落点、拖动基线取接受时的采样、上报顺序互换仍保 id、后落手指被面板先报也不抢旧 id、无槽号按最近配对、双指同滑 10 帧不断流、同距才用槽号破平局、越界点不拖旧点；`ft6336` 钉住一次突发读出两点与 `0b01` 抬手帧被跳过；`render::screen::painter` 钉住滚动符号、上下搬运、两集块数与整框/窄条高度、清 ground、快甩仍走滚动路径；`ui::canvas` 钉住脏矩形外不落墨；`shared::ui::scroll::tests` 钉住速度阈值、滑行距离、回弹归位、按住不弹与两个开关；`services::tests::a_text_scroll_moves_one_region_and_its_thumb` 钉住偏移进画面且 thumb 跟着走。
+- **回归**：`services::text::tests` 钉住两区都可滚且互不影响、滑点在区内才路由、拖动跟手、丢 `Press` 的 `Drag` 认领（基线不跳）、框外按下拖进后抬手仍释放该区、抬手滑行不补行、拖完停住再抬手不滑（距最后样本 >30 ms）、长按不甩、快速滑动仍补 3 行、拖动后的点击不补行、横向/区外忽略、`on_hide` 归零、样张无缺字、节点数与文本字节上限、ASCII 单格与样张对齐、双指端到端各拖一区、抬一指另一指继续、两区同甩、第三指忽略、样张被点阵面全覆盖、25 行与 56 节点预算；`drivers::input` 钉住幻点拒绝后 `Press` 报首次落点、拖动基线取接受时的采样、上报顺序互换仍保 id、后落手指被面板先报也不抢旧 id、无槽号按最近配对、双指同滑 10 帧不断流、同距才用槽号破平局、越界点不拖旧点；`ft6336` 钉住一次突发读出两点与 `0b01` 抬手帧被跳过；`render::screen::painter` 钉住滚动符号、上下搬运、两集块数与整框/窄条高度、清 ground、快甩仍走滚动路径；`ui::canvas` 钉住脏矩形外不落墨；`shared::ui::scroll::tests` 钉住速度阈值、滑行距离、回弹归位、按住不弹与两个开关；`services::tests::a_text_scroll_moves_one_region_and_its_thumb` 钉住偏移进画面且 thumb 跟着走。
 
 ## 一帧的声明占用（`[测试]`，2026-11-21）
 

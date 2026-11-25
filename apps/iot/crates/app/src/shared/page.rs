@@ -1,7 +1,7 @@
 //! The page's furniture: margins, line rhythm, title, scrolling body, and the reading row.
 
 use iot_core::ui::panel;
-use iot_core::ui::{FontFamily, Length, ScrollId, Style, Ui};
+use iot_core::ui::{Length, ScrollId, Style, Ui};
 
 use crate::shared::snapshot::ScrollAreaView;
 use crate::shared::ui::scroll::{BAR, MIN_THUMB, thumb};
@@ -48,13 +48,7 @@ pub fn body(ui: &mut Ui<'_, '_>, run: impl FnOnce(&mut Ui<'_, '_>)) {
 
 /// The page's name, a step larger than body copy so the panel has a head.
 pub fn title(ui: &mut Ui<'_, '_>, run: &[u8]) {
-    ui.text(
-        run,
-        Style::new()
-            .nowrap()
-            .font_size(Length::Px(20))
-            .font_family(FontFamily::Vector),
-    );
+    ui.text(run, Style::new().nowrap().font_size(Length::Px(24)));
 }
 
 /// A scrolling body beside its thumb: the box grows into the rows the page left it.

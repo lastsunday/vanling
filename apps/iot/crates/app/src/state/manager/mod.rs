@@ -24,7 +24,7 @@ pub struct Boot {
     pub demand_keys: Vec<DemandKey>,
     pub surface_roles: [SurfaceRole; MAX_LIGHTS],
     /// The page to land on after the splash; a page the board cannot back falls back to
-    /// [`PageId::Input`].
+    /// [`PageId::Input`], or [`PageId::Headless`] on a board with no panel.
     pub boot_page: PageId,
     /// The words the panel prints.
     pub lang: Lang,

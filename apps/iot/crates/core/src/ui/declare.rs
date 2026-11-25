@@ -359,7 +359,7 @@ impl<'a, 's> Ui<'a, 's> {
 mod tests {
     use super::*;
     use crate::ui::layout::PX;
-    use crate::ui::{DecorationStyle, FontFamily, FontWeight, Length, Overflow, TextAlign};
+    use crate::ui::{DecorationStyle, FontWeight, Length, Overflow, TextAlign};
 
     /// The declaration lives on the panel core's stack (24 KiB on the S3) for the length of
     /// one page, so it is budgeted separately from that stack's other work. Every page's
@@ -537,21 +537,16 @@ mod tests {
     }
 
     #[test]
-    fn a_descender_is_not_cut_by_its_own_line_box() {
+    fn a_descender_reaches_the_bottom_of_its_line_box() {
         const W: usize = 64;
         const H: usize = 60;
         let mut frame = [0u8; W * H * 2];
         let mut canvas = Canvas::new(&mut frame, W, H, None);
         let mut ui = Ui::new(&mut canvas, Screen::default());
-        // A box one line tall. `g` reaches below the baseline, past a 24 px box: only an
-        // ancestor clip may stop it, never the box that placed it.
+        // `g` reaches below the baseline; the 24 px line box is the face's ascent plus descent.
         ui.text(
             b"g",
-            Style::new()
-                .nowrap()
-                .height(24)
-                .font_size(Length::Px(24))
-                .font_family(FontFamily::Vector),
+            Style::new().nowrap().height(24).font_size(Length::Px(24)),
         );
         ui.paint(BoxConstraints::tight(64 * PX, 60 * PX), &mut |_, _, _| {});
         let canvas = ui.into_canvas().expect("a canvas was handed in");
@@ -561,8 +556,8 @@ mod tests {
             frame[at] != 0 || frame[at + 1] != 0
         };
         assert!(
-            (24..30).any(|y| (0..W).any(|x| drawn(x, y))),
-            "the descender shows below the line box"
+            (20..24).any(|y| (0..W).any(|x| drawn(x, y))),
+            "the descender fills its own line box"
         );
     }
 

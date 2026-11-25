@@ -1,6 +1,6 @@
 //! State → the values a renderer draws from.
 
-use crate::shared::model::{Breath, DeviceState, LightState, MAX_LIGHTS, SurfaceRole};
+use crate::shared::model::{Breath, DeviceState, GlowScope, LightState, MAX_LIGHTS, SurfaceRole};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
     BreathSnapshot, FrameSnapshot, LightSnapshot, PageSnapshot, TouchSnapshot,
@@ -82,14 +82,14 @@ pub(super) fn frame_snapshot(
     pages: PageSnapshot,
     demand: &EffectiveDemand,
 ) -> FrameSnapshot {
-    // The page's own breath only applies while it is up; an alarm's applies everywhere.
-    let page_breath = if state.page() == PageId::Breath {
-        pages.breath
-    } else {
-        None
+    // The scope decides where the page's breath may reach; no other page carries one.
+    let page_glow = match state.glow {
+        GlowScope::Off => None,
+        GlowScope::Page if state.page() != PageId::Lighting => None,
+        GlowScope::Page | GlowScope::Everywhere => Some(pages.lighting.breath),
     };
     // A breath owns the glass; the dark palette keeps the page readable over it.
-    let theme = if state.page() == PageId::Breath || state.glass_breath.is_some() {
+    let theme = if state.page() == PageId::Lighting || page_glow.is_some() {
         ThemeId::Dark
     } else {
         state.theme
@@ -115,7 +115,9 @@ pub(super) fn frame_snapshot(
             held_ms: state.touch.view.held_ms,
         },
         lights: state.lights.map(light_snapshot),
-        glass_breath: state.glass_breath.or(page_breath),
+        glass_breath: page_glow,
+        backlight: state.backlight,
+        glow: state.glow,
         page: state.page(),
         backed: state.backed,
         lang: state.lang,
@@ -221,7 +223,8 @@ mod tests {
                 nav: _,
                 setup_requested: _,
                 lights: _,
-                glass_breath: _,
+                backlight: _,
+                glow: _,
                 surface_roles: _,
                 notice: _,
                 motion: _,

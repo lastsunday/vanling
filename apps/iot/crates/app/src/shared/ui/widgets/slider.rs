@@ -5,7 +5,7 @@ use iot_core::ui::{NodeId, Style, Ui, Widget};
 use crate::shared::ui::state::State;
 use crate::shared::ui::theme::Theme;
 
-const KNOB: i16 = 8;
+pub const KNOB: i16 = 8;
 
 #[derive(Clone, Copy, Debug)]
 pub struct Slider {
@@ -54,7 +54,9 @@ impl Widget for Slider {
         let travel = (width - KNOB).max(1);
         let left = (i32::from(travel) * i32::from(self.value.min(100)) / 100) as i16;
         let track = ui.color(theme.muted);
-        let knob = ui.color(if self.state.has(State::PRESSED) {
+        let knob = ui.color(if self.state.has(State::DISABLED) {
+            theme.muted
+        } else if self.state.has(State::PRESSED) {
             theme.accent_pressed
         } else {
             theme.accent

@@ -165,8 +165,6 @@ pub enum Flow {
     Scroll,
 }
 
-pub use crate::ui::font::FontFamily;
-
 /// A run's weight, on the scale the platform's fonts use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum FontWeight {
@@ -230,11 +228,10 @@ mod bits {
     pub const BORDER: u8 = 1 << 2;
 }
 
-/// Bits of [`Style::text_flags`]. Four bits of weight, two of family, three of decoration,
-/// three of decoration style, the italic bit, and three of thickness.
+/// Bits of [`Style::text_flags`]. Four bits of weight, three of decoration, three of
+/// decoration style, the italic bit, and three of thickness.
 mod text {
     pub const WEIGHT: u16 = 0b1111;
-    pub const FAMILY: u16 = 0b11 << 4;
     pub const DECORATION: u16 = 0b111 << 6;
     pub const DECORATION_STYLE: u16 = 0b111 << 9;
     pub const ITALIC: u16 = 1 << 12;
@@ -620,11 +617,6 @@ impl Style {
         self
     }
 
-    pub const fn font_family(mut self, family: FontFamily) -> Self {
-        self.text_flags = (self.text_flags & !text::FAMILY) | (family as u16) << 4;
-        self
-    }
-
     pub const fn decoration(mut self, decoration: Decoration) -> Self {
         self.text_flags = (self.text_flags & !text::DECORATION) | (decoration.0 as u16) << 6;
         self
@@ -660,15 +652,7 @@ impl Style {
     }
 
     pub const fn metrics(&self) -> Metrics {
-        Metrics::new(self.font_size as u16, self.family())
-    }
-
-    pub const fn family(&self) -> FontFamily {
-        if self.text_flags & text::FAMILY == 0 {
-            FontFamily::Bitmap
-        } else {
-            FontFamily::Vector
-        }
+        Metrics::at(self.font_size as u16)
     }
 
     pub const fn weight(&self) -> FontWeight {

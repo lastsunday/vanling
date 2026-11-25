@@ -11,7 +11,7 @@ use iot_core::ui::text::{format_dba, format_i32, format_u16};
 use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
 use crate::shared::i18n::Msg;
-use crate::shared::intent::{AudioIntent, BusinessIntent, InputIntent, LightAction};
+use crate::shared::intent::{AudioIntent, BusinessIntent, InputIntent};
 use crate::shared::model::{AudioPhase, Command, DeviceState, Effects};
 use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
@@ -43,16 +43,6 @@ impl super::LocalPage for AudioPage {
                     AudioIntent::Start
                 };
                 Some(BusinessIntent::Audio(intent))
-            }
-            InputEvent::Button(ButtonEvent::DoubleClick) => {
-                state.light_intent(op, LightAction::Step)
-            }
-            InputEvent::Button(ButtonEvent::LongPress)
-            | InputEvent::Gesture(GestureEvent::LongPress { .. }) => {
-                state.light_intent(op, LightAction::Cycle)
-            }
-            InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-                state.light_swipe(op, direction)
             }
             _ => None,
         }

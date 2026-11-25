@@ -43,6 +43,24 @@ impl Breath {
     }
 }
 
+/// Where a breathing glass may appear: nowhere, only on the lighting page, or on every page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlowScope {
+    Off,
+    #[default]
+    Page,
+    Everywhere,
+}
+
+/// How the glass carries a light: a breathing envelope, a steady colour, or a turning hue.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum GlowPattern {
+    #[default]
+    Breath,
+    Steady,
+    Cycle,
+}
+
 /// A breath drawn on the glass: the lamp's envelope with its own colour and pace. A page or an
 /// alarm raises one; every other page holds the glass still.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -52,6 +70,7 @@ pub struct GlassBreath {
     pub saturation: u8,
     pub min_value: u8,
     pub max_value: u8,
+    pub pattern: GlowPattern,
 }
 
 impl GlassBreath {
@@ -62,6 +81,7 @@ impl GlassBreath {
         saturation: 160,
         min_value: 32,
         max_value: 255,
+        pattern: GlowPattern::Breath,
     };
 
     /// A fast red pulse for an alarm.
@@ -71,46 +91,66 @@ impl GlassBreath {
         saturation: 255,
         min_value: 10,
         max_value: 255,
+        pattern: GlowPattern::Breath,
     };
 
-    pub const STEP_MS: u16 = 500;
     pub const FASTEST_MS: u16 = 500;
     pub const SLOWEST_MS: u16 = 5_000;
 
-    pub fn slower(self) -> Self {
-        Self {
-            period_ms: self
-                .period_ms
-                .saturating_add(Self::STEP_MS)
-                .min(Self::SLOWEST_MS),
-            ..self
-        }
-    }
-
-    pub fn faster(self) -> Self {
-        Self {
-            period_ms: self
-                .period_ms
-                .saturating_sub(Self::STEP_MS)
-                .max(Self::FASTEST_MS),
-            ..self
-        }
-    }
-
-    /// The colour at `now_ms` and its position in the envelope.
+    /// The colour at `now_ms` and its position in the envelope. `Steady` and `Cycle` hold the
+    /// peak; `Cycle` walks the hue once per period.
     pub fn at(self, now_ms: u32) -> Sample {
+        let (hue_period_ms, hue_span, min, max) = match self.pattern {
+            GlowPattern::Breath => (0, 0, self.min_value, self.max_value),
+            GlowPattern::Steady => (0, 0, self.max_value, self.max_value),
+            GlowPattern::Cycle => (
+                u32::from(self.period_ms),
+                255,
+                self.max_value,
+                self.max_value,
+            ),
+        };
         iot_core::light::sample(
             now_ms,
             u32::from(self.period_ms),
-            0,
-            0,
-            self.min_value,
-            self.max_value,
+            hue_period_ms,
+            hue_span,
+            min,
+            max,
             self.saturation,
             self.hue,
             [0; GROUP_CAPACITY],
             0,
         )
+    }
+}
+
+/// The panel backlight as a setting: `pct` is both the slider position and the level the surface
+/// is asked for. Zero is dark.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Backlight {
+    pct: u8,
+}
+
+impl Backlight {
+    pub const FULL: Self = Self { pct: 100 };
+
+    pub const fn pct(self) -> u8 {
+        self.pct
+    }
+
+    pub const fn level(self) -> u8 {
+        self.pct
+    }
+
+    pub fn set_pct(&mut self, pct: u8) {
+        self.pct = pct.min(100);
+    }
+}
+
+impl Default for Backlight {
+    fn default() -> Self {
+        Self::FULL
     }
 }
 
@@ -221,8 +261,8 @@ impl LightState {
     /// Full-brightness entry point for solid mode; dimming is a long-press advance from here.
     pub const SOLID_DEFAULT_BRIGHTNESS: u8 = 255;
 
-    /// Backlight floor for the breathing envelope: the trough stays a dim glow, not a hard blip.
-    pub const BACKLIGHT_FLOOR_PCT: u8 = 12;
+    /// The panel's dim cap while the display demand is on-change.
+    pub const ON_DEMAND_BACKLIGHT_PCT: u8 = 12;
 
     /// Whether this state has anything for the action to move. `Off` answers only `Cycle`.
     pub(crate) fn can(self, action: LightAction) -> bool {
@@ -506,16 +546,43 @@ mod tests {
     }
 
     #[test]
-    fn a_glass_breath_period_steps_inside_its_bounds() {
+    fn a_steady_glow_holds_one_colour_at_the_peak() {
         let mut breath = GlassBreath::CALM;
-        for _ in 0..20 {
-            breath = breath.slower();
-        }
-        assert_eq!(breath.period_ms, GlassBreath::SLOWEST_MS);
-        for _ in 0..20 {
-            breath = breath.faster();
-        }
-        assert_eq!(breath.period_ms, GlassBreath::FASTEST_MS);
+        breath.pattern = GlowPattern::Steady;
+        let first = breath.at(0);
+        let later = breath.at(u32::from(breath.period_ms) * 3 / 2);
+        assert_eq!(first.color, later.color);
+        assert_eq!(
+            iot_core::light::brightness_of(first.color),
+            breath.max_value
+        );
+    }
+
+    #[test]
+    fn a_cycle_holds_brightness_and_turns_the_hue() {
+        let mut breath = GlassBreath::CALM;
+        breath.pattern = GlowPattern::Cycle;
+        breath.hue = 0;
+        let first = breath.at(0);
+        let quarter = breath.at(u32::from(breath.period_ms) / 4);
+        assert_eq!(
+            iot_core::light::brightness_of(first.color),
+            breath.max_value
+        );
+        assert_eq!(
+            iot_core::light::brightness_of(quarter.color),
+            breath.max_value
+        );
+        assert_ne!(first.color, quarter.color);
+    }
+
+    #[test]
+    fn a_backlight_setting_reaches_dark() {
+        let mut backlight = Backlight::default();
+        assert_eq!(backlight.level(), 100);
+        backlight.set_pct(0);
+        assert_eq!(backlight.pct(), 0);
+        assert_eq!(backlight.level(), 0);
     }
 
     #[test]
@@ -1128,7 +1195,7 @@ mod lamp {
             None,
             "the page owns the lamp again once the news is over"
         );
-        assert_eq!(manager.state().page(), PageId::Input);
+        assert_eq!(manager.state().page(), PageId::Headless);
     }
 
     #[test]

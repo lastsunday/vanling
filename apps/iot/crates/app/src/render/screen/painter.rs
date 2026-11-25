@@ -1,7 +1,7 @@
 //! Paints the product's pages into a board-owned frame. The snapshot arrives with each call,
-//! so the screen never holds a product type; the only things kept between calls are the vector
-//! glyph cache and the last snapshot, which is what lets a scroll move the pixels it already
-//! has instead of drawing them again.
+//! so the screen never holds a product type; the only thing kept between calls is the last
+//! snapshot, which is what lets a scroll move the pixels it already has instead of drawing
+//! them again.
 
 use core::any::Any;
 
@@ -15,12 +15,10 @@ use iot_core::drivers::surface::{
 };
 use iot_core::light::{Rgb, rgb565};
 use iot_core::ui::panel::{CONTENT_BOTTOM, FOOTER_ROWS, PANEL_COLUMNS};
-use iot_core::ui::{Canvas, GlyphCache, Screen, ThemeId};
+use iot_core::ui::{Canvas, Screen, ThemeId};
 
 pub struct AppPainter {
     overlay: bool,
-    /// Allocated on the first frame, not at boot: a board without a screen never pays for it.
-    glyphs: Option<GlyphCache>,
     /// The snapshot the frame currently in the buffer was painted from.
     last: Option<FrameSnapshot>,
     /// The pixels the panel has to receive for the frame in the buffer.
@@ -31,7 +29,6 @@ impl AppPainter {
     pub const fn new(overlay: bool) -> Self {
         Self {
             overlay,
-            glyphs: None,
             last: None,
             damage: FrameDamage::FULL,
         }
@@ -46,9 +43,8 @@ impl AppPainter {
     ) -> Panel<'a> {
         let canvas = Canvas::new(target.frame, target.width, target.height, target.ground)
             .with_damage(damage);
-        let glyphs = self.glyphs.get_or_insert_with(GlyphCache::new);
         Panel::new(
-            canvas.with_glyphs(glyphs),
+            canvas,
             Screen {
                 instance: context.instance,
                 fps: context.fps,

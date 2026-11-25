@@ -128,7 +128,7 @@ fn a_board_with_no_radio_lands_on_its_page_even_after_the_hold() {
 }
 
 #[test]
-fn a_long_press_after_the_splash_is_the_pages_own_verb() {
+fn a_long_press_after_the_splash_reaches_the_headless_page() {
     let mut manager = landed(DeviceManager::boot(Boot {
         backed: Backed {
             network: true,

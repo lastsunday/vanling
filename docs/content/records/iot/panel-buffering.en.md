@@ -62,15 +62,17 @@ Striped double buffering (LVGL's partial-buffer semantics) is the only theoretic
 
 ## Breath repaints: the cause was not the buffer
 
+> The three paragraphs below record the implementation as of mid-November 2026; the entry is now `DeviceState.glow` plus `LightingView.breath` (`GlowScope` and `GlowPattern`), and the backlight is independent and dark at 0. See `development/iot/architecture.md`.
+
 `[measured]` What repainted the glass every step was not the page but the lamp: `ColorOutput::step` → `Screen::set_rgb` → `fill` + `page_dirty`, so one lamp breath redrew the whole panel (19 ms of paint plus 15 ms on the wire). Pages with their own `ground()` — Camera, Network — stayed still, which is exactly what a background following the lamp would look like.
 
 `[measured]` With the lamp and the glass decoupled, a steady page (Menu, `IOT_LOG_LEVEL=debug`) reports 2–4 repaints per window, `held the executor` 0–1%, `worst render` 17–21 ms and `worst write` 15–16 ms; the same page before the change reported 47–49 repaints per 2 s and 40%.
 
-A glass breath is now an explicit capability, `GlassBreath { period_ms, hue, saturation, min_value, max_value }` (`shared/model/light.rs`). `DeviceState.glass_breath` is the global (alarm) entry, `PageSnapshot.breath` the page-private one, and the projection composes them into `FrameSnapshot.glass_breath` (global wins). The default is `None`: entering a page or changing the lamp colour lays one still ground, and `step()` returns `Idle`. Pages with their own `ground()` (Camera, Network) still fill the glass themselves, so an alarm breath does not cover them.
+A glass breath is now an explicit capability, `GlassBreath { period_ms, hue, saturation, min_value, max_value }` (`shared/model/light.rs`). `DeviceState.glass_breath` is the global (alarm) entry, `PageSnapshot.glow` the page-private one, and the projection composes them into `FrameSnapshot.glass_breath` (global wins). The default is `None`: entering a page or changing the lamp colour lays one still ground, and `step()` returns `Idle`. Pages with their own `ground()` (Camera, Network) still fill the glass themselves, so an alarm breath does not cover them.
 
-The demo page `breath` (`PageId::Breath`) offers the `CALM` (3 s warm white) and `ALERT` (800 ms red) presets, `SLOWER`/`FASTER` (±500 ms, 500–5000 ms) and `EVERY PAGE` (writes the current parameters into the global, a second tap clears them). Booting it with `IOT_BOOT_PAGE=breath` measured 18–26 repaints per 2 s (≈12 fps, bounded by the `REPAINT_STEP=12` colour threshold, not by a cadence cap), `held` 9–14%, `worst render` 11–13 ms and `worst write` 15–16 ms.
+The demo page `lighting` (`PageId::Lighting`, formerly `breath`) offers the `CALM` (3 s warm white) and `ALERT` (800 ms red) presets, `SLOWER`/`FASTER` (±500 ms, 500–5000 ms), `DARKER`/`BRIGHTER` (both envelope ends move ±32, floored at `min ≥ 0` and a peak `max ≥ 32`; a vertical swipe does the same) and `EVERY PAGE` (writes the current parameters into the global, a second tap clears them). Booting it with `IOT_BOOT_PAGE=lighting` measured 18–26 repaints per 2 s (≈12 fps, bounded by the `REPAINT_STEP=12` colour threshold, not by a cadence cap), `held` 9–14%, `worst render` 11–13 ms and `worst write` 15–16 ms.
 
-`[measured]` The backlight path is unchanged: `Off` 0, still 100, a glass breath riding the phase between `BACKLIGHT_FLOOR_PCT..=100`, `OnChange` clamped to 12%. The lamp (the C6's WS2812) still breathes as before; the glass no longer follows it. Making the backlight follow the lamp's brightness instead was not done: the default boot breath's `max_brightness=80` would dim every screen to about 72%, more risk than the change is worth.
+`[measured]` The backlight path at the time: `Off` 0, still 100, a glass breath riding the phase between `BACKLIGHT_FLOOR_PCT..=100`, `OnChange` clamped to 12%. It now takes only `Backlight`, no longer follows the breath, and 0 is dark. The lamp (the C6's WS2812) still breathes as before; the glass no longer follows it. Making the backlight follow the lamp's brightness instead was not done: the default boot breath's `max_brightness=80` would dim every screen to about 72%, more risk than the change is worth.
 
 ## Reproduction
 
@@ -93,7 +95,7 @@ IOT_LOG_LEVEL=debug bash ../../scripts/iot-xtensa.sh build --release \
   -p iot-app --bin vanling --target xtensa-esp32s3-none-elf \
   -Z build-std=core,alloc \
   --no-default-features --features lckfb-szpi-esp32s3,console-auto
-# demo page: the same build plus IOT_BOOT_PAGE=breath
+# demo page: the same build plus IOT_BOOT_PAGE=lighting (formerly breath)
 ```
 
 With `IOT_LOG_LEVEL` left at `info`, a window inside budget prints nothing (`over_budget` only looks at 25% and 20 ms), so "no line" on a steady page is itself the passing signal.

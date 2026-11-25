@@ -39,7 +39,8 @@ pub use self::effects::Effects;
 pub use self::health::Health;
 
 pub use self::light::{
-    Breath, COLOR_GROUPS, GlassBreath, LampLine, LightState, Notice, NoticeKind, PALETTE,
+    Backlight, Breath, COLOR_GROUPS, GlassBreath, GlowPattern, GlowScope, LampLine, LightState,
+    Notice, NoticeKind, PALETTE,
 };
 
 pub use self::motion::MotionState;

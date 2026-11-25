@@ -9,6 +9,8 @@ sort_by = "weight"
 
 # 高级组件与 Feed
 
+> 2026-11-25：矢量字模已整体移除，字号只剩 12 / 24 px 点阵。本文中的 `vector.bin`、`vector-sample.txt` 与 `iot-tool outline` 是当时状态，现由 `ui12.bin` 整倍放大取代。
+
 `docs/content/development/iot/widgets.md` 的清单里，原先只是计划的高级组件全部实现，并加了 `Feed`：一个组件同时做列表、下拉刷新和上拉加载。演示分三页，菜单从 9 个入口变成 12 个，仍是四行、约 24 px 的滚动余量。
 
 ## 落地范围

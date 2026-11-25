@@ -4,6 +4,3 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-# Reads OTF outlines for the cutter. Kept out of the device crates so a change here cannot
-# break the firmware build.
-ttf-parser = { version = "0.25.1", default-features = false, features = ["std"] }

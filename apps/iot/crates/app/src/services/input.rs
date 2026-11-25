@@ -10,15 +10,15 @@ use iot_core::light::{MODE_BREATH, MODE_SOLID, Rgb, brightness_of, rgb_hue};
 use iot_core::ui::text::{format_pair, format_u16, write_u16};
 use iot_core::ui::{Style, Ui};
 
-/// The Input page owns no state: the lamp is its whole answer and the overlay its whole view.
+/// The Input page owns no state: the debug overlay is its whole view, and it answers no gesture.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct InputPage;
 
 impl super::Service for InputPage {}
 
 impl super::LocalPage for InputPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
-        super::lamp(op, state)
+    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+        None
     }
 
     fn view(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {

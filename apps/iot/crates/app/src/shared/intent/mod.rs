@@ -75,8 +75,8 @@ pub enum BusinessIntent {
     List(ListIntent),
     /// What a finger asks of the device's own record rather than of a page.
     Settings(SettingsIntent),
-    /// What a finger asks of the glass-breath demo: a preset, a period step, or every page.
-    Breath(BreathIntent),
+    /// What a finger asks of the lighting page: its scope, or one of its sliders.
+    Lighting(LightingIntent),
     /// One light surface and the verb it is asked for; the instance is routing, not part of the verb.
     Light {
         instance: u8,
@@ -253,25 +253,35 @@ pub enum SettingsIntent {
     SetTheme { theme: ThemeId },
 }
 
-/// What a finger asks of the glass-breath demo. The discriminant is the wire tag, so the
-/// view, the hit test and the handler cannot drift apart.
+/// One control on the lighting page. The discriminant is the wire tag, so the view, the hit
+/// test and the handler cannot drift apart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
-pub enum BreathIntent {
-    Calm = 1,
-    Alert,
-    Slower,
-    Faster,
-    Everywhere,
+pub enum LightingControl {
+    Off = 1,
+    Page,
+    All,
+    Period,
+    Hue,
+    Peak,
+    Backlight,
+    PatternBreath,
+    PatternSteady,
+    PatternCycle,
 }
 
-impl BreathIntent {
-    pub const ALL: [Self; 5] = [
-        Self::Calm,
-        Self::Alert,
-        Self::Slower,
-        Self::Faster,
-        Self::Everywhere,
+impl LightingControl {
+    pub const ALL: [Self; 10] = [
+        Self::Off,
+        Self::Page,
+        Self::All,
+        Self::Period,
+        Self::Hue,
+        Self::Peak,
+        Self::Backlight,
+        Self::PatternBreath,
+        Self::PatternSteady,
+        Self::PatternCycle,
     ];
 
     pub const fn tag(self) -> u16 {
@@ -279,8 +289,35 @@ impl BreathIntent {
     }
 
     pub fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.into_iter().find(|intent| intent.tag() == tag)
+        Self::ALL.into_iter().find(|control| control.tag() == tag)
     }
+
+    /// Whether the control is a slider rather than a cell of the scope strip.
+    pub const fn slider(self) -> bool {
+        matches!(
+            self,
+            Self::Period | Self::Hue | Self::Peak | Self::Backlight
+        )
+    }
+}
+
+/// What a finger asks of the lighting page: a press, the slide that follows it, or the lift.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LightingIntent {
+    Press {
+        id: u8,
+        control: LightingControl,
+    },
+    Slide {
+        control: LightingControl,
+        x: u16,
+    },
+    Tap {
+        control: LightingControl,
+        x: u16,
+    },
+    /// The finger left the glass: whatever it held is no longer held.
+    LetGo,
 }
 
 /// What a finger asks of a demo gallery: the control it touched, or the scroll under it.
@@ -431,16 +468,33 @@ mod tests {
     use iot_core::drivers::input::{ButtonEvent, GestureEvent};
 
     #[test]
-    fn the_breath_tags_are_dense_and_read_back() {
-        for (index, intent) in BreathIntent::ALL.iter().enumerate() {
-            assert_eq!(intent.tag(), index as u16 + 1);
-            assert_eq!(BreathIntent::from_tag(intent.tag()), Some(*intent));
+    fn the_lighting_tags_are_dense_and_read_back() {
+        for (index, control) in LightingControl::ALL.iter().enumerate() {
+            assert_eq!(control.tag(), index as u16 + 1);
+            assert_eq!(LightingControl::from_tag(control.tag()), Some(*control));
         }
-        assert_eq!(BreathIntent::from_tag(0), None);
+        assert_eq!(LightingControl::from_tag(0), None);
         assert_eq!(
-            BreathIntent::from_tag(BreathIntent::ALL.len() as u16 + 1),
+            LightingControl::from_tag(LightingControl::ALL.len() as u16 + 1),
             None
         );
+    }
+
+    #[test]
+    fn only_the_three_breath_rows_and_the_backlight_slide() {
+        for control in LightingControl::ALL {
+            assert_eq!(
+                control.slider(),
+                matches!(
+                    control,
+                    LightingControl::Period
+                        | LightingControl::Hue
+                        | LightingControl::Peak
+                        | LightingControl::Backlight
+                ),
+                "{control:?}"
+            );
+        }
     }
 
     #[test]

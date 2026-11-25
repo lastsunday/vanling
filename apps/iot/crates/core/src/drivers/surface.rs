@@ -115,9 +115,6 @@ impl Default for FrameDamage {
 }
 
 /// Product-side drawing for a screen. The board owns the buffer; the app decides what is drawn.
-///
-/// The painter is mutable because it keeps the vector glyph cache between frames
-/// ([`Canvas::with_glyphs`](crate::ui::Canvas::with_glyphs)).
 pub trait ScreenPainter {
     fn paint(&mut self, target: ScreenTarget<'_>, context: ScreenContext, snapshot: &dyn Any);
 

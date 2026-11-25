@@ -19,9 +19,8 @@ use crate::shared::surface::Panel;
 use iot_core::drivers::board::Backed;
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::{Rgb, rgb565};
-use iot_core::ui::font::{FontFamily, Metrics};
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
-use iot_core::ui::{Canvas, GlyphCache, Screen, ThemeId};
+use iot_core::ui::{Canvas, Screen, ThemeId};
 
 const WIDTH: usize = PANEL_COLUMNS;
 const HEIGHT: usize = PANEL_ROWS;
@@ -54,11 +53,6 @@ fn page_snapshot(page: PageId) -> FrameSnapshot {
 }
 
 fn render_snapshot(snapshot: &FrameSnapshot, debug: bool) -> Vec<u8> {
-    render_with(snapshot, debug, None)
-}
-
-/// Same picture, optionally through the glyph cache the panel core keeps on the heap.
-fn render_with(snapshot: &FrameSnapshot, debug: bool, glyphs: Option<&mut GlyphCache>) -> Vec<u8> {
     let page = snapshot.page;
     let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
     // The device fills the ground before painting; a light page is paper, not a black frame.
@@ -72,10 +66,7 @@ fn render_with(snapshot: &FrameSnapshot, debug: bool, glyphs: Option<&mut GlyphC
         pixel.copy_from_slice(&packed);
     }
     {
-        let mut canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, Some(ground));
-        if let Some(glyphs) = glyphs {
-            canvas = canvas.with_glyphs(glyphs);
-        }
+        let canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, Some(ground));
         let mut panel = Panel::new(
             canvas,
             Screen {
@@ -104,61 +95,41 @@ fn fingerprint(frame: &[u8]) -> u32 {
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
 const GOLDEN: [(&str, bool, u32); 34] = [
-    ("menu", false, 0x1f54_7e8f),
-    ("menu", true, 0x5034_243f),
-    ("input", false, 0xc18e_7dc5),
-    ("input", true, 0xb334_d787),
-    ("attitude", false, 0x4404_48b2),
-    ("attitude", true, 0x559e_e262),
-    ("audio", false, 0xf348_158d),
-    ("audio", true, 0x87e5_bd3d),
-    ("speaker", false, 0x648f_5a68),
-    ("speaker", true, 0x778f_3418),
-    ("camera", false, 0xd758_de51),
-    ("camera", true, 0x695d_7601),
-    ("network", false, 0x216e_b4b9),
-    ("network", true, 0x2b62_f669),
-    ("splash", false, 0xaa0a_a601),
-    ("splash", true, 0x3f0b_3db1),
-    ("env", false, 0x396a_ac83),
-    ("env", true, 0xa4a9_9433),
-    ("text", false, 0xe59e_db9e),
-    ("text", true, 0x7aae_e74e),
-    ("widgets", false, 0x9246_7a40),
-    ("widgets", true, 0x8522_dff0),
-    ("advanced", false, 0x0dee_184b),
-    ("advanced", true, 0x434a_81fb),
-    ("feedback", false, 0x9fc1_b553),
-    ("feedback", true, 0x0e2d_7103),
-    ("extended", false, 0x3d70_786e),
-    ("extended", true, 0x0d5f_2c1e),
-    ("data", false, 0x3959_3c2b),
-    ("data", true, 0xd8a5_9ddb),
-    ("list", false, 0x9e17_da2d),
-    ("list", true, 0x5dc1_73dd),
-    ("breath", false, 0xffa0_b1e2),
-    ("breath", true, 0xc881_2392),
+    ("menu", false, 0x593001cd),
+    ("menu", true, 0xe221dd7d),
+    ("input", false, 0xc18e7dc5),
+    ("input", true, 0xb334d787),
+    ("attitude", false, 0x5d452faf),
+    ("attitude", true, 0xf08f755f),
+    ("audio", false, 0xb871c695),
+    ("audio", true, 0x3c2ac445),
+    ("speaker", false, 0x166de255),
+    ("speaker", true, 0xfb733805),
+    ("camera", false, 0x33d824fb),
+    ("camera", true, 0x133e02ab),
+    ("network", false, 0x216eb4b9),
+    ("network", true, 0x2b62f669),
+    ("splash", false, 0xaa0aa601),
+    ("splash", true, 0x3f0b3db1),
+    ("env", false, 0x1f8598cd),
+    ("env", true, 0xa877747d),
+    ("text", false, 0x1f4c862b),
+    ("text", true, 0xbe98e7db),
+    ("widgets", false, 0x59bbd7f7),
+    ("widgets", true, 0xc1c211a7),
+    ("advanced", false, 0x7acb3fae),
+    ("advanced", true, 0xd9abb15e),
+    ("feedback", false, 0x47bacd74),
+    ("feedback", true, 0x48872b24),
+    ("extended", false, 0x1b5c4a5d),
+    ("extended", true, 0xa10b2e0d),
+    ("data", false, 0xa75b191e),
+    ("data", true, 0x5404eace),
+    ("list", false, 0x52deda55),
+    ("list", true, 0x37e43005),
+    ("lighting", false, 0x5902b77e),
+    ("lighting", true, 0xa9ae2b2e),
 ];
-
-/// The one path the board takes that the golden table does not: every page through a real glyph
-/// cache, three frames deep, so a reused slot and a flushed cache both have to land the same pixels.
-#[test]
-fn every_page_draws_the_same_pixels_through_the_glyph_cache() {
-    let mut cache = GlyphCache::new();
-    for _ in 0..3 {
-        for page in PageId::ALL {
-            let snapshot = page_snapshot(page);
-            for debug in [false, true] {
-                assert_eq!(
-                    render_with(&snapshot, debug, Some(&mut cache)),
-                    render_with(&snapshot, debug, None),
-                    "{} (debug={debug}) differs once the glyph cache is in front",
-                    page.path()
-                );
-            }
-        }
-    }
-}
 
 #[test]
 fn every_page_draws_the_picture_the_golden_table_expects() {
@@ -222,7 +193,7 @@ fn a_language_switch_reaches_the_pixels() {
         PageId::Extended,
         PageId::Data,
         PageId::List,
-        PageId::Breath,
+        PageId::Lighting,
     ];
     for page in speaking {
         let render = |lang| {
@@ -268,15 +239,16 @@ fn a_menu_choice_opens_its_page_without_geometry() {
 }
 
 #[test]
-fn every_word_the_panel_prints_has_a_vector_glyph() {
+fn every_word_the_panel_prints_has_a_bitmap_glyph() {
+    let face = iot_core::ui::font::Face::new();
     for msg in Msg::ALL {
         for lang in Lang::ALL {
             let run = msg.bytes(*lang);
-            for size in [14, 20] {
-                assert_eq!(
-                    Metrics::vector(size).covering(run).family(),
-                    FontFamily::Vector,
-                    "{msg:?} in {lang:?} at {size} px would fall back to the bitmap face"
+            let text = core::str::from_utf8(run).expect("every word is UTF-8");
+            for ch in text.chars() {
+                assert!(
+                    face.has(ch),
+                    "{msg:?} in {lang:?} has no glyph for {ch:?}; rerun `iot-tool font`"
                 );
             }
         }
@@ -469,7 +441,7 @@ fn the_attitude_page_with_numbers_draws_the_recorded_picture() {
         return;
     }
     assert_eq!(
-        actual, 0x88be_534e,
+        actual, 0xf94b_504b,
         "regenerate only for an intended pixel change"
     );
 }

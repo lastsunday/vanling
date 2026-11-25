@@ -235,7 +235,7 @@ Neither table is the default layout; each reason is spelled out in its own CSV a
 
 - **factory 6 MB** (`espflash` defaults to 1 MB): the S3 links the Wi-Fi driver's prebuilt blobs
   and does not fit in 1 MB; the C6 takes the same slot size to leave room for the bitmap table,
-  the vector table and later pages. The parts hold 8 MB (C6) and 16 MB (S3), so a merged image
+  the glyph table and later pages. The parts hold 8 MB (C6) and 16 MB (S3), so a merged image
   and a flash must pass `--flash-size 8mb` / `16mb` respectively — `espflash` assumes 4 MB and
   cannot hold a 6 MB partition.
 - **`phy_init` 4 KB**: the driver writes its radio calibration there on first boot, and both

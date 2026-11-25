@@ -33,6 +33,7 @@ impl super::Service for NavService {
             }
             NavigationIntent::Go(code) => {
                 if let Some(page) = PageId::from_code(*code) {
+                    let page = DeviceState::landed_on(page, state.backed, state.has_screen());
                     state.nav.go(page, state.backed);
                 }
                 (None, Effects::default())

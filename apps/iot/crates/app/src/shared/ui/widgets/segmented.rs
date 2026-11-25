@@ -10,6 +10,7 @@ pub struct Segmented<'a> {
     labels: [&'a [u8]; 3],
     tags: [u16; 3],
     selected: u8,
+    height: i16,
     theme: Option<&'a Theme>,
 }
 
@@ -19,8 +20,14 @@ impl<'a> Segmented<'a> {
             labels,
             tags,
             selected,
+            height: TOUCH_MIN as i16,
             theme: None,
         }
+    }
+
+    pub const fn height(mut self, height: i16) -> Self {
+        self.height = height;
+        self
     }
 
     pub const fn theme(mut self, theme: &'a Theme) -> Self {
@@ -38,7 +45,7 @@ impl Widget for Segmented<'_> {
         let paper = ui.color(theme.selection);
         ui.row(
             Style::new()
-                .height(TOUCH_MIN as i16)
+                .height(self.height)
                 .stretch()
                 .bordered()
                 .color(edge)

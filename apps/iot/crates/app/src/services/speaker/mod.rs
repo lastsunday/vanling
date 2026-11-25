@@ -5,7 +5,7 @@ mod tests;
 
 use crate::shared::i18n::Msg;
 use crate::shared::i18n::words::sound_label;
-use crate::shared::intent::{BusinessIntent, InputIntent, LightAction, PlaybackAction};
+use crate::shared::intent::{BusinessIntent, InputIntent, PlaybackAction};
 use crate::shared::model::{Command, DeviceState, Effects, PlaybackPhase};
 use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
@@ -40,12 +40,6 @@ impl super::LocalPage for SpeakerPage {
             | InputEvent::Gesture(GestureEvent::LongPress { .. }) => Some(
                 BusinessIntent::Playback(PlaybackAction::SetMuted(!state.playback.muted)),
             ),
-            InputEvent::Button(ButtonEvent::DoubleClick) => {
-                state.light_intent(op, LightAction::Step)
-            }
-            InputEvent::Gesture(GestureEvent::Swipe { direction, .. }) => {
-                state.light_swipe(op, direction)
-            }
             _ => None,
         }
     }

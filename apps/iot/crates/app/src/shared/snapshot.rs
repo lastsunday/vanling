@@ -3,7 +3,9 @@
 
 use crate::shared::i18n::Lang;
 use crate::shared::model::DeviceState;
-use crate::shared::model::{AudioPhase, Backed, GlassBreath, Health, NetworkView};
+use crate::shared::model::{
+    AudioPhase, Backed, Backlight, GlassBreath, GlowScope, Health, NetworkView,
+};
 use crate::shared::route::PageId;
 use crate::shared::ui::feed::{More, Refresh};
 use crate::shared::ui::keyboard::{FIELD_BYTES, Text};
@@ -300,6 +302,20 @@ pub struct ListSnapshot {
     pub more: More,
 }
 
+/// The Lighting page's own choice: the breath it draws.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct LightingView {
+    pub breath: GlassBreath,
+}
+
+impl Default for LightingView {
+    fn default() -> Self {
+        Self {
+            breath: GlassBreath::CALM,
+        }
+    }
+}
+
 /// What each page publishes beyond the state it read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PageSnapshot {
@@ -312,8 +328,7 @@ pub struct PageSnapshot {
     pub extended: ExtendedSnapshot,
     pub data: DataSnapshot,
     pub list: ListSnapshot,
-    /// The Breath page's own choice: the glass breathes these parameters while that page is up.
-    pub breath: Option<GlassBreath>,
+    pub lighting: LightingView,
 }
 
 /// One frame's drawing data, extracted from the state so a renderer holds no reference into
@@ -325,6 +340,10 @@ pub struct FrameSnapshot {
     pub lights: [LightSnapshot; MAX_LIGHTS],
     /// The breath the glass should draw: the alarm's, else the page's own, else none.
     pub glass_breath: Option<GlassBreath>,
+    /// The panel's backlight, independent of the breath above.
+    pub backlight: Backlight,
+    /// Where the breathing glass is allowed to appear.
+    pub glow: GlowScope,
     pub page: PageId,
     /// What the board wired, for pages that list or gate on it.
     pub backed: Backed,

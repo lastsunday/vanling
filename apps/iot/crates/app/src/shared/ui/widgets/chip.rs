@@ -1,6 +1,6 @@
 //! A rounded tag, optionally selected.
 
-use iot_core::ui::{FontFamily, Length, NodeId, Style, TextAlign, Ui, Widget};
+use iot_core::ui::{Length, NodeId, Style, TextAlign, Ui, Widget};
 
 use crate::shared::ui::theme::{CORNER, Theme};
 
@@ -83,8 +83,7 @@ impl Widget for Chip<'_> {
             .nowrap()
             .color(fg)
             .text_align(TextAlign::Center)
-            .font_size(Length::Px(14))
-            .font_family(FontFamily::Vector);
+            .font_size(Length::Px(12));
         ui.column(box_style, |ui| {
             ui.text(self.text, label);
         })

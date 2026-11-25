@@ -152,13 +152,19 @@ fn every_variant_has_exactly_one_route_and_one_all_entry() {
     assert_eq!(variants.len(), rows.len(), "a variant is missing its route");
 
     let all = items(span(&source, "pub const ALL:", "];"), "Self::");
-    assert_eq!(variants.len(), all.len(), "a variant is missing from ALL");
-    for variant in &variants {
+    // Headless is boot-only: it has a route and a wire code but no menu entry.
+    let listed = variants.iter().filter(|variant| *variant != "Headless");
+    assert_eq!(
+        listed.clone().count(),
+        all.len(),
+        "a variant is missing from ALL"
+    );
+    for variant in listed {
         assert_eq!(
-            all.iter().filter(|listed| *listed == variant).count(),
+            all.iter().filter(|entry| *entry == variant).count(),
             1,
             "{variant} is listed in ALL {} times",
-            all.iter().filter(|listed| *listed == variant).count()
+            all.iter().filter(|entry| *entry == variant).count()
         );
         assert_eq!(
             rows.iter().filter(|row| row.variant == *variant).count(),

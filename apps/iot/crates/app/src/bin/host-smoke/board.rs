@@ -5,6 +5,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, AtomicIsize, AtomicUsize, Ordering};
 
 use embassy_time::{Duration, Timer};
+use iot_app::shared::model::GlowScope;
 use iot_app::shared::snapshot::FrameSnapshot;
 use iot_app::state::{PageId, PlaybackPhase};
 use iot_core::config::MotionConfig;
@@ -35,6 +36,9 @@ pub(super) static RELEASED: AtomicUsize = AtomicUsize::new(0);
 
 pub(super) static PRESSED: [AtomicBool; 2] = [AtomicBool::new(false), AtomicBool::new(false)];
 pub(super) static PAGES: Mutex<Vec<PageId>> = Mutex::new(Vec::new());
+
+pub(super) static GLOW_ALL: AtomicBool = AtomicBool::new(false);
+pub(super) static GLASS_ELSEWHERE: AtomicBool = AtomicBool::new(false);
 
 pub(super) static AUDIO_POLLS: AtomicUsize = AtomicUsize::new(0);
 
@@ -293,6 +297,12 @@ impl HostLight {
     fn consume(&mut self, frame: &FrameSnapshot) {
         self.page = Some(frame.page);
         PAGES.lock().unwrap().push(frame.page);
+        if frame.glow == GlowScope::Everywhere {
+            GLOW_ALL.store(true, Ordering::SeqCst);
+        }
+        if frame.page != PageId::Lighting && frame.glass_breath.is_some() {
+            GLASS_ELSEWHERE.store(true, Ordering::SeqCst);
+        }
         AUDIO_COLUMNS.fetch_max(
             usize::from(frame.audio.envelope.committed()),
             Ordering::SeqCst,
@@ -443,33 +453,6 @@ pub(super) async fn click(button: usize) {
     PRESSED[button].store(true, Ordering::SeqCst);
     Timer::after(Duration::from_millis(120)).await;
     PRESSED[button].store(false, Ordering::SeqCst);
-}
-
-pub(super) fn painted(instance: u8, color: Rgb) -> bool {
-    PAINTED
-        .lock()
-        .unwrap()
-        .iter()
-        .any(|&(i, c)| i == instance && c == color)
-}
-
-pub(super) fn colors_on(instance: u8) -> Vec<Rgb> {
-    PAINTED
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|&&(i, _)| i == instance)
-        .map(|&(_, c)| c)
-        .collect()
-}
-
-pub(super) fn paints_on(instance: u8) -> usize {
-    PAINTED
-        .lock()
-        .unwrap()
-        .iter()
-        .filter(|&&(i, _)| i == instance)
-        .count()
 }
 
 pub(super) fn page_seen(page: PageId) -> bool {

@@ -65,11 +65,11 @@ fn the_splash_page_answers_nothing_but_the_hold() {
 }
 
 #[test]
-fn a_long_press_once_the_splash_is_over_is_the_pages_own_verb() {
+fn a_long_press_once_the_splash_is_over_is_the_headless_pages_verb() {
     assert_eq!(
         translate(
             &op(long_press_event()),
-            &connected(state_on(PageId::Input, LightState::Off)),
+            &connected(state_on(PageId::Headless, LightState::Off)),
             &Services::default()
         ),
         Some(BusinessIntent::Light {

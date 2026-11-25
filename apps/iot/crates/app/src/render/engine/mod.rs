@@ -9,7 +9,7 @@ mod renderer;
 mod set;
 
 pub use self::appearance::{Appearance, LightAppearance, Topic};
-pub(crate) use self::color::{ColorOutput, Shown};
+pub(crate) use self::color::ColorOutput;
 #[cfg(test)]
 pub(crate) use self::differ::Differ;
 #[cfg(test)]

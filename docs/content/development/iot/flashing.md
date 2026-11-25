@@ -202,7 +202,7 @@ IOT_BOOT_PAGE=network bash ../../scripts/iot-xtensa.sh build --release \
 两张表都不是默认布局，各有原因（详见各 CSV 内的注释与
 [Wi-Fi 实现记录](@/records/iot/wifi.md)）：
 
-- **factory 6 MB**（espflash 默认 1 MB）：S3 链接了 Wi-Fi 驱动的预编译 blob，固件放不进 1 MB；C6 取同样的槽位大小，给点阵表、矢量表与后续页面留余量。物理容量 C6 是 8 MB、S3 是 16 MB，所以合并镜像与烧录必须分别带 `--flash-size 8mb` / `16mb` —— espflash 默认按 4 MB 算，装不下 6 MB 分区。
+- **factory 6 MB**（espflash 默认 1 MB）：S3 链接了 Wi-Fi 驱动的预编译 blob，固件放不进 1 MB；C6 取同样的槽位大小，给点阵表与后续页面留余量。物理容量 C6 是 8 MB、S3 是 16 MB，所以合并镜像与烧录必须分别带 `--flash-size 8mb` / `16mb` —— espflash 默认按 4 MB 算，装不下 6 MB 分区。
 - **`phy_init` 4 KB**：驱动首次启动把射频标定写在这里，两块板都保留。Xtensa 的恢复钩子实现为 `todo!()`，但实测 `esp_wifi_init` 不 panic、扫描正常，所以没有去掉它。
 - **重刷 C6 会覆盖 `nvs`/`creds`**：整片镜像写 `0x0` 会清掉已保存的网络，刷完要重新配 Wi-Fi。
 

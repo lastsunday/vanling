@@ -6,8 +6,10 @@ use embassy_time::{Duration, Timer};
 use iot_app::runtime::feature::input::IntentBus;
 use iot_app::runtime::workers::Network;
 use iot_app::shared::intent::Key;
-use iot_app::shared::intent::{BusinessIntent, Confirm, Intent, LinkIntent, NetworkIntent};
-use iot_app::shared::model::PALETTE;
+use iot_app::shared::intent::{
+    BusinessIntent, Confirm, Intent, LightingControl, LightingIntent, LinkIntent, NavigationIntent,
+    NetworkIntent,
+};
 use iot_app::state::{NetworkCommand, PageId};
 use iot_core::drivers::audio::dbfs;
 use iot_core::drivers::input::LONG_PRESS_MS;
@@ -48,6 +50,27 @@ async fn triple_click_to(page: PageId) {
     panic!("three triple clicks never left {start:?} for {page:?}");
 }
 
+/// Jumps straight to a page the menu cannot reach.
+async fn go_to(bus: &'static IntentBus, page: PageId) {
+    send(
+        bus,
+        BusinessIntent::Navigation(NavigationIntent::Go(page.code())),
+    )
+    .await;
+    for _ in 0..200 {
+        let landed = *PAGES
+            .lock()
+            .unwrap()
+            .last()
+            .expect("a page was painted before the first jump");
+        if landed == page {
+            return;
+        }
+        Timer::after(Duration::from_millis(10)).await;
+    }
+    panic!("never reached {page:?}");
+}
+
 /// Takes everything the coordinator handed the network worker. Nothing consumes these
 /// commands on the host, so this is where a command is read rather than acted on.
 fn take_commands(network: &Network) -> Vec<NetworkCommand> {
@@ -73,45 +96,40 @@ pub(super) async fn scenario(bus: &'static IntentBus, network: &'static Network)
 
     Timer::after(Duration::from_millis(3_200)).await;
 
-    // The boot page is the menu; the lamp's verbs live on the light-only pages.
-    triple_click_to(PageId::Input).await;
-
-    PRESSED[0].store(true, Ordering::SeqCst);
-    Timer::after(LONG_HOLD).await;
-    PRESSED[0].store(false, Ordering::SeqCst);
+    // The Lighting page owns the lamp's scope; a breath scoped to every page reaches the glass.
+    go_to(bus, PageId::Lighting).await;
+    send(
+        bus,
+        BusinessIntent::Lighting(LightingIntent::Tap {
+            control: LightingControl::All,
+            x: 0,
+        }),
+    )
+    .await;
 
     let mut attempts = 0;
-    while !painted(0, PALETTE[0]) && attempts < 500 {
+    while !GLOW_ALL.load(Ordering::SeqCst) && attempts < 200 {
         Timer::after(Duration::from_millis(10)).await;
         attempts += 1;
     }
     assert!(
-        painted(0, PALETTE[0]),
-        "long press did not paint palette[0]"
+        GLOW_ALL.load(Ordering::SeqCst),
+        "the Lighting page's scope never reached the frame"
     );
 
-    let rest0 = colors_on(0);
-    let count1 = paints_on(1);
-    PRESSED[1].store(true, Ordering::SeqCst);
-    Timer::after(Duration::from_millis(120)).await;
-    PRESSED[1].store(false, Ordering::SeqCst);
-
-    let mut attempts = 0;
-    while paints_on(1) == count1 && attempts < 500 {
-        Timer::after(Duration::from_millis(10)).await;
-        attempts += 1;
-    }
-    assert!(
-        paints_on(1) > count1,
-        "button 1's click did not paint its own surface"
-    );
-    assert_eq!(
-        colors_on(0),
-        rest0,
-        "button 1 must not touch surface 0's solid color"
-    );
-
+    go_to(bus, PageId::Input).await;
+    // Forget Input's own frame: the assertion is about the next page the walk lands on.
+    GLASS_ELSEWHERE.store(false, Ordering::SeqCst);
     triple_click_to(PageId::Attitude).await;
+    attempts = 0;
+    while !GLASS_ELSEWHERE.load(Ordering::SeqCst) && attempts < 200 {
+        Timer::after(Duration::from_millis(10)).await;
+        attempts += 1;
+    }
+    assert!(
+        GLASS_ELSEWHERE.load(Ordering::SeqCst),
+        "a breath scoped to every page never reached another page"
+    );
 
     triple_click_to(PageId::Audio).await;
     assert!(

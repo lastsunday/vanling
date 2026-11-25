@@ -219,7 +219,7 @@ mod tests {
     }
 
     #[test]
-    fn a_tap_off_the_audio_page_is_a_color_move_and_never_records() {
+    fn a_tap_off_the_audio_page_neither_records_nor_moves_the_light() {
         let mut manager = on_audio_page();
         let before = manager.state().lights[0];
 
@@ -237,10 +237,10 @@ mod tests {
             AudioPhase::Idle,
             "never records"
         );
-        assert_ne!(
+        assert_eq!(
             manager.state().lights[0],
             before,
-            "the tap moved the color instead"
+            "the input page has no light verb"
         );
     }
 }

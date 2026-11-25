@@ -76,10 +76,7 @@ fn the_page_never_moves_a_light() {
 
 #[test]
 fn a_tap_off_the_speaker_page_never_plays() {
-    assert_eq!(
-        target(tap_gesture(0), BREATH),
-        Some(LightAction::NextColor { forward: true })
-    );
+    assert_eq!(target(tap_gesture(0), BREATH), None);
 }
 
 #[test]

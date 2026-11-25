@@ -13,8 +13,8 @@ pub use self::node::NodeId;
 pub(crate) use self::node::{NodeInfo, NodeKind, Span};
 pub use self::scroll::{ScrollId, ScrollInfo};
 pub use self::style::{
-    Align, Axis, Decoration, DecorationStyle, Flow, FontFamily, FontWeight, Inset, Justify, Length,
-    Overflow, RunStyle, Style, TextAlign,
+    Align, Axis, Decoration, DecorationStyle, Flow, FontWeight, Inset, Justify, Length, Overflow,
+    RunStyle, Style, TextAlign,
 };
 
 use self::constraints::{INFINITY, Point, Size, Subpx, pixels, tight};

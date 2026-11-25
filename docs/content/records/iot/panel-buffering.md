@@ -59,15 +59,17 @@ Menu demo 页（构建期未设 `IOT_BOOT_PAGE`），`[DISPLAY]` 稳态三窗：
 
 ## 呼吸重绘：真因不在缓冲
 
+> 以下三节记录 2026-11 中旬的实现；入口现在是 `DeviceState.glow` + `LightingView.breath`（`GlowScope` 三档 + `GlowPattern` 三档），背光独立、0 即全黑。见 `development/iot/architecture.md`。
+
 `[实测]` 屏幕每步重绘的触发者不是页面，而是灯：`ColorOutput::step` → `Screen::set_rgb` → `fill` + `page_dirty`，于是灯呼吸一次，整屏就重画一帧（19 ms 绘制 + 15 ms 上线）。Camera、Network 这类自带 `ground()` 的页面反而静止，正好证明问题出在底色跟着灯走。
 
 `[实测]` 把「灯」和「屏」解耦后，普通页稳态（Menu，`IOT_LOG_LEVEL=debug`）每窗 2–4 次重绘、`held the executor` 0–1%、`worst render` 17–21 ms、`worst write` 15–16 ms；改动前同一页 47–49 次/2 s、40%。
 
-屏幕呼吸现在是显式能力 `GlassBreath { period_ms, hue, saturation, min_value, max_value }`（`shared/model/light.rs`）。`DeviceState.glass_breath` 是全局（报警）入口，`PageSnapshot.breath` 是页面私有入口，投影在 `FrameSnapshot.glass_breath` 合成（全局优先）。默认 `None`：进页或换灯色只铺一次静止底色，`step()` 返回 `Idle`。自带 `ground()` 的页面（Camera、Network）仍由页面自己铺满，报警呼吸不覆盖它们。
+屏幕呼吸现在是显式能力 `GlassBreath { period_ms, hue, saturation, min_value, max_value }`（`shared/model/light.rs`）。`DeviceState.glass_breath` 是全局（报警）入口，`PageSnapshot.glow` 是页面私有入口，投影在 `FrameSnapshot.glass_breath` 合成（全局优先）。默认 `None`：进页或换灯色只铺一次静止底色，`step()` 返回 `Idle`。自带 `ground()` 的页面（Camera、Network）仍由页面自己铺满，报警呼吸不覆盖它们。
 
-示例页 `breath`（`PageId::Breath`）用 `CALM`（3 s 暖白）/`ALERT`（800 ms 红）两个预设、`SLOWER`/`FASTER`（±500 ms，500–5000 ms）和 `EVERY PAGE`（把当前参数写进全局，再点清除）演示与编辑参数。烧 `IOT_BOOT_PAGE=breath` 实测：每 2 s 18–26 次重绘（≈12 fps，受 `REPAINT_STEP=12` 的颜色阈值限制，不是节流上限）、`held` 9–14%、`worst render` 11–13 ms、`worst write` 15–16 ms。
+示例页 `lighting`（`PageId::Lighting`，原名 `breath`）用 `CALM`（3 s 暖白）/`ALERT`（800 ms 红）两个预设、`SLOWER`/`FASTER`（±500 ms，500–5000 ms）、`DARKER`/`BRIGHTER`（包络两端同步 ±32，下限 `min ≥ 0`、峰值 `max ≥ 32`，上下滑同义）和 `EVERY PAGE`（把当前参数写进全局，再点清除）演示与编辑参数。烧 `IOT_BOOT_PAGE=lighting` 实测：每 2 s 18–26 次重绘（≈12 fps，受 `REPAINT_STEP=12` 的颜色阈值限制，不是节流上限）、`held` 9–14%、`worst render` 11–13 ms、`worst write` 15–16 ms。
 
-`[实测]` 背光路径保留：`Off` 0、静止 100、玻璃呼吸随相位在 `BACKLIGHT_FLOOR_PCT..=100` 之间、`OnChange` 钳到 12%。灯（C6 的 WS2812）仍按原样呼吸，屏幕不再跟随。让背光跟随灯的亮度（而非玻璃呼吸）没有做：默认 boot 呼吸 `max_brightness=80` 会把整屏默认压到约 72%，风险大于收益。
+`[实测]` 当时的背光路径：`Off` 0、静止 100、玻璃呼吸随相位在 `BACKLIGHT_FLOOR_PCT..=100` 之间、`OnChange` 钳到 12%。现在背光只取 `Backlight`，不再随呼吸走，0 即全黑。灯（C6 的 WS2812）仍按原样呼吸，屏幕不再跟随。让背光跟随灯的亮度（而非玻璃呼吸）没有做：默认 boot 呼吸 `max_brightness=80` 会把整屏默认压到约 72%，风险大于收益。
 
 ## 复现
 
@@ -90,7 +92,7 @@ IOT_LOG_LEVEL=debug bash ../../scripts/iot-xtensa.sh build --release \
   -p iot-app --bin vanling --target xtensa-esp32s3-none-elf \
   -Z build-std=core,alloc \
   --no-default-features --features lckfb-szpi-esp32s3,console-auto
-# 示例页：同一个构建加 IOT_BOOT_PAGE=breath
+# 示例页：同一个构建加 IOT_BOOT_PAGE=lighting（原 breath）
 ```
 
 `IOT_LOG_LEVEL` 缺省为 `info` 时，未超预算的窗口不打印（`over_budget` 只看 25% 与 20 ms），所以普通页「没有行」本身就是达标信号。

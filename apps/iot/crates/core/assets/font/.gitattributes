@@ -1,3 +1,3 @@
 # The sample keeps a lone LF and a CRLF pair on purpose; normalising either one
 # would erase what the line-break test is about.
-vector-sample.txt -text
+text-specimen.txt -text

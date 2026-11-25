@@ -13,7 +13,7 @@ fn two_lights() -> DeviceState {
                 brightness: 140,
             },
         ],
-        ..state(BREATH)
+        ..state_on(PageId::Headless, BREATH)
     }
 }
 
@@ -23,7 +23,7 @@ fn lamp_intent(event: InputEvent, current: &DeviceState) -> Option<BusinessInten
 
 #[test]
 fn a_button_asks_for_one_verb_per_click() {
-    let lamp = state(BREATH);
+    let lamp = state_on(PageId::Headless, BREATH);
     for (event, action) in [
         (
             InputEvent::Button(ButtonEvent::Click),
@@ -51,7 +51,7 @@ fn a_button_asks_for_one_verb_per_click() {
 
 #[test]
 fn a_touch_asks_the_panel_surface() {
-    let lamp = state(BREATH);
+    let lamp = state_on(PageId::Headless, BREATH);
     assert_eq!(
         lamp_intent(tap_gesture(0), &lamp),
         Some(BusinessIntent::Light {
@@ -98,7 +98,7 @@ fn a_diagonal_swipe_asks_for_nothing() {
         SwipeDirection::DownRight,
     ] {
         assert_eq!(
-            lamp_intent(swipe_event(direction), &state(BREATH)),
+            lamp_intent(swipe_event(direction), &state_on(PageId::Headless, BREATH)),
             None,
             "{direction:?} has no axis"
         );
@@ -107,7 +107,7 @@ fn a_diagonal_swipe_asks_for_nothing() {
 
 #[test]
 fn off_answers_only_the_cycle() {
-    let off = state(LightState::Off);
+    let off = state_on(PageId::Headless, LightState::Off);
     for event in [
         InputEvent::Button(ButtonEvent::Click),
         InputEvent::Button(ButtonEvent::DoubleClick),
