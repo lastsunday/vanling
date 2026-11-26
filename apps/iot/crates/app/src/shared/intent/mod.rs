@@ -385,6 +385,22 @@ pub enum GalleryIntent {
         x: u16,
         y: u16,
     },
+    /// A vertical drag on one wheel column; `area` names the wheel set, `y` is panel space.
+    Wheel {
+        id: u8,
+        area: u8,
+        column: u8,
+        y: i16,
+        at_ms: u32,
+    },
+    /// The wheel's lift: a tap on a row when nothing moved, otherwise the fling.
+    WheelEnd {
+        id: u8,
+        area: u8,
+        column: u8,
+        y: i16,
+        at_ms: u32,
+    },
     /// A finger landed in the gallery's box rather than on a control.
     Grab {
         id: u8,

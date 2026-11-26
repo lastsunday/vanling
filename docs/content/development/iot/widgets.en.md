@@ -2,15 +2,15 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "20c4fea2a70ae2ab9402a7ac695781f8874f9cba"
-translated_at = "2026-11-26T11:38:18Z"
+source_file_hash = "c77bb74521b56b46bcfe6aa88705eba3b6316fea"
+translated_at = "2026-11-26T13:45:00Z"
 +++
 
 # UI Widgets
 
 The panel's widget vocabulary: two shapes, states and theme, rounded corners, the basic widgets, the pages built from them, cell drawing, i18n and budgets.
 
-> Status: the basic widgets and 34 advanced widgets are in place, shown by the `Widgets` page and the `Advanced` / `Feedback` / `Extended` / `Data` / `Planner` / `Records` galleries; one `Feed` component provides both pull-to-refresh and load-more. The optional list is down to `QRCode` / `Barcode` and a few deliberate omissions.
+> Status: the basic widgets and 37 advanced widgets are in place, shown by the `Widgets` page and the `Advanced` / `Feedback` / `Extended` / `Data` / `Planner` / `Records` galleries; one `Feed` component provides both pull-to-refresh and load-more. The optional list is down to `QRCode` / `Barcode` and a few deliberate omissions.
 
 ## Two shapes
 
@@ -209,7 +209,7 @@ pub enum Slot<'a> {
 | `Menu` | A three-column button grid grouped into devices / UI / glow, listing every page; pages the board cannot back are greyed and do not navigate. The boot page whenever a screen is present. |
 | `Widgets` | The basic-widget gallery: five sections (actions / selection / input / display / rows), each under a heading, the whole page in one scroll box; controls that can hold a value are tappable. |
 | `Advanced` | The navigation / composed gallery: `AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager` / `Carousel` and `Accordion` / `Segmented` / `Stepper`, one scroll box. |
-| `Planner` | The planning gallery: `Calendar` / `TimePicker` / `Rating` / `ColorPicker`, one scroll box; tap a day, tap an hour, tap a star, tap or drag the picker. |
+| `Planner` | The planning gallery: `MonthGrid` / `Wheel` / `Rating` / `ColorPicker` plus the `DatePicker` and `TimePicker` dialogs, one scroll box; wheels drag or take a row, and the date/time buttons raise a dialog. |
 | `Records` | The records gallery: `TreeView` / `Timeline` / `Heatmap` / `ReorderableList`, one scroll box; drag a row by its right-hand handle. |
 | `Feedback` | The feedback gallery: `Banner` / `Toast` / `Skeleton` / `LoadingOverlay`; the banner raises a toast and the placeholder swaps for content. |
 | `Extended` | The input gallery: `SearchField` / `FilterChips` / `FormField` / `NumberField` / `Keypad`; focusing the search field hands the page to the keyboard. |
@@ -253,8 +253,10 @@ Navigation, composed, planning, records, feedback, input, data and overlay, all 
 
 | Widget | Shape | Notes |
 | --- | --- | --- |
-| `Calendar` | C | A 7×6 month grid of 42×32 cells; month length and first weekday are `const fn`, `day_at` and the paint share one cell table, and previous/next month are the page's own two tags |
-| `TimePicker` | C | Three directly selectable rows, 44 px each; `row_at` picks a row and `step` clamps the result, with no five-row wheel |
+| `Wheel` | C | One generic vertical wheel: `Labels::Fixed` for any run of copy or `Labels::Numbers { min, max, step, pad }`; drag follows the finger, a lift projects `v²/2a`, then snaps, rebounds at the ends and optionally wraps; the selection band (two lines) stays on the centre row while the wheel scrolls; 3~7 visible rows at 28~44 px, all derived from `rect` |
+| `MonthGrid` (`calendar`) | C | A 7×6 month grid whose cell width and height come from `rect`, capped at 48; `fits` tells the parent whether it has room, and `day_at` shares `Metrics` with the paint; previous/next month are the parent's own tags |
+| `DatePicker` | C | A date dialog: a month grid with prev/next when the body is tall enough, otherwise year/month/day wheels; the year runs 1970–2100 without wrapping, month and day wrap, and a shorter month pulls the day back |
+| `TimePicker` | C | Two or three wheel columns for hour/minute/second with `:` between them; `column_at` shares the column geometry with the paint, and the seconds column is optional |
 | `Rating` | C | Five 44×44 slots with whole-star input from 0 to 5; a fraction is read-only fill, and the star is 12 horizontal spans |
 | `ColorPicker` | C | A 132×132 saturation/value square (12×12 blocks), a 16 px hue strip and a 44 px swatch; tap and drag share `point_at`, and hue goes through `iot_core::light::hsv_to_rgb` |
 
@@ -303,6 +305,7 @@ Navigation, composed, planning, records, feedback, input, data and overlay, all 
 | `Dialog` | C | Opaque scrim and a centred card; `action_at` splits OK from cancel |
 | `PopupMenu` | C | Opaque scrim and a three-row menu hung under its trigger; `item_at` splits rows, the selected one filled |
 | `Sheet` | C | Opaque scrim and an edge drawer (`Edge::Bottom` / `Edge::Left`); `row_at` splits rows, the demo uses the bottom edge |
+| `Picker` (dialog) | C | A scrim, a centred card, a title, a body and Cancel/OK; the card is `min(rect − 2×8, 360×480)` and the action band 32~44; `action_at` splits OK, cancel and a scrim tap |
 
 Every tappable control reports a tag: widgets through `Style::tag`, canvas slots (Dialog, Keypad, Table, Chart, Gauge, SwipeAction) on the slot itself, all measured once at construction with `TagTable::measure`. A gallery's `bind` returns only `Gallery { wire, intent }`, where `wire` is the route code, so `shared::intent` does not depend on `shared::route`. A canvas slot's hit test uses the rectangle from `Ui::paint_rect`, the same geometry as the paint, and Table rows, Chart bars and Keypad cells reuse the equal-split arithmetic their painters use. Overlay items (three menu rows, two sheet rows) are not declared nodes; `bind` splits them with `item_at` / `row_at`.
 
@@ -315,7 +318,7 @@ The `Data` dialog, popup menu and sheet all sit on root nodes after `page::body`
 | Page | Tappable | Decoration only |
 | --- | --- | --- |
 | `Advanced` | AppBar action, three nav cells, three tabs, every dot, every card of both strips, the `Auto` switch, the accordion header, the segmented cells, the stepper | The selected tab's and nav pill's highlights and the dwell bar itself |
-| `Planner` | Previous/next month, every day, the three hour rows, the five stars, the hue strip and the colour square | Blank month cells, the weekday header |
+| `Planner` | Previous/next month, every day, the hour wheel (drag or tap a row), the `DATE` / `TIME` buttons, the dialog's year/month/day wheels, the month-grid days and prev/next, Cancel/OK, the five stars, the hue strip and the colour square | Blank month cells, the weekday header, the `:` between wheel columns |
 | `Records` | Six tree rows, four timeline entries, every heat cell, each row's 44 px handle | The timeline rail, the heatmap month labels |
 | `Feedback` | Banner action, toast, placeholder toggle, scrim caption | `Skeleton` bars, `Divider` |
 | `Extended` | Search field, three chips, the form, the number stepper, twelve keys | — |
@@ -329,6 +332,8 @@ The test is whether there is an action: decorative widgets carry no tag and do n
 - `page::scroller` stretches its body: a row takes the content width, so cells written as `grow(1) + basis(0)` actually get a share of it. Without the stretch such a row measures its children's natural widths, and `basis(0)` collapses the whole row to zero.
 - Canvas widgets derive their size from `rect` and text metrics: `Table` uses `LINE + 4` for the header and `LINE × 2 + 4 = 28` per row (`TABLE_H = 128`); `Dialog` uses `TOUCH_MIN` for the action band and sums the band, the title/body lines and `MARGIN` for the card; `Chart` / `Gauge` / `Keypad` scale with `rect`; `SwipeAction` still caps the uncovered band at `REVEAL_MAX`.
 - A page's custom-slot heights are multiples of `page::TOUCH` (two rows for the dial and chart, four for the keypad), not sample magic numbers.
+- The date and time widgets read no panel constant and hard-code no 306 / 42 / 32: `Wheel` takes `rect.h / 28`, clamps to an odd 3~7 visible rows and caps the row height at 44; `MonthGrid` takes `(rect.w − 6×1) / 7` and `(rect.h − 12) / 6`, both capped at 48; the `Picker` card is `min(rect − 2×8, 360×480)` and centred. Four sizes — 320×228, 480×320, 800×600 and 240×180 — each have a test.
+- The parent chooses the shape by `fits`: `MonthGrid::fits` needs 28 px cells, and the 320×228 dialog body is only 140 px, so `DatePicker::kind` picks the three wheels; only 480×320 and up get the grid. A small screen never squeezes the grid to 21 px.
 
 ## Feed
 
@@ -357,7 +362,7 @@ The `List` page is the demo: 34 rows over pages of 8, with 600 ms of fake work p
 | Implicit animation / `Hero` / `Focus` | The page `tick` can drive them when needed |
 | `SplitView` / `Masonry` | Desktop or multi-column; not this panel |
 
-Landed: `Calendar` / `TimePicker` / `Rating` / `ColorPicker` on `Planner`, `TreeView` / `Timeline` / `Heatmap` / `ReorderableList` on `Records`, and `Carousel` on `Advanced`. `PageView` is not a widget of its own: `Pager` plus `PageIndicator` already covers turning and locating a page.
+Landed: `Wheel` / `MonthGrid` / `DatePicker` / `TimePicker` / `Rating` / `ColorPicker` on `Planner`, `TreeView` / `Timeline` / `Heatmap` / `ReorderableList` on `Records`, and `Carousel` on `Advanced`. `PageView` is not a widget of its own: `Pager` plus `PageIndicator` already covers turning and locating a page.
 
 Explicitly out: `Map`, `Video`, `Lottie`/`Rive`, `Hover`, `Mouse`, `Semantics`, `RTL`, `MediaQuery`. Not for lack of capability, but for lack of an input device, a screen reader or multiple sizes.
 

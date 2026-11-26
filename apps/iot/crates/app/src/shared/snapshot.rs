@@ -9,6 +9,9 @@ use crate::shared::model::{
 use crate::shared::route::PageId;
 use crate::shared::ui::feed::{More, Refresh};
 use crate::shared::ui::keyboard::{FIELD_BYTES, Text};
+use crate::shared::ui::widgets::date_picker::MonthView;
+use crate::shared::ui::widgets::time_picker::TimeView;
+use crate::shared::ui::widgets::wheel::WheelView;
 use iot_core::demand::EffectiveDemand;
 use iot_core::drivers::input::{FingerLast, MAX_TRACKED_POINTS};
 use iot_core::drivers::motion::{MotionCapabilities, MotionCounts, MotionSample};
@@ -250,7 +253,7 @@ pub struct AdvancedSnapshot {
 }
 
 /// What the Planner page publishes: the month on show, the day and hour picked, the rating,
-/// and the colour the picker holds.
+/// the colour the picker holds, and the picker dialog when one is up.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlannerSnapshot {
     pub area: ScrollAreaView,
@@ -259,10 +262,15 @@ pub struct PlannerSnapshot {
     pub month: u8,
     pub day: u8,
     pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
     pub rating: u8,
     pub hue: u8,
     pub sat: u8,
     pub val: u8,
+    /// The inline hour wheel.
+    pub inline: WheelView,
+    pub dialog: PickerView,
 }
 
 impl Default for PlannerSnapshot {
@@ -274,12 +282,41 @@ impl Default for PlannerSnapshot {
             month: 11,
             day: 26,
             hour: 9,
+            minute: 5,
+            second: 30,
             rating: 4,
             hue: 170,
             sat: 200,
             val: 240,
+            inline: WheelView {
+                position: 9 * 256,
+                count: 24,
+                wrap: true,
+                moving: false,
+            },
+            dialog: PickerView::default(),
         }
     }
+}
+
+/// Which picker dialog is up; `None` keeps the page alone.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum PickerOpen {
+    #[default]
+    None,
+    Date,
+    Month,
+    Time,
+}
+
+/// A picker dialog's drawn state: its kind, the wheels it shows, and whether it still moves.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct PickerView {
+    pub open: PickerOpen,
+    pub date: [WheelView; 3],
+    pub month: MonthView,
+    pub time: TimeView,
+    pub moving: bool,
 }
 
 /// What the Records page publishes: the tree row, the timeline entry and the heatmap cell the
@@ -447,7 +484,7 @@ impl FrameSnapshot {
             PageId::Feedback => self.pages.feedback.moving,
             PageId::Extended => self.pages.extended.moving,
             PageId::Data => self.pages.data.moving,
-            PageId::Planner => self.pages.planner.moving,
+            PageId::Planner => self.pages.planner.moving || self.pages.planner.dialog.moving,
             PageId::Records => self.pages.records.moving,
             PageId::List => self.pages.list.moving,
             _ => false,

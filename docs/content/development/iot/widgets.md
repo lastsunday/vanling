@@ -7,7 +7,7 @@ weight = 80
 
 面板的组件词汇：两种形态、状态与主题、圆角、基础组件、Cell 绘制、多语言与预算。
 
-> 状态：基础组件与 34 个高级组件已落地，由 `Widgets` 基础页与 `Advanced` / `Feedback` / `Extended` / `Data` / `Planner` / `Records` 六个画廊演示；`Feed` 一个组件同时提供下拉刷新与上拉加载。可选组件只剩 `QRCode` / `Barcode` 与几类刻意不做的。
+> 状态：基础组件与 37 个高级组件已落地，由 `Widgets` 基础页与 `Advanced` / `Feedback` / `Extended` / `Data` / `Planner` / `Records` 六个画廊演示；`Feed` 一个组件同时提供下拉刷新与上拉加载。可选组件只剩 `QRCode` / `Barcode` 与几类刻意不做的。
 
 ## 两种形态
 
@@ -206,7 +206,7 @@ pub enum Slot<'a> {
 | `Menu` | 按设备 / 界面 / 灯光分组的 3 列按钮网格，列出全部页面；板子撑不起的页灰掉、点击无效；有屏时是默认启动页 |
 | `Widgets` | 基础组件画廊：五个分区（操作 / 选择 / 输入 / 显示 / 行）各一行标题，整页滚动；能切换的控件可点 |
 | `Advanced` | 导航 / 组合画廊：`AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager` / `Carousel`、`Accordion` / `Segmented` / `Stepper`，整页滚动 |
-| `Planner` | 规划画廊：`Calendar` / `TimePicker` / `Rating` / `ColorPicker`，整页滚动；点日、点小时、点星、点或拖取色 |
+| `Planner` | 规划画廊：`MonthGrid` / `Wheel` / `Rating` / `ColorPicker` 与 `DatePicker` / `TimePicker` 两个弹窗，整页滚动；滚轮可拖可点，日期/时间按钮拉起弹窗 |
 | `Records` | 记录画廊：`TreeView` / `Timeline` / `Heatmap` / `ReorderableList`，整页滚动；拖右侧手柄换行 |
 | `Feedback` | 反馈画廊：`Banner` / `Toast` / `Skeleton` / `LoadingOverlay`，从横幅拉起 toast，占位条换成内容 |
 | `Extended` | 输入画廊：`SearchField` / `FilterChips` / `FormField` / `NumberField` / `Keypad`；搜索框聚焦后整页换成键盘 |
@@ -250,8 +250,10 @@ pub enum Slot<'a> {
 
 | 组件 | 形态 | 说明 |
 | --- | --- | --- |
-| `Calendar` | C | 7×6 月格，42×32 格；月长与首星期是 `const fn`，`day_at` 与绘制共用同一张格表；上一月 / 下一月是页面自己的两个 tag |
-| `TimePicker` | C | 三行直选，一行 44 px；`row_at` 选行，`step` 把结果夹在范围内，不做五行滚轮 |
+| `Wheel` | C | 通用单列滚轮：`Labels::Fixed` 任意文案或 `Labels::Numbers { min, max, step, pad }`；拖动跟手、松手动量（投影 `v²/2a`）、吸附、端点回弹、可选循环；选中带（上下两条线）固定在中间行，不随滚动移动；可见行 3~7、行高 28~44，全从 `rect` 推 |
+| `MonthGrid`（`calendar`） | C | 7×6 月格，格宽/格高从 `rect` 推、上限 48；`fits` 判断父层是否够大，`day_at` 与绘制共用 `Metrics`；上一月 / 下一月是父层自己的 tag |
+| `DatePicker` | C | 日期弹窗：body 够大时月格 + 上/下月，否则年/月/日三滚轮；年 1970–2100 不循环，月/日循环，月长变化把日夹回当月 |
+| `TimePicker` | C | 2~3 列时/分/秒滚轮，列间画 `:`；`column_at` 与绘制共用列几何，秒列可选 |
 | `Rating` | C | 五个 44×44 槽，整星输入 0–5；半星只做只读填充，星形用 12 行横向 span 表画 |
 | `ColorPicker` | C | 132×132 饱和/明度方（12×12 块）+ 16 px 色相条 + 44 px 色块；点与拖共用 `point_at`，色相走 `iot_core::light::hsv_to_rgb` |
 
@@ -300,6 +302,7 @@ pub enum Slot<'a> {
 | `Dialog` | C | 不透明遮罩 + 居中卡片，`action_at` 分确定/取消 |
 | `PopupMenu` | C | 不透明遮罩 + 挂在触发按钮下的三行菜单，`item_at` 分行，选中行高亮 |
 | `Sheet` | C | 不透明遮罩 + 贴边抽屉（`Edge::Bottom` / `Edge::Left`），`row_at` 分行，演示用底部 |
+| `Picker`（弹窗框） | C | scrim + 居中卡片 + 标题 + body + Cancel/OK；卡片 `min(rect − 2×8, 360×480)`，动作带 32~44，`action_at` 分确定 / 取消 / 点遮罩 |
 
 所有可点控件都报 tag：Widget 用 `Style::tag`，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag，构造期 `TagTable::measure` 量一次；画廊的 `bind` 只回 `Gallery { wire, intent }`，`wire` 是路由码，`shared::intent` 不因此引用 `shared::route`。Canvas 槽的命中用 `Ui::paint_rect` 量到的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格再按绘制时的同一套等分算子格。浮层项（菜单三行、抽屉两行）不是声明节点，`bind` 用 `item_at` / `row_at` 直接分。
 
@@ -312,7 +315,7 @@ pub enum Slot<'a> {
 | 页 | 可点 | 纯装饰 |
 | --- | --- | --- |
 | `Advanced` | `AppBar` 动作、三个导航格、三个页签、每个圆点、两张卡片条各自的每张卡片、`Auto` 开关、`Accordion` 头、三段选择、`Stepper` | 当前页签、导航胶囊与驻留条的高亮本身 |
-| `Planner` | 上一月 / 下一月、每一天、三行小时、五颗星、色相条与色方 | 月格里的空格、星期头 |
+| `Planner` | 上一月 / 下一月、每一天、小时滚轮（拖动或点行）、`DATE` / `TIME` 两个按钮、弹窗里的年/月/日滚轮、月格日与上/下月、Cancel/OK、五颗星、色相条与色方 | 月格里的空格、星期头、滚轮两侧的 `:` |
 | `Records` | 六行树、四条时间线、每个热力格、每行的 44 px 手柄 | 时间线左轨、热力图月份标签 |
 | `Feedback` | 横幅动作、toast、占位切换按钮、遮罩文案 | `Skeleton` 灰条、`Divider` |
 | `Extended` | 搜索框、三枚 chip、表单、数值加减、12 个键格 | — |
@@ -326,6 +329,8 @@ pub enum Slot<'a> {
 - `page::scroller` 的滚动体是 `stretch` 的：一行拿到内容宽，所以 `grow(1) + basis(0)` 的分格能真分到宽度；不拉伸时这类行只按子节点的自然宽度算，`basis(0)` 让整行塌成 0。
 - Canvas 组件从 `rect` 与文字度量推尺寸：`Table` 表头 `LINE + 4`、行高 `LINE × 2 + 4 = 28`（`TABLE_H = 128`）；`Dialog` 动作带 `TOUCH_MIN`，卡片高由动作带、标题/正文行与 `MARGIN` 相加；`Chart` / `Gauge` / `Keypad` 随 `rect` 缩放；`SwipeAction` 的露出宽度仍以 `REVEAL_MAX` 封顶。
 - 页面 custom 槽高度用 `page::TOUCH` 的整数倍，例如表盘/图表两行、键格四行，不写示例魔法数。
+- 日期/时间组件不读面板常量，也不写死 306 / 42 / 32：`Wheel` 的可见行由 `rect.h / 28` 取 3~7 的奇数、行高 `rect.h / 可见行` 封顶 44；`MonthGrid` 的格宽 `(rect.w − 6×1) / 7`、格高 `(rect.h − 12) / 6`，都封顶 48；`Picker` 卡片 `min(rect − 2×8, 360×480)` 居中。320×228、480×320、800×600、240×180 四组尺寸各有一条测试。
+- 父层按 `fits` 选形态：`MonthGrid::fits` 要求 28 px 格，320×228 的弹窗 body 只有 140 px，所以 `DatePicker::kind` 自动选三滚轮；480×320 以上才出月格。小屏不把月格压到 21 px。
 
 ## Feed
 
@@ -354,7 +359,7 @@ pub enum Slot<'a> {
 | 隐式动画 / `Hero` / `Focus` | 页面 `tick` 已能驱动，按需 |
 | `SplitView` / `Masonry` | 桌面或多列，不适合本面板 |
 
-已落地：`Calendar` / `TimePicker` / `Rating` / `ColorPicker` 在 `Planner`，`TreeView` / `Timeline` / `Heatmap` / `ReorderableList` 在 `Records`，`Carousel` 在 `Advanced`。`PageView` 不单独做：`Pager` + `PageIndicator` 已经覆盖翻页与定位。
+已落地：`Wheel` / `MonthGrid` / `DatePicker` / `TimePicker` / `Rating` / `ColorPicker` 在 `Planner`，`TreeView` / `Timeline` / `Heatmap` / `ReorderableList` 在 `Records`，`Carousel` 在 `Advanced`。`PageView` 不单独做：`Pager` + `PageIndicator` 已经覆盖翻页与定位。
 
 明确不做：`Map`、`Video`、`Lottie`/`Rive`、`Hover`、`Mouse`、`Semantics`、`RTL`、`MediaQuery`。不是能力不够，是没有输入设备、读屏或多尺寸。
 
@@ -433,7 +438,7 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 | 节点 | `ui.node_count()` |
 | 文本 | `ui.text_bytes()` |
 | 颜色 | 整页 `MAX_COLORS` |
-| 黄金图 | 页面表一条一页一态；`Advanced` / `Feedback` / `Extended` / `Data` / `List` 各两条 |
+| 黄金图 | 页面表一条一页一态；`Advanced` / `Planner` / `Records` / `Feedback` / `Extended` / `Data` / `List` 各两条 |
 | 命中 | 绘制矩形与 headless 矩形一致 |
 
 改完跑：
