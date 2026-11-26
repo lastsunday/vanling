@@ -197,6 +197,8 @@ mod tests {
             "then the extended bench"
         );
         assert_eq!(nav.advance(bare), PageId::Data, "then the data bench");
+        assert_eq!(nav.advance(bare), PageId::Planner, "then the planner bench");
+        assert_eq!(nav.advance(bare), PageId::Records, "then the records bench");
         assert_eq!(nav.advance(bare), PageId::List, "then the feed");
         assert_eq!(nav.advance(bare), PageId::Lighting, "then the breath demo");
         assert_eq!(nav.advance(bare), PageId::Menu, "then home");

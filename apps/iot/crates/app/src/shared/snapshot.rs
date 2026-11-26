@@ -241,6 +241,76 @@ pub struct AdvancedSnapshot {
     pub pager: u8,
     /// The finger's live horizontal travel, in panel pixels.
     pub drag: i16,
+    /// The carousel's own card, its live drag, and whether it is turning itself.
+    pub carousel: u8,
+    pub carousel_drag: i16,
+    pub autoplay: bool,
+    /// How far the carousel's dwell has run, in whole percent.
+    pub progress: u8,
+}
+
+/// What the Planner page publishes: the month on show, the day and hour picked, the rating,
+/// and the colour the picker holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PlannerSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub rating: u8,
+    pub hue: u8,
+    pub sat: u8,
+    pub val: u8,
+}
+
+impl Default for PlannerSnapshot {
+    fn default() -> Self {
+        Self {
+            area: ScrollAreaView::default(),
+            moving: false,
+            year: 2026,
+            month: 11,
+            day: 26,
+            hour: 9,
+            rating: 4,
+            hue: 170,
+            sat: 200,
+            val: 240,
+        }
+    }
+}
+
+/// What the Records page publishes: the tree row, the timeline entry and the heatmap cell the
+/// finger picked, plus the reorder list's order and its lifted row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RecordsSnapshot {
+    pub area: ScrollAreaView,
+    pub moving: bool,
+    pub tree: Option<u8>,
+    pub entry: Option<u8>,
+    pub cell: Option<u16>,
+    pub order: [u8; 5],
+    pub lifted: Option<u8>,
+    pub target: Option<u8>,
+    pub seed: u16,
+}
+
+impl Default for RecordsSnapshot {
+    fn default() -> Self {
+        Self {
+            area: ScrollAreaView::default(),
+            moving: false,
+            tree: None,
+            entry: None,
+            cell: None,
+            order: [0, 1, 2, 3, 4],
+            lifted: None,
+            target: None,
+            seed: 7,
+        }
+    }
 }
 
 /// What the Feedback page publishes: the three notices the finger can take down or raise.
@@ -327,6 +397,8 @@ pub struct PageSnapshot {
     pub feedback: FeedbackSnapshot,
     pub extended: ExtendedSnapshot,
     pub data: DataSnapshot,
+    pub planner: PlannerSnapshot,
+    pub records: RecordsSnapshot,
     pub list: ListSnapshot,
     pub lighting: LightingView,
 }
@@ -371,10 +443,12 @@ impl FrameSnapshot {
             PageId::Text => self.pages.text.moving,
             PageId::Menu => self.pages.menu.moving,
             PageId::Widgets => self.pages.widgets.moving || self.pages.widgets.spinning,
-            PageId::Advanced => self.pages.advanced.moving,
+            PageId::Advanced => self.pages.advanced.moving || self.pages.advanced.autoplay,
             PageId::Feedback => self.pages.feedback.moving,
             PageId::Extended => self.pages.extended.moving,
             PageId::Data => self.pages.data.moving,
+            PageId::Planner => self.pages.planner.moving,
+            PageId::Records => self.pages.records.moving,
             PageId::List => self.pages.list.moving,
             _ => false,
         }

@@ -18,6 +18,8 @@ pub mod list;
 pub mod menu;
 pub mod nav;
 pub mod network;
+pub mod planner;
+pub mod records;
 pub mod settings;
 pub mod speaker;
 pub mod splash;
@@ -51,6 +53,8 @@ use self::list::ListPage;
 use self::menu::MenuPage;
 use self::nav::NavService;
 use self::network::NetworkPage;
+use self::planner::PlannerPage;
+use self::records::RecordsPage;
 use self::settings::SettingsService;
 use self::speaker::SpeakerPage;
 use self::splash::SplashPage;
@@ -121,6 +125,8 @@ pub struct Services {
     feedback: FeedbackPage,
     extended: ExtendedPage,
     data: DataPage,
+    planner: PlannerPage,
+    records: RecordsPage,
     list: ListPage,
     lighting: LightingPage,
     headless: HeadlessPage,
@@ -154,6 +160,8 @@ impl Services {
             PageId::Feedback => &self.feedback,
             PageId::Extended => &self.extended,
             PageId::Data => &self.data,
+            PageId::Planner => &self.planner,
+            PageId::Records => &self.records,
             PageId::List => &self.list,
             PageId::Lighting => &self.lighting,
             PageId::Headless => &self.headless,
@@ -250,6 +258,8 @@ impl Services {
             ServiceId::Page(PageId::Feedback) => &mut self.feedback,
             ServiceId::Page(PageId::Extended) => &mut self.extended,
             ServiceId::Page(PageId::Data) => &mut self.data,
+            ServiceId::Page(PageId::Planner) => &mut self.planner,
+            ServiceId::Page(PageId::Records) => &mut self.records,
             ServiceId::Page(PageId::List) => &mut self.list,
             ServiceId::Page(PageId::Lighting) => &mut self.lighting,
             ServiceId::Page(PageId::Headless) => &mut self.headless,
@@ -298,6 +308,8 @@ impl Services {
             PageId::Feedback => &mut self.feedback,
             PageId::Extended => &mut self.extended,
             PageId::Data => &mut self.data,
+            PageId::Planner => &mut self.planner,
+            PageId::Records => &mut self.records,
             PageId::List => &mut self.list,
             PageId::Lighting => &mut self.lighting,
             PageId::Headless => &mut self.headless,
@@ -443,6 +455,8 @@ pub fn descriptor(page: PageId) -> Descriptor {
         PageId::Feedback => FeedbackPage::descriptor(),
         PageId::Extended => ExtendedPage::descriptor(),
         PageId::Data => DataPage::descriptor(),
+        PageId::Planner => PlannerPage::descriptor(),
+        PageId::Records => RecordsPage::descriptor(),
         PageId::List => ListPage::descriptor(),
         PageId::Lighting => LightingPage::descriptor(),
         PageId::Headless => HeadlessPage::descriptor(),

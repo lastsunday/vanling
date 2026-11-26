@@ -139,6 +139,7 @@ impl Scroller {
                 }
                 self.press = None;
             }
+            GalleryIntent::Point { .. } => self.press = None,
             GalleryIntent::Press { id, tag, x, y } => {
                 let x = i16::try_from(x).unwrap_or(i16::MAX);
                 let y = i16::try_from(y).unwrap_or(i16::MAX);

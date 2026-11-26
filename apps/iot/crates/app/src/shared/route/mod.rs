@@ -35,6 +35,10 @@ pub enum PageId {
     Extended,
     /// The data-widget gallery: marks, a sliding row, and overlays.
     Data,
+    /// The planner-widget gallery: a month, an hour wheel, stars and a colour picker.
+    Planner,
+    /// The records-widget gallery: a tree, a timeline, a heatmap and a reorder list.
+    Records,
     /// The feed demo: pull to refresh, release to load more, swipe to delete.
     List,
     /// The lighting demo: the one page that lets a breath reach the pixels, and edits it.
@@ -224,6 +228,22 @@ static DATA: Route = Route {
     timeout_ms: None,
 };
 
+static PLANNER: Route = Route {
+    path: "planner",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
+static RECORDS: Route = Route {
+    path: "records",
+    needs: |_| true,
+    claim: motion_background,
+    bootable: true,
+    timeout_ms: None,
+};
+
 static LIST: Route = Route {
     path: "list",
     needs: |_| true,
@@ -251,7 +271,7 @@ static HEADLESS: Route = Route {
 impl PageId {
     /// Every page, in the button's order: the wire code is its index, and [`Self::next_page`]
     /// walks it.
-    pub const ALL: [Self; 17] = [
+    pub const ALL: [Self; 19] = [
         Self::Menu,
         Self::Input,
         Self::Attitude,
@@ -267,6 +287,8 @@ impl PageId {
         Self::Feedback,
         Self::Extended,
         Self::Data,
+        Self::Planner,
+        Self::Records,
         Self::List,
         Self::Lighting,
     ];
@@ -291,6 +313,8 @@ impl PageId {
             Self::Feedback => &FEEDBACK,
             Self::Extended => &EXTENDED,
             Self::Data => &DATA,
+            Self::Planner => &PLANNER,
+            Self::Records => &RECORDS,
             Self::List => &LIST,
             Self::Lighting => &LIGHTING,
             Self::Headless => &HEADLESS,
@@ -499,6 +523,8 @@ mod tests {
             PageId::Feedback,
             PageId::Extended,
             PageId::Data,
+            PageId::Planner,
+            PageId::Records,
             PageId::List,
             PageId::Lighting,
             PageId::Menu,
@@ -515,6 +541,8 @@ mod tests {
                 PageId::Feedback,
                 PageId::Extended,
                 PageId::Data,
+                PageId::Planner,
+                PageId::Records,
                 PageId::List,
                 PageId::Lighting,
                 PageId::Menu
@@ -531,6 +559,8 @@ mod tests {
                 PageId::Feedback,
                 PageId::Extended,
                 PageId::Data,
+                PageId::Planner,
+                PageId::Records,
                 PageId::List,
                 PageId::Lighting,
                 PageId::Menu
@@ -547,6 +577,8 @@ mod tests {
                 PageId::Feedback,
                 PageId::Extended,
                 PageId::Data,
+                PageId::Planner,
+                PageId::Records,
                 PageId::List,
                 PageId::Lighting,
                 PageId::Menu
@@ -563,6 +595,8 @@ mod tests {
                 PageId::Feedback,
                 PageId::Extended,
                 PageId::Data,
+                PageId::Planner,
+                PageId::Records,
                 PageId::List,
                 PageId::Lighting,
                 PageId::Menu
@@ -579,6 +613,8 @@ mod tests {
                 PageId::Feedback,
                 PageId::Extended,
                 PageId::Data,
+                PageId::Planner,
+                PageId::Records,
                 PageId::List,
                 PageId::Lighting,
                 PageId::Menu
@@ -599,6 +635,8 @@ mod tests {
                 PageId::Feedback,
                 PageId::Extended,
                 PageId::Data,
+                PageId::Planner,
+                PageId::Records,
                 PageId::List,
                 PageId::Lighting,
                 PageId::Menu

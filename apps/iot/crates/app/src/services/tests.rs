@@ -97,7 +97,7 @@ fn fingerprint(frame: &[u8]) -> u32 {
 }
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
-const GOLDEN: [(&str, bool, u32); 34] = [
+const GOLDEN: [(&str, bool, u32); 38] = [
     ("menu", false, 0xa7812a81),
     ("menu", true, 0xe3a13e31),
     ("input", false, 0xc18e7dc5),
@@ -120,14 +120,18 @@ const GOLDEN: [(&str, bool, u32); 34] = [
     ("text", true, 0xbe98e7db),
     ("widgets", false, 0x59bbd7f7),
     ("widgets", true, 0xc1c211a7),
-    ("advanced", false, 0x7acb3fae),
-    ("advanced", true, 0xd9abb15e),
+    ("advanced", false, 0x4083d2e2),
+    ("advanced", true, 0x09644492),
     ("feedback", false, 0x47bacd74),
     ("feedback", true, 0x48872b24),
     ("extended", false, 0x1b5c4a5d),
     ("extended", true, 0xa10b2e0d),
     ("data", false, 0xa75b191e),
     ("data", true, 0x5404eace),
+    ("planner", false, 0x098cb8aa),
+    ("planner", true, 0x89fa0e5a),
+    ("records", false, 0x9bb09446),
+    ("records", true, 0x70f223f6),
     ("list", false, 0x52deda55),
     ("list", true, 0x37e43005),
     ("lighting", false, 0x2c929a49),
@@ -195,6 +199,8 @@ fn a_language_switch_reaches_the_pixels() {
         PageId::Feedback,
         PageId::Extended,
         PageId::Data,
+        PageId::Planner,
+        PageId::Records,
         PageId::List,
         PageId::Lighting,
     ];

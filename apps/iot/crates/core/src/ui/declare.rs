@@ -361,14 +361,15 @@ mod tests {
     use crate::ui::layout::PX;
     use crate::ui::{DecorationStyle, FontWeight, Length, Overflow, TextAlign};
 
-    /// The declaration lives on the panel core's stack (24 KiB on the S3) for the length of
-    /// one page, so it is budgeted separately from that stack's other work. Every page's
-    /// boxes are part of it: the 25-line Wrap window and its one box per line are why the
-    /// ceiling is 12 KiB rather than the 10 KiB the 14-line page needed.
+    /// The declaration lives on the main stack (about 80 KiB on the S3) for the length of one
+    /// page, so it is budgeted separately from that stack's other work. Every page's boxes are
+    /// part of it: the 25-line Wrap window and its one box per line are why the ceiling is
+    /// 13 KiB rather than the 10 KiB the 14-line page needed. The menu's 63-node declaration,
+    /// scroll thumb included, is the fullest page.
     #[test]
     fn a_declaration_fits_the_stack_the_panel_core_was_given() {
         let bytes = core::mem::size_of::<Ui<'static, 'static>>();
-        assert!(bytes <= 12 * 1024, "a declaration is {bytes} B");
+        assert!(bytes <= 13 * 1024, "a declaration is {bytes} B");
     }
 
     #[test]

@@ -105,6 +105,8 @@ fn the_boot_page_joins_the_cycle_it_was_asked_for() {
         PageId::Feedback,
         PageId::Extended,
         PageId::Data,
+        PageId::Planner,
+        PageId::Records,
         PageId::List,
         PageId::Lighting,
         PageId::Menu,

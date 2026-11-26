@@ -7,11 +7,11 @@ weight = 80
 
 面板的组件词汇：两种形态、状态与主题、圆角、基础组件、Cell 绘制、多语言与预算。
 
-> 状态：基础组件与 25 个高级组件已落地，由 `Widgets` 基础页与 `Advanced` / `Feedback` / `Extended` / `Data` 四个画廊演示；`Feed` 一个组件同时提供下拉刷新与上拉加载。可选组件仍是清单。
+> 状态：基础组件与 34 个高级组件已落地，由 `Widgets` 基础页与 `Advanced` / `Feedback` / `Extended` / `Data` / `Planner` / `Records` 六个画廊演示；`Feed` 一个组件同时提供下拉刷新与上拉加载。可选组件只剩 `QRCode` / `Barcode` 与几类刻意不做的。
 
 ## 两种形态
 
-Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧只有 60 个节点，`ListView` 十行就吃掉一半。组件因此分两种：
+Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧只有 64 个节点，`ListView` 十行就吃掉一半。组件因此分两种：
 
 | 形态 | 是什么 | 适合 | 节点成本 |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@ Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧
 | 常量 | 值 | 出处 |
 | --- | --- | --- |
 | 面板 | 320×240，内容底 228 | `ui::panel` |
-| 节点 | `MAX_NODES = 60` | `ui::layout` |
+| 节点 | `MAX_NODES = 64` | `ui::layout` |
 | 文本 | `TEXT_BYTES = 2048` | `ui::declare` |
 | 颜色 | `MAX_COLORS = 16` / 声明 | `ui::color` |
 | custom 槽 | `PAINTS = 8` | `ui::declare` |
@@ -205,7 +205,9 @@ pub enum Slot<'a> {
 | --- | --- |
 | `Menu` | 按设备 / 界面 / 灯光分组的 3 列按钮网格，列出全部页面；板子撑不起的页灰掉、点击无效；有屏时是默认启动页 |
 | `Widgets` | 基础组件画廊：五个分区（操作 / 选择 / 输入 / 显示 / 行）各一行标题，整页滚动；能切换的控件可点 |
-| `Advanced` | 导航 / 组合画廊：`AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager`、`Accordion` / `Segmented` / `Stepper`，整页滚动 |
+| `Advanced` | 导航 / 组合画廊：`AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager` / `Carousel`、`Accordion` / `Segmented` / `Stepper`，整页滚动 |
+| `Planner` | 规划画廊：`Calendar` / `TimePicker` / `Rating` / `ColorPicker`，整页滚动；点日、点小时、点星、点或拖取色 |
+| `Records` | 记录画廊：`TreeView` / `Timeline` / `Heatmap` / `ReorderableList`，整页滚动；拖右侧手柄换行 |
 | `Feedback` | 反馈画廊：`Banner` / `Toast` / `Skeleton` / `LoadingOverlay`，从横幅拉起 toast，占位条换成内容 |
 | `Extended` | 输入画廊：`SearchField` / `FilterChips` / `FormField` / `NumberField` / `Keypad`；搜索框聚焦后整页换成键盘 |
 | `Data` | 数据 / 浮层画廊：`Table` / `Chart` / `Gauge` / `SwipeAction` / `EmptyState`、`Dialog` / `PopupMenu` / `Sheet`；点行、点柱、点表盘共用页面状态 |
@@ -213,17 +215,17 @@ pub enum Slot<'a> {
 | `Lighting` | 灯效页：范围三选一（关闭 / 本页 / 所有页）、样式三行四格（常亮 / 呼吸 / 变色 / 极光；烛光 / 脉冲 / 心跳 / 闪电；星光 / 频闪 / 警灯 / 求救）、周期 / 色相 / 最亮三个滑块，另有一行独立背光（0 即全黑）；页底说明随样式换，常亮时周期禁用。整页强制深色 |
 | `Headless` | 无屏板（C6）的落地页：没有画布，只有灯珠与按钮；单击换灯效（12 档后接关）、长按调亮度（30/50/70/90/100% 后接关，暗灯长按回到首档）、双击换颜色、三击加亮度（多击默认关闭，运行时开启才生效），开机时按住越过 splash 进配网；不进菜单，也不占 `PageId::ALL` |
 
-四个画廊的每个样例都带一行说明（`page::caption`）：名字加这个样例怎么动，例如 `TABLE / TAP A ROW`，中英各一份 `Msg`。`Advanced` / `Extended` 原先的分区词因此删掉——说明行已经报了名字；`Data` 的浮层一带仍用 `page::section`（一条线加名字）隔开。说明行是 muted 的 `nowrap`，不带 tag，点了不动。
+六个画廊的每个样例都带一行说明（`page::caption`）：名字加这个样例怎么动，例如 `TABLE / TAP A ROW`，中英各一份 `Msg`。`Advanced` / `Extended` 原先的分区词因此删掉——说明行已经报了名字；`Data` 的浮层一带仍用 `page::section`（一条线加名字）隔开。说明行是 muted 的 `nowrap`，不带 tag，点了不动。
 
-`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动落在 `Headless`；有屏时请求 `Headless` 退回 `Input`，`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。15 个入口按 设备 / 界面 / 灯光 分三组，每组一条分隔线加 muted 标题；组内仍是三列，合计七行，最后一组要滚动才见得到，命中仍按 offset 反查。
+`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动落在 `Headless`；有屏时请求 `Headless` 退回 `Input`，`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。17 个入口按 设备 / 界面 / 灯光 分三组，每组一条分隔线加 muted 标题；组内仍是三列，合计七行，最后一组要滚动才见得到，命中仍按 offset 反查。
 
-`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 60 节点 / 2048 字节预算约束。
+`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 64 节点 / 2048 字节预算约束。
 
 `TextField` 聚焦后页面换成 4×4 键盘（`ui::keyboard`，Canvas，0 节点）：`Text` 持有 24 字节、多击循环与 shift/layer 状态，`OK` 键收起键盘。键位、绘制与命中都读同一张 `CELLS` 表。四层轮转（字母 / 数字 / 符号 / 更多）合起来能打出 `0x20..=0x7E` 全部可打印 ASCII：字母层带大小写与空格，符号层放 `. , : ; ? ! - _ @ #`，更多层补齐剩下 22 个标点；层键面按下一层提示（`12` / `#` / `&` / `ab`）。
 
 ## 高级组件
 
-导航、组合、反馈、输入、数据、浮层六类，都在 `shared/ui/widgets`，一文件一个。演示分四页：`Advanced` 放导航与组合，`Feedback` 放反馈，`Extended` 放输入，`Data` 放数据与浮层。
+导航、组合、规划、记录、反馈、输入、数据、浮层八类，都在 `shared/ui/widgets`，一文件一个。演示分六页：`Advanced` 放导航与组合，`Planner` 放规划，`Records` 放记录，`Feedback` 放反馈，`Extended` 放输入，`Data` 放数据与浮层。
 
 ### 导航
 
@@ -234,6 +236,7 @@ pub enum Slot<'a> {
 | `Tabs` | W | 三页签，选中格整格换成 accent 纸 |
 | `PageIndicator` | C | 轮播点，`dot_at` 在点中心给出 `TOUCH_MIN` 宽的命中区，`fit` 收起放不下的点 |
 | `Pager` | W | 横向卡片条：`card_width` / `pitch` 从 `rect` 推，`turn` 把拖动距离换成索引，`page_at` 给点按 |
+| `Carousel` | C | `Pager` 的布局 + 底部驻留条：`progress` 说下一张还剩多少，`running` 由页面的开关给；本页默认不自动播放 |
 
 ### 组合
 
@@ -242,6 +245,24 @@ pub enum Slot<'a> {
 | `Accordion` | W | 标题 + 展开体（同一张纸内），`open` 由页面给 |
 | `Segmented` | W | 三段互斥选择 |
 | `Stepper` | W | 三步行进器，`current` 高亮 |
+
+### 规划
+
+| 组件 | 形态 | 说明 |
+| --- | --- | --- |
+| `Calendar` | C | 7×6 月格，42×32 格；月长与首星期是 `const fn`，`day_at` 与绘制共用同一张格表；上一月 / 下一月是页面自己的两个 tag |
+| `TimePicker` | C | 三行直选，一行 44 px；`row_at` 选行，`step` 把结果夹在范围内，不做五行滚轮 |
+| `Rating` | C | 五个 44×44 槽，整星输入 0–5；半星只做只读填充，星形用 12 行横向 span 表画 |
+| `ColorPicker` | C | 132×132 饱和/明度方（12×12 块）+ 16 px 色相条 + 44 px 色块；点与拖共用 `point_at`，色相走 `iot_core::light::hsv_to_rgb` |
+
+### 记录
+
+| 组件 | 形态 | 说明 |
+| --- | --- | --- |
+| `TreeView` | C | 24 px 行，10 px 缩进，展开箭头；`row_at` 给行，展开态由页面给 |
+| `Timeline` | C | 40 px 行，左轨 + 圆点，时间与标题两列 |
+| `Heatmap` | C | 53×7 格（4 px 格 + 1 px 缝），档位由种子确定性推出，`cell_at` 与绘制同源 |
+| `ReorderableList` | C | 32 px 行，右侧 44×44 手柄独占拖动；换位是 `remove(old)` → `insert(clamped)`，抬手落位 |
 
 ### 反馈
 
@@ -290,7 +311,9 @@ pub enum Slot<'a> {
 
 | 页 | 可点 | 纯装饰 |
 | --- | --- | --- |
-| `Advanced` | `AppBar` 动作、三个导航格、三个页签、每个圆点、每张卡片、`Accordion` 头、三段选择、`Stepper` | 当前页签与导航胶囊的高亮本身 |
+| `Advanced` | `AppBar` 动作、三个导航格、三个页签、每个圆点、两张卡片条各自的每张卡片、`Auto` 开关、`Accordion` 头、三段选择、`Stepper` | 当前页签、导航胶囊与驻留条的高亮本身 |
+| `Planner` | 上一月 / 下一月、每一天、三行小时、五颗星、色相条与色方 | 月格里的空格、星期头 |
+| `Records` | 六行树、四条时间线、每个热力格、每行的 44 px 手柄 | 时间线左轨、热力图月份标签 |
 | `Feedback` | 横幅动作、toast、占位切换按钮、遮罩文案 | `Skeleton` 灰条、`Divider` |
 | `Extended` | 搜索框、三枚 chip、表单、数值加减、12 个键格 | — |
 | `Data` | 四行表格、六根柱、表盘、滑动行、空态、对话框两项、菜单/抽屉的触发按钮与打开后的项 | 图表底轴 |
@@ -326,15 +349,12 @@ pub enum Slot<'a> {
 
 | 组件 | 判断 |
 | --- | --- |
-| `Calendar` / `TimePicker` | 有日期、定时设置再做 |
-| `ColorPicker` / `Rating` | 灯效、评分场景 |
-| `TreeView` / `Timeline` / `Heatmap` | 传感器历史 |
-| `QRCode` / `Barcode` | 配网分享、设备标签 |
-| `PageView` / `Carousel` | 多页引导 |
-| `ReorderableList` | 排序；`PullToRefresh` 已并入 `Feed` |
+| `QRCode` / `Barcode` | 配网分享、设备标签；这一轮不做 |
 | `RichTextEditor` | 选区与撤销成本高 |
 | 隐式动画 / `Hero` / `Focus` | 页面 `tick` 已能驱动，按需 |
 | `SplitView` / `Masonry` | 桌面或多列，不适合本面板 |
+
+已落地：`Calendar` / `TimePicker` / `Rating` / `ColorPicker` 在 `Planner`，`TreeView` / `Timeline` / `Heatmap` / `ReorderableList` 在 `Records`，`Carousel` 在 `Advanced`。`PageView` 不单独做：`Pager` + `PageIndicator` 已经覆盖翻页与定位。
 
 明确不做：`Map`、`Video`、`Lottie`/`Rive`、`Hover`、`Mouse`、`Semantics`、`RTL`、`MediaQuery`。不是能力不够，是没有输入设备、读屏或多尺寸。
 

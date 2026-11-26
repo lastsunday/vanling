@@ -2,19 +2,19 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "a3ab95c4859fedcf50758acb01138e69e6e3ba58"
-translated_at = "2026-11-26T09:37:55Z"
+source_file_hash = "20c4fea2a70ae2ab9402a7ac695781f8874f9cba"
+translated_at = "2026-11-26T11:38:18Z"
 +++
 
 # UI Widgets
 
 The panel's widget vocabulary: two shapes, states and theme, rounded corners, the basic widgets, the pages built from them, cell drawing, i18n and budgets.
 
-> Status: the basic widgets and 25 advanced widgets are in place, shown by the `Widgets` page and the `Advanced` / `Feedback` / `Extended` / `Data` galleries; one `Feed` component provides both pull-to-refresh and load-more. Optional widgets are still a list.
+> Status: the basic widgets and 34 advanced widgets are in place, shown by the `Widgets` page and the `Advanced` / `Feedback` / `Extended` / `Data` / `Planner` / `Records` galleries; one `Feed` component provides both pull-to-refresh and load-more. The optional list is down to `QRCode` / `Barcode` and a few deliberate omissions.
 
 ## Two shapes
 
-A Flutter widget tree means one Widget per row, which does not work here: `Ui` lives on the stack, a frame holds 60 nodes, and a ten-row `ListView` would eat half of them. Widgets therefore come in two shapes:
+A Flutter widget tree means one Widget per row, which does not work here: `Ui` lives on the stack, a frame holds 64 nodes, and a ten-row `ListView` would eat half of them. Widgets therefore come in two shapes:
 
 | Shape | What it is | Fits | Node cost |
 | --- | --- | --- | --- |
@@ -28,7 +28,7 @@ The test is whether the row count grows with data. A fixed few rows are Widgets;
 | Constant | Value | Source |
 | --- | --- | --- |
 | Panel | 320×240, content bottom 228 | `ui::panel` |
-| Nodes | `MAX_NODES = 60` | `ui::layout` |
+| Nodes | `MAX_NODES = 64` | `ui::layout` |
 | Text | `TEXT_BYTES = 2048` | `ui::declare` |
 | Colours | `MAX_COLORS = 16` per declaration | `ui::color` |
 | Custom slots | `PAINTS = 8` | `ui::declare` |
@@ -208,7 +208,9 @@ pub enum Slot<'a> {
 | --- | --- |
 | `Menu` | A three-column button grid grouped into devices / UI / glow, listing every page; pages the board cannot back are greyed and do not navigate. The boot page whenever a screen is present. |
 | `Widgets` | The basic-widget gallery: five sections (actions / selection / input / display / rows), each under a heading, the whole page in one scroll box; controls that can hold a value are tappable. |
-| `Advanced` | The navigation / composed gallery: `AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager` and `Accordion` / `Segmented` / `Stepper`, one scroll box. |
+| `Advanced` | The navigation / composed gallery: `AppBar` / `NavigationBar` / `Tabs` / `PageIndicator` / `Pager` / `Carousel` and `Accordion` / `Segmented` / `Stepper`, one scroll box. |
+| `Planner` | The planning gallery: `Calendar` / `TimePicker` / `Rating` / `ColorPicker`, one scroll box; tap a day, tap an hour, tap a star, tap or drag the picker. |
+| `Records` | The records gallery: `TreeView` / `Timeline` / `Heatmap` / `ReorderableList`, one scroll box; drag a row by its right-hand handle. |
 | `Feedback` | The feedback gallery: `Banner` / `Toast` / `Skeleton` / `LoadingOverlay`; the banner raises a toast and the placeholder swaps for content. |
 | `Extended` | The input gallery: `SearchField` / `FilterChips` / `FormField` / `NumberField` / `Keypad`; focusing the search field hands the page to the keyboard. |
 | `Data` | The data / overlay gallery: `Table` / `Chart` / `Gauge` / `SwipeAction` / `EmptyState` and `Dialog` / `PopupMenu` / `Sheet`; a row, a bar and the dial share the page state. |
@@ -216,17 +218,17 @@ pub enum Slot<'a> {
 | `Lighting` | The lighting page: one of three scopes (off / this page / every page), three rows of four styles (steady / breath / cycle / aurora; candle / pulse / heartbeat / flash; sparkle / strobe / police / SOS), three sliders for period, hue and peak, and a separate backlight row (0 is dark); the caption at the foot follows the style and the period slider is disabled under steady. The page is always dark. |
 | `Headless` | The landing page on a board with no panel (the C6): no canvas, only the lamp and the buttons; a click changes the effect (the twelve, then off), a hold steps brightness (30/50/70/90/100%, then off; a dark lamp answers by lighting at the first stop), a double-click the colour, a triple-click raises brightness (multi-click is off by default and needs a runtime switch), and a hold through the splash opens provisioning; it is not in the menu and not in `PageId::ALL`. |
 
-Every sample in the four galleries carries one caption (`page::caption`): its name plus how it moves, such as `TABLE / TAP A ROW`, with one `Msg` per language. That is why `Advanced` and `Extended` lost their section words — the caption already names the sample; `Data` keeps `page::section` (a rule and a name) for the overlay band. A caption is a muted `nowrap` run with no tag, so it does nothing when tapped.
+Every sample in the six galleries carries one caption (`page::caption`): its name plus how it moves, such as `TABLE / TAP A ROW`, with one `Msg` per language. That is why `Advanced` and `Extended` lost their section words — the caption already names the sample; `Data` keeps `page::section` (a rule and a name) for the overlay band. A caption is a muted `nowrap` run with no tag, so it does nothing when tapped.
 
-`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen lands on `Headless`; a request for `Headless` on a screen falls back to `Input`, and `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries four 44×44 chips at its right, `EN` / `中文` / `DARK` / `LIGHT` (`the_settings_chips_are_touch_sized` pins them); the first two set `DeviceState.lang`, the last two set `DeviceState.theme`. The button grid therefore starts a whole row lower; the fifteen entries are grouped into devices / UI / glow, each under a rule and a muted caption, still three columns per group: seven rows in all, the last group needs a scroll to reach, with hits still resolved against the offset.
+`Menu` puts its buttons in `page::scroller`: 98×44 with a 6 px gap, three columns exactly filling the content width. Each button carries the tag `PageId::code() + 1` and the page measures them once with `TagTable::measure`; a tap resolves the tag against the scroll offset and reports `MenuIntent::Choose { page }`, which `Services::apply` turns into navigation. Hit testing no longer recomputes the grid. A tap on the wire is `Press` then `Tap`: the button area claims a drag only on `Drag` and `Press` merely stops a glide, otherwise the tap would be swallowed as a scroll. A page the board cannot back is still listed, just `State::DISABLED`, and a tap does not navigate. A board without a screen lands on `Headless`; a request for `Headless` on a screen falls back to `Input`, and `DeviceState::landed_on` reads `Screen` from `surface_roles`. The title row is `TOUCH_MIN` tall with a `GAP` of air beneath it, and carries four 44×44 chips at its right, `EN` / `中文` / `DARK` / `LIGHT` (`the_settings_chips_are_touch_sized` pins them); the first two set `DeviceState.lang`, the last two set `DeviceState.theme`. The button grid therefore starts a whole row lower; the seventeen entries are grouped into devices / UI / glow, each under a rule and a muted caption, still three columns per group: seven rows in all, the last group needs a scroll to reach, with hits still resolved against the offset.
 
-The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 60-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
+The `Widgets` page keeps its interactive values in the page itself (`WidgetsSnapshot`): buttons and chips latch selected, switch / checkbox / radio toggle, the slider takes a tap or a drag, the select cycles, the icon button starts and stops the spinner, and the list tile selects; `Badge` shows the switch, `ProgressBar` follows the slider, and `Divider` separates the five sections. Section captions name the action rather than the noun (`TAP TO LATCH`, `PICK OR TOGGLE`, `DRAG AND TYPE`, `LIVE STATE`, `ROW`). The `LIVE STATE` row is the spinner, the avatar with a numbered `Indicator`, the icon button and the three `Badge` variants, with `SPINNER AVATAR ICON BADGE` beneath it because the shapes do not identify themselves. The badges read `ON` / `OFF` with the switch, and `Filled` / `Light` / `Outline` are three papers for the same `Tone`. The field prints `WidgetsSnapshot::text` and only falls back to `VALUE` while empty; the row's subtitle is `SUBTITLE`, describing the row's parts rather than an action. A control's root node carries `WidgetsAction::tag()`; the same enum supplies `ALL` and `from_tag`, and an exhaustive `match` means a control without a handler does not compile. `every_action_is_drawn_once` keeps the view and the vocabulary in step. The page measures the tags once with `TagTable::measure` and resolves a tap against the scroll offset. The layout stays put across languages and values, pinned by `the_tags_stay_put_across_languages_and_values`. One declaration still has to fit the 64-node / 2048-byte budget in `the_whole_gallery_fits_one_declaration`.
 
 A focused `TextField` replaces the page with a 4×4 keyboard (`ui::keyboard`, a Canvas with 0 nodes): `Text` holds 24 bytes, the multi-tap cycle and the shift/layer state, and `OK` puts the gallery back. The grid, its drawing and its hit test all read one `CELLS` table. Four layers rotate (letters / digits / symbols / more) and together type every printable ASCII byte `0x20..=0x7E`: the letter layer carries both cases and the space, the symbol layer holds `. , : ; ? ! - _ @ #`, and the more layer fills in the remaining 22 punctuation marks; each layer key's face names the next layer (`12` / `#` / `&` / `ab`).
 
 ## Advanced widgets
 
-Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widgets`, one file each. Four pages show them: `Advanced` covers navigation and composed, `Feedback` feedback, `Extended` input, and `Data` data and overlay.
+Navigation, composed, planning, records, feedback, input, data and overlay, all in `shared/ui/widgets`, one file each. Six pages show them: `Advanced` covers navigation and composed, `Planner` planning, `Records` records, `Feedback` feedback, `Extended` input, and `Data` data and overlay.
 
 ### Navigation
 
@@ -237,6 +239,7 @@ Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widge
 | `Tabs` | W | Three tabs; the selected cell takes the accent paper whole |
 | `PageIndicator` | C | Carousel dots; `dot_at` gives each dot a `TOUCH_MIN`-wide target, `fit` drops dots that do not fit |
 | `Pager` | W | A horizontal card strip: `card_width` / `pitch` derive from `rect`, `turn` maps travel to an index, `page_at` serves taps |
+| `Carousel` | C | `Pager`'s layout plus a dwell bar underneath: `progress` says how much of the next turn is left and `running` comes from the page's switch; this page does not autoplay by default |
 
 ### Composed
 
@@ -245,6 +248,24 @@ Navigation, composed, feedback, input, data and overlay, all in `shared/ui/widge
 | `Accordion` | W | Title plus a body inside the same paper; the page owns `open` |
 | `Segmented` | W | Three mutually exclusive segments |
 | `Stepper` | W | Three-step progress, `current` highlighted |
+
+### Planning
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `Calendar` | C | A 7×6 month grid of 42×32 cells; month length and first weekday are `const fn`, `day_at` and the paint share one cell table, and previous/next month are the page's own two tags |
+| `TimePicker` | C | Three directly selectable rows, 44 px each; `row_at` picks a row and `step` clamps the result, with no five-row wheel |
+| `Rating` | C | Five 44×44 slots with whole-star input from 0 to 5; a fraction is read-only fill, and the star is 12 horizontal spans |
+| `ColorPicker` | C | A 132×132 saturation/value square (12×12 blocks), a 16 px hue strip and a 44 px swatch; tap and drag share `point_at`, and hue goes through `iot_core::light::hsv_to_rgb` |
+
+### Records
+
+| Widget | Shape | Notes |
+| --- | --- | --- |
+| `TreeView` | C | 24 px rows, 10 px indent and a chevron; `row_at` picks a row and the page owns the open state |
+| `Timeline` | C | 40 px rows, a left rail with dots, and time and title columns |
+| `Heatmap` | C | 53×7 cells (4 px cell, 1 px gap); levels come deterministically from a seed, and `cell_at` shares the paint's geometry |
+| `ReorderableList` | C | 32 px rows with a 44×44 handle at the right owning the drag; a move is `remove(old)` → `insert(clamped)` on release |
 
 ### Feedback
 
@@ -293,7 +314,9 @@ The `Data` dialog, popup menu and sheet all sit on root nodes after `page::body`
 
 | Page | Tappable | Decoration only |
 | --- | --- | --- |
-| `Advanced` | AppBar action, three nav cells, three tabs, every dot, every card, the accordion header, the segmented cells, the stepper | The selected tab's and nav pill's highlight itself |
+| `Advanced` | AppBar action, three nav cells, three tabs, every dot, every card of both strips, the `Auto` switch, the accordion header, the segmented cells, the stepper | The selected tab's and nav pill's highlights and the dwell bar itself |
+| `Planner` | Previous/next month, every day, the three hour rows, the five stars, the hue strip and the colour square | Blank month cells, the weekday header |
+| `Records` | Six tree rows, four timeline entries, every heat cell, each row's 44 px handle | The timeline rail, the heatmap month labels |
 | `Feedback` | Banner action, toast, placeholder toggle, scrim caption | `Skeleton` bars, `Divider` |
 | `Extended` | Search field, three chips, the form, the number stepper, twelve keys | — |
 | `Data` | Four table rows, six bars, the dial, the sliding row, the empty state, two dialog answers, the menu/sheet triggers and the rows they open | The chart baseline |
@@ -329,15 +352,12 @@ The `List` page is the demo: 34 rows over pages of 8, with 600 ms of fake work p
 
 | Widget | Decision |
 | --- | --- |
-| `Calendar` / `TimePicker` | When dates or timers are set |
-| `ColorPicker` / `Rating` | Light effects and ratings |
-| `TreeView` / `Timeline` / `Heatmap` | Sensor history |
-| `QRCode` / `Barcode` | Setup sharing, device labels |
-| `PageView` / `Carousel` | Multi-page onboarding |
-| `ReorderableList` | Ordering; `PullToRefresh` is now part of `Feed` |
+| `QRCode` / `Barcode` | Setup sharing, device labels; not this round |
 | `RichTextEditor` | Selection and undo are expensive |
 | Implicit animation / `Hero` / `Focus` | The page `tick` can drive them when needed |
 | `SplitView` / `Masonry` | Desktop or multi-column; not this panel |
+
+Landed: `Calendar` / `TimePicker` / `Rating` / `ColorPicker` on `Planner`, `TreeView` / `Timeline` / `Heatmap` / `ReorderableList` on `Records`, and `Carousel` on `Advanced`. `PageView` is not a widget of its own: `Pager` plus `PageIndicator` already covers turning and locating a page.
 
 Explicitly out: `Map`, `Video`, `Lottie`/`Rive`, `Hover`, `Mouse`, `Semantics`, `RTL`, `MediaQuery`. Not for lack of capability, but for lack of an input device, a screen reader or multiple sizes.
 
@@ -415,7 +435,7 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 | Nodes | `ui.node_count()` |
 | Text | `ui.text_bytes()` |
 | Colours | The page-wide `MAX_COLORS` |
-| Golden | One fingerprint per page and debug state; `Advanced` / `Feedback` / `Extended` / `Data` / `List` add two each |
+| Golden | One fingerprint per page and debug state; `Advanced` / `Planner` / `Records` / `Feedback` / `Extended` / `Data` / `List` add two each |
 | Hit | Painted rectangle equals the headless rectangle |
 
 After a change:

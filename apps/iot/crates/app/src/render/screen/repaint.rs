@@ -342,6 +342,8 @@ mod tests {
                 | PageId::Feedback
                 | PageId::Extended
                 | PageId::Data
+                | PageId::Planner
+                | PageId::Records
                 | PageId::List => assert!(
                     step < REPAINT_FLOOR_MS,
                     "{page:?} must keep up with a drag, not the idle floor"

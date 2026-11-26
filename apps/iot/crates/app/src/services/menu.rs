@@ -2,7 +2,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::TOUCH_MIN;
-use iot_core::ui::{Rect, ScrollId, Style, ThemeId, Ui};
+use iot_core::ui::{Length, Rect, ScrollId, Style, ThemeId, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsIntent};
@@ -56,6 +56,8 @@ const SECTIONS: [Section; 3] = [
             PageId::Feedback,
             PageId::Extended,
             PageId::Data,
+            PageId::Planner,
+            PageId::Records,
             PageId::List,
         ],
     },
@@ -367,8 +369,10 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 .middle()
                 .gap(GAP),
             |ui| {
-                page::title(ui, Msg::MenuTitle.bytes(lang));
-                ui.node(Style::new().grow(1));
+                ui.text(
+                    Msg::MenuTitle.bytes(lang),
+                    Style::new().nowrap().font_size(Length::Px(24)).grow(1),
+                );
                 ui.add(
                     Chip::new(Msg::LangEn.bytes(lang))
                         .width(TOUCH_MIN as i16)
@@ -475,6 +479,8 @@ fn page_name(page: PageId) -> Msg {
         PageId::Feedback => Msg::PageFeedback,
         PageId::Extended => Msg::PageExtended,
         PageId::Data => Msg::PageData,
+        PageId::Planner => Msg::PagePlanner,
+        PageId::Records => Msg::PageRecords,
         PageId::List => Msg::PageList,
         PageId::Lighting => Msg::PageLighting,
         PageId::Headless => Msg::Brand,
@@ -797,7 +803,11 @@ mod tests {
                 },
                 &mut ui,
             );
-            assert!(ui.node_count() <= 60, "{lang:?}: {} nodes", ui.node_count());
+            assert!(
+                ui.node_count() <= iot_core::ui::MAX_NODES,
+                "{lang:?}: {} nodes",
+                ui.node_count()
+            );
             finish(&mut ui);
             for rect in ui.rects() {
                 assert!(

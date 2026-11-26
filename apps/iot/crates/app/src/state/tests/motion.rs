@@ -62,6 +62,10 @@ fn the_page_switch_skips_pages_the_board_lacks() {
     next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Data);
     next_page(&mut enabled);
+    assert_eq!(enabled.state().page(), PageId::Planner);
+    next_page(&mut enabled);
+    assert_eq!(enabled.state().page(), PageId::Records);
+    next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::List);
     next_page(&mut enabled);
     assert_eq!(enabled.state().page(), PageId::Lighting);

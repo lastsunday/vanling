@@ -16,7 +16,8 @@ use crate::shared::ui::scroll::{BAR, ScrollConfig};
 use crate::shared::ui::tag::TagTable;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
-    Accordion, AppBar, NavigationBar, Pager, PagerCard, Segmented, Stepper, Tabs, dots, pager,
+    Accordion, AppBar, Carousel, NavigationBar, Pager, PagerCard, Segmented, Stepper, Switch, Tabs,
+    carousel, dots, pager,
 };
 
 use super::gallery::{REPAINT_MS, Scroller};
@@ -26,12 +27,19 @@ const AREA: ScrollId = ScrollId::new(1);
 const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
 const PAGER_SLOT: u8 = 0;
 const DOT_SLOT: u8 = 1;
+const CAROUSEL_SLOT: u8 = 2;
 const PAGER_COUNT: u8 = 3;
 /// A card tall enough for a title, a mark and a detail line, with air around it.
 const PAGER_H: i16 = 2 * page::TOUCH;
+/// The carousel's strip plus the dwell bar under it.
+const CAROUSEL_H: i16 = PAGER_H + carousel::PROGRESS_H;
+/// How long one card dwells before the carousel turns itself.
+const DWELL_MS: u16 = 2_000;
 
 /// The dots and the cards share one tag range: either picks a pager index.
 const TAG_INDEX: u16 = 60;
+/// The carousel's own cards, so a tap there never moves the pager above.
+const TAG_CAROUSEL: u16 = 70;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -56,10 +64,12 @@ enum Action {
     Seg1,
     Seg2,
     Step,
+    Carousel,
+    Auto,
 }
 
 impl Action {
-    const ALL: [Self; 13] = [
+    const ALL: [Self; 15] = [
         Self::App,
         Self::Nav0,
         Self::Nav1,
@@ -68,6 +78,8 @@ impl Action {
         Self::Tab1,
         Self::Tab2,
         Self::Pager,
+        Self::Auto,
+        Self::Carousel,
         Self::Accordion,
         Self::Seg0,
         Self::Seg1,
@@ -100,6 +112,9 @@ pub struct AdvancedPage {
     tags: TagTable<{ Action::ALL.len() }>,
     dots: Rect,
     pager: Rect,
+    carousel: Rect,
+    /// Milliseconds the carousel's current card has dwelt, carried across ticks.
+    dwell: u16,
     values: AdvancedSnapshot,
 }
 
@@ -115,10 +130,13 @@ impl Default for AdvancedPage {
             tags: TagTable::measure(&ui),
             dots: ui.paint_rect(DOT_SLOT).unwrap_or_default(),
             pager: ui.paint_rect(PAGER_SLOT).unwrap_or_default(),
+            carousel: ui.paint_rect(CAROUSEL_SLOT).unwrap_or_default(),
+            dwell: 0,
             values: AdvancedSnapshot {
                 tab: 1,
                 open: true,
                 pager: 1,
+                carousel: 1,
                 ..AdvancedSnapshot::default()
             },
         }
@@ -153,10 +171,25 @@ impl AdvancedPage {
             Action::Seg2 => self.values.segment = 2,
             Action::Step => self.values.step = (self.values.step + 1) % 3,
             Action::Pager => self.values.pager = (self.values.pager + 1) % PAGER_COUNT,
+            Action::Carousel => {}
+            Action::Auto => {
+                self.values.autoplay = !self.values.autoplay;
+                self.dwell = 0;
+                self.values.progress = 0;
+            }
         }
     }
 
     fn tap_tag(&mut self, tag: u16) {
+        if let Some(index) = tag
+            .checked_sub(TAG_CAROUSEL)
+            .filter(|index| *index < u16::from(PAGER_COUNT))
+        {
+            self.values.carousel = u8::try_from(index).unwrap_or(0);
+            self.dwell = 0;
+            self.values.progress = 0;
+            return;
+        }
         if let Some(index) = tag_index(tag) {
             self.values.pager = index;
             return;
@@ -188,6 +221,15 @@ impl super::Service for AdvancedPage {
                 self.values.pager = pager::turn(self.values.pager, PAGER_COUNT, self.pager, dx);
                 self.values.drag = 0;
             }
+            GalleryIntent::Slide { tag, dx, .. } if tag == Action::Carousel.tag() => {
+                self.values.carousel_drag = dx;
+            }
+            GalleryIntent::SlideEnd { tag, dx, .. } if tag == Action::Carousel.tag() => {
+                self.values.carousel =
+                    pager::turn(self.values.carousel, PAGER_COUNT, self.carousel, dx);
+                self.values.carousel_drag = 0;
+                self.dwell = 0;
+            }
             _ => {}
         }
         self.scroll.apply(*intent);
@@ -212,20 +254,34 @@ impl super::LocalPage for AdvancedPage {
             dots.y -= i32::from(area.offset);
             let mut pager = self.pager;
             pager.y -= i32::from(area.offset);
-            if area.rect.contains(x, y)
-                && let Some(index) = dots::dot_at(dots, PAGER_COUNT, x, y)
+            let mut carousel = self.carousel;
+            carousel.y -= i32::from(area.offset);
+            if area.rect.contains(x, y) {
+                if let Some(index) = dots::dot_at(dots, PAGER_COUNT, x, y)
                     .or_else(|| pager::page_at(pager, self.values.pager, PAGER_COUNT, x, y))
-            {
-                return gallery(GalleryIntent::Tap {
-                    tag: index_tag(index),
-                });
+                {
+                    return gallery(GalleryIntent::Tap {
+                        tag: index_tag(index),
+                    });
+                }
+                if let Some(index) = pager::page_at(
+                    carousel::body(carousel),
+                    self.values.carousel,
+                    PAGER_COUNT,
+                    x,
+                    y,
+                ) {
+                    return gallery(GalleryIntent::Tap {
+                        tag: TAG_CAROUSEL + u16::from(index),
+                    });
+                }
             }
         }
         self.scroll.bind(
             op,
             PageId::Advanced.code(),
             |x, y| self.tag_at(x, y),
-            |tag| tag == Action::Pager.tag(),
+            |tag| tag == Action::Pager.tag() || tag == Action::Carousel.tag(),
         )
     }
 
@@ -247,11 +303,23 @@ impl super::LocalPage for AdvancedPage {
 
     fn tick(&mut self, step_ms: u16) {
         self.scroll.tick(step_ms);
+        if !self.values.autoplay {
+            return;
+        }
+        self.dwell = self.dwell.saturating_add(step_ms);
+        while self.dwell >= DWELL_MS {
+            self.dwell -= DWELL_MS;
+            self.values.carousel = (self.values.carousel + 1) % PAGER_COUNT;
+        }
+        self.values.progress = (u32::from(self.dwell) * 100 / u32::from(DWELL_MS)) as u8;
     }
 
     fn on_hide(&mut self) {
         self.scroll.reset();
         self.values.drag = 0;
+        self.values.carousel_drag = 0;
+        self.dwell = 0;
+        self.values.progress = 0;
     }
 }
 
@@ -299,6 +367,19 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 PAGER_SLOT,
             );
             ui.custom(Style::new().width(CONTENT_W).height(page::TOUCH), DOT_SLOT);
+
+            page::caption(ui, Msg::CapCarousel.bytes(lang), &theme);
+            ui.row(Style::new().gap(theme.gap).middle(), |ui| {
+                page::caption(ui, Msg::Auto.bytes(lang), &theme);
+                ui.add(Switch::new(w.autoplay).tag(Action::Auto.tag()));
+            });
+            ui.custom(
+                Style::new()
+                    .width(CONTENT_W)
+                    .height(CAROUSEL_H)
+                    .tag(Action::Carousel.tag()),
+                CAROUSEL_SLOT,
+            );
 
             page::caption(ui, Msg::CapAccordion.bytes(lang), &theme);
             ui.add(
@@ -370,6 +451,14 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
         }
         .draw(canvas, rect, &theme),
         DOT_SLOT => dots::draw(canvas, rect, PAGER_COUNT, w.pager, &theme),
+        CAROUSEL_SLOT => Carousel {
+            cards: &cards(snapshot.lang),
+            index: w.carousel,
+            drag: w.carousel_drag,
+            progress: w.progress,
+            running: w.autoplay,
+        }
+        .draw(canvas, rect, &theme),
         _ => {}
     }
 }
@@ -657,6 +746,125 @@ mod tests {
         let mut state = DeviceState::default();
         page.apply(&intent, &mut state);
         assert_eq!(page.values.pager, 0);
+    }
+
+    #[test]
+    fn the_auto_switch_turns_the_carousel_on_its_own_clock() {
+        let mut page = AdvancedPage::default();
+        assert!(!page.values.autoplay, "a carousel waits for a finger");
+        page.tick(1_000);
+        assert_eq!(page.values.carousel, 1, "a still carousel does not turn");
+        tap(&mut page, Action::Auto);
+        assert!(page.values.autoplay);
+        page.tick(1_000);
+        assert_eq!(page.values.carousel, 1, "half the dwell is not a turn");
+        assert_eq!(page.values.progress, 50);
+        page.tick(1_000);
+        assert_eq!(page.values.carousel, 2, "the dwell turns one card");
+        assert_eq!(page.values.progress, 0);
+        page.tick(2_000);
+        assert_eq!(page.values.carousel, 0, "and wraps");
+        tap(&mut page, Action::Auto);
+        page.tick(1_000);
+        assert_eq!(page.values.progress, 0, "the switch stops the clock");
+    }
+
+    #[test]
+    fn a_swipe_turns_the_carousel_and_restarts_its_dwell() {
+        let mut page = AdvancedPage::default();
+        let mut state = DeviceState::default();
+        for intent in [
+            GalleryIntent::Press {
+                id: 0,
+                tag: Action::Carousel.tag(),
+                x: 100,
+                y: 100,
+            },
+            GalleryIntent::Slide {
+                id: 0,
+                tag: Action::Carousel.tag(),
+                dx: -80,
+            },
+            GalleryIntent::SlideEnd {
+                id: 0,
+                tag: Action::Carousel.tag(),
+                dx: -80,
+            },
+        ] {
+            page.apply(
+                &BusinessIntent::Gallery {
+                    wire: PageId::Advanced.code(),
+                    intent,
+                },
+                &mut state,
+            );
+        }
+        assert_eq!(page.values.carousel, 2, "a left drag advances one card");
+        assert_eq!(page.values.carousel_drag, 0, "the release snaps");
+        assert_eq!(page.values.progress, 0);
+    }
+
+    #[test]
+    fn a_tap_on_a_carousel_card_picks_it_without_moving_the_pager() {
+        let mut page = AdvancedPage::default();
+        let area = page.scroll.area();
+        let target = page.carousel.y + page.carousel.h / 2 - (area.rect.y + area.rect.h / 2);
+        page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
+        let offset = i32::from(page.scroll.area().offset);
+        let card = pager::card_width(page.carousel);
+        let step = pager::pitch(page.carousel);
+        let origin = page.carousel.x + (page.carousel.w - card) / 2;
+        let x = u16::try_from(origin + step + 4).unwrap();
+        let y = u16::try_from(page.carousel.y + page.carousel.h / 2 - offset).unwrap();
+        let intent = page
+            .bind(
+                &InputIntent {
+                    source: 0,
+                    event: InputEvent::Gesture(GestureEvent::Tap {
+                        id: 0,
+                        x,
+                        y,
+                        held_ms: 0,
+                        at_ms: 0,
+                    }),
+                },
+                &DeviceState::default(),
+            )
+            .expect("the card takes the tap");
+        let mut state = DeviceState::default();
+        page.apply(&intent, &mut state);
+        assert_eq!(page.values.carousel, 2, "the right peek is the next card");
+        assert_eq!(page.values.pager, 1, "the pager above keeps its own card");
+    }
+
+    #[test]
+    fn the_dwell_bar_is_not_a_card() {
+        let mut page = AdvancedPage::default();
+        let area = page.scroll.area();
+        let target = page.carousel.y + page.carousel.h / 2 - (area.rect.y + area.rect.h / 2);
+        page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
+        let offset = i32::from(page.scroll.area().offset);
+        let card = pager::card_width(page.carousel);
+        let step = pager::pitch(page.carousel);
+        let origin = page.carousel.x + (page.carousel.w - card) / 2;
+        let x = u16::try_from(origin + step + 4).unwrap();
+        let y = u16::try_from(page.carousel.bottom() - 2 - offset).unwrap();
+        if let Some(intent) = page.bind(
+            &InputIntent {
+                source: 0,
+                event: InputEvent::Gesture(GestureEvent::Tap {
+                    id: 0,
+                    x,
+                    y,
+                    held_ms: 0,
+                    at_ms: 0,
+                }),
+            },
+            &DeviceState::default(),
+        ) {
+            page.apply(&intent, &mut DeviceState::default());
+        }
+        assert_eq!(page.values.carousel, 1, "the bar is decoration");
     }
 
     #[test]

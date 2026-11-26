@@ -378,6 +378,13 @@ pub enum GalleryIntent {
         tag: u16,
         dx: i16,
     },
+    /// A two-dimensional drag over a canvas that reads both axes: the picker's square and strip.
+    Point {
+        id: u8,
+        tag: u16,
+        x: u16,
+        y: u16,
+    },
     /// A finger landed in the gallery's box rather than on a control.
     Grab {
         id: u8,
