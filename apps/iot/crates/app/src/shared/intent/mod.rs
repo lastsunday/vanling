@@ -341,8 +341,6 @@ pub enum LightingIntent {
     },
     /// The finger left the glass: whatever it held is no longer held.
     LetGo,
-    /// The button walks the effect list; the panel's grid can still pick any of them.
-    NextEffect,
 }
 
 /// What a finger asks of a demo gallery: the control it touched, or the scroll under it.

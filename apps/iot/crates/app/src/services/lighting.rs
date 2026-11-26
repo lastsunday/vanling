@@ -1,6 +1,6 @@
 //! The lighting page: where a glow may reach the glass, how it moves, and the panel backlight.
 
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::text::format_u16;
 use iot_core::ui::{Rect, Style, TextAlign, Ui};
@@ -8,8 +8,7 @@ use iot_core::ui::{Rect, Style, TextAlign, Ui};
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, LightingControl, LightingIntent};
 use crate::shared::model::{
-    Command, DeviceState, Effects, GlassBreath, GlowPattern, GlowScope, PEAK_FLOOR, next_effect,
-    trough,
+    Command, DeviceState, Effects, GlassBreath, GlowPattern, GlowScope, PEAK_FLOOR, trough,
 };
 use crate::shared::page;
 use crate::shared::snapshot::{FrameSnapshot, LightingView, PageSnapshot};
@@ -124,9 +123,6 @@ impl super::Service for LightingPage {
                 self.grab = None;
             }
             LightingIntent::LetGo => self.grab = None,
-            LightingIntent::NextEffect => {
-                self.breath.pattern = next_effect(self.breath.pattern);
-            }
         }
         (None, Effects::default())
     }
@@ -135,7 +131,6 @@ impl super::Service for LightingPage {
 impl super::LocalPage for LightingPage {
     fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
         let intent = match op.event {
-            InputEvent::Button(ButtonEvent::Click) => LightingIntent::NextEffect,
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
                 let control = LightingControl::from_tag(self.tag_at(i32::from(x), i32::from(y)))?;
                 LightingIntent::Press { id, control }
@@ -422,7 +417,6 @@ fn lighting_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::services::{LocalPage, Service};
     use crate::shared::model::EFFECTS;
 
     #[test]
@@ -460,30 +454,6 @@ mod tests {
                 );
             }
         }
-    }
-
-    #[test]
-    fn the_button_walks_the_same_effect_list() {
-        let mut page = LightingPage::default();
-        let mut state = DeviceState::default();
-        let start = page.breath.pattern;
-        let mut expected = start;
-        for _ in 0..EFFECTS.len() {
-            expected = next_effect(expected);
-            let op = InputIntent {
-                source: 0,
-                event: InputEvent::Button(ButtonEvent::Click),
-            };
-            let intent = page
-                .bind(&op, &state)
-                .expect("the button belongs to this page");
-            page.apply(&intent, &mut state);
-            assert_eq!(page.breath.pattern, expected);
-        }
-        assert_eq!(
-            page.breath.pattern, start,
-            "a full turn returns to the start"
-        );
     }
 
     #[test]

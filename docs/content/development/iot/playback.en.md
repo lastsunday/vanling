@@ -3,8 +3,8 @@ title = "Playback Semantics"
 weight = 70
 sort_by = "weight"
 [extra]
-source_file_hash = "20257ca966d80143521ed843a4c8912a53ae0963"
-translated_at = "2026-11-20T00:00:00Z"
+source_file_hash = "7664f25cf84b1056efcd049b2881dd249ca27001"
+translated_at = "2026-11-26T09:55:45Z"
 +++
 
 # Playback Semantics
@@ -126,7 +126,7 @@ Fidelity is pinned by tests, not by this comment: every entry and every interpol
 | Label | Field | Unit | Meaning |
 | --- | --- | --- | --- |
 | `ST` | `playback.phase` | — | `IDLE` nothing playing / `PLAY` playing; only the driver pushes it back to `IDLE` |
-| `SRC` | `playback.sound` | — | The sound the next tap will play, `TAP` / `NOTICE` / `WARN` / `ERROR` / `RISE`, cycled by a click |
+| `SRC` | `playback.sound` | — | The sound the next tap will play, `TAP` / `NOTICE` / `WARN` / `ERROR` / `RISE`, cycled by a tap |
 | `MUTE` | `playback.muted` | — | Stamped only while latched, the same way `CLIP` appears: it is a state, not an event |
 | `PLY` | `playback.plays` | times | How many sounds actually made it out |
 | `DRP` | `playback.dropped` | times | Taps that landed on `PLAY` and were dropped |

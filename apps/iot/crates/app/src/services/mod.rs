@@ -160,19 +160,22 @@ impl Services {
         }
     }
 
-    /// The input boundary. A transient owns the panel, so the cross-page bindings yield to it;
-    /// otherwise a hold is the device's way home and no page may swallow it.
+    /// The input boundary. A transient owns the panel; otherwise the button is the device's: a
+    /// click turns the page and a hold goes home, and no page may claim either. A board with no
+    /// panel has no page to turn, so its click stays with the page.
     pub fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         let here = state.page();
         let page = self.get(here);
         if here.is_transient() {
             return page.bind(op, state);
         }
-        if matches!(op.event, InputEvent::Button(ButtonEvent::LongPress)) {
+        if matches!(
+            op.event,
+            InputEvent::Button(ButtonEvent::Click | ButtonEvent::LongPress)
+        ) {
             return NavService::from_anywhere(op, state).or_else(|| page.bind(op, state));
         }
         page.bind(op, state)
-            .or_else(|| NavService::from_anywhere(op, state))
     }
 
     /// Who answers which group. One arm per owner, exhaustive like [`descriptor`]: a new group

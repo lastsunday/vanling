@@ -5,7 +5,7 @@ use crate::services::network::shape::{Band, ToolbarCell};
 use crate::shared::intent::Confirm;
 use crate::shared::intent::{BusinessIntent, InputIntent, NetworkIntent};
 use crate::shared::model::{DeviceState, NetworkView};
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent, SwipeDirection};
+use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, NetworkMode, SetupHost};
 
 pub(crate) fn bind(
@@ -34,9 +34,6 @@ pub(crate) fn bind(
                 }
                 _ => None,
             }
-        }
-        InputEvent::Button(ButtonEvent::Click) => {
-            Some(strip(draft, current.network.link).command(shape::ToolbarCell::Right))
         }
         _ => None,
     }

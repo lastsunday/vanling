@@ -1,5 +1,5 @@
-//! The Speaker page's input contract: a tap plays, a hold mutes, and no gesture here moves a
-//! light.
+//! The Speaker page's input contract: a tap plays, the button only navigates, and no gesture
+//! here moves a light.
 
 use crate::shared::intent::{NavigationIntent, PlaybackAction};
 use crate::state::test_support::*;
@@ -18,7 +18,7 @@ fn long_press_gesture() -> InputEvent {
 }
 
 #[test]
-fn a_tap_plays_and_a_long_press_mutes() {
+fn a_tap_plays_and_the_button_only_navigates() {
     assert_eq!(
         translate(&op(tap_gesture(0)), &on_speaker(), &Services::default()),
         Some(BusinessIntent::Playback(PlaybackAction::Next))
@@ -37,7 +37,8 @@ fn a_tap_plays_and_a_long_press_mutes() {
             &on_speaker(),
             &Services::default()
         ),
-        Some(BusinessIntent::Playback(PlaybackAction::Next))
+        Some(BusinessIntent::Navigation(NavigationIntent::NextPage)),
+        "the button is the page cycle, not the next sound"
     );
     assert_eq!(
         translate(&op(long_press_event()), &on_speaker(), &Services::default()),

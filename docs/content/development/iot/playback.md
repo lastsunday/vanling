@@ -117,7 +117,7 @@ MIDI 只有 note on / note off，没有包络。而音从阶跃边起止就是 c
 | 标签 | 字段 | 单位 | 意义 |
 | --- | --- | --- | --- |
 | `ST` | `playback.phase` | — | `IDLE` 未放 / `PLAY` 在放；只有驱动能把它推回 `IDLE` |
-| `SRC` | `playback.sound` | — | 下一次轻点会放的声音，`TAP` / `NOTICE` / `WARN` / `ERROR` / `RISE`，单击循环 |
+| `SRC` | `playback.sound` | — | 下一次轻点会放的声音，`TAP` / `NOTICE` / `WARN` / `ERROR` / `RISE`，轻点循环 |
 | `MUTE` | `playback.muted` | — | 只在锁存时出现，与 `CLIP` 同一种写法：它是一个状态不是一个事件 |
 | `PLY` | `playback.plays` | 次 | 真的放出去过的次数 |
 | `DRP` | `playback.dropped` | 次 | 落在 `PLAY` 上被丢掉的轻点 |

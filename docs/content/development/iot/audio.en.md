@@ -3,8 +3,8 @@ title = "Audio Metering Semantics"
 weight = 50
 sort_by = "weight"
 [extra]
-source_file_hash = "2fd50d5dc714f1f4bb97b023486722f173af6e7b"
-translated_at = "2026-11-25T14:49:09Z"
+source_file_hash = "a78acf48a17cc44ee4870f7f48e50dd7452d05d2"
+translated_at = "2026-11-26T09:55:45Z"
 +++
 
 # Audio Metering Semantics
@@ -17,7 +17,7 @@ The capture driver never stops. It is always folding the samples the I2S deliver
 
 Reading `ST` as "the recorder is running / stopped" gets two things wrong at once: recording makes the driver do no additional work, and stopping it makes the driver do no less.
 
-A capture poll is pure data path: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot channel the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a business-side click (`BusinessIntent::Audio(AudioIntent::Start)` / `Audio(AudioIntent::Stop)` in `state/manager/write.rs`), and only on the Audio page — a click on another page belongs to that page, and turns the page only when the page does not claim it.
+A capture poll is pure data path: it refreshes the envelope and raises zero semantics. The window therefore does not ride the intent bus — it goes over the single-slot channel the board is handed at wiring time (see [the three transmission shapes](@/development/iot/architecture.en.md)). Starting and stopping are decided only by a tap on the Audio page (`BusinessIntent::Audio(AudioIntent::Start)` / `Audio(AudioIntent::Stop)` in `state/manager/write.rs`); the physical button's click only turns the page.
 
 There are three phases: `IDLE` (nothing captured, the panel draws only `TAP TO REC` and no sweep), `REC` (follows the live envelope), and `STOP` (draws the latched copy). A click on either `IDLE` or `STOP` goes straight back to `REC`.
 

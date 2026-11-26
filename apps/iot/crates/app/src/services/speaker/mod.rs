@@ -9,7 +9,7 @@ use crate::shared::intent::{BusinessIntent, InputIntent, PlaybackAction};
 use crate::shared::model::{Command, DeviceState, Effects, PlaybackPhase};
 use crate::shared::page;
 use crate::shared::snapshot::FrameSnapshot;
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::text::format_u16;
 use iot_core::ui::{Style, Ui};
 
@@ -32,8 +32,7 @@ impl super::Service for SpeakerPage {
 impl super::LocalPage for SpeakerPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         match op.event {
-            InputEvent::Button(ButtonEvent::Click)
-            | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
+            InputEvent::Gesture(GestureEvent::Tap { .. }) => {
                 Some(BusinessIntent::Playback(PlaybackAction::Next))
             }
             InputEvent::Gesture(GestureEvent::LongPress { .. }) => Some(BusinessIntent::Playback(

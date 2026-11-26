@@ -10,7 +10,8 @@ use alloc::vec::Vec;
 use crate::services::{Services, descriptor, paint};
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{
-    BusinessIntent, MenuIntent, NavigationIntent, SettingsIntent, TextIntent, WidgetsIntent,
+    BusinessIntent, LightAction, MenuIntent, NavigationIntent, SettingsIntent, TextIntent,
+    WidgetsIntent,
 };
 use crate::shared::model::DeviceState;
 use crate::shared::route::PageId;
@@ -523,4 +524,30 @@ fn a_button_hold_goes_home_from_every_page_that_keeps_it() {
             "{page:?} kept the hold"
         );
     }
+}
+
+#[test]
+fn a_button_click_turns_every_page_that_has_one() {
+    let services = Services::default();
+    let click = op(InputEvent::Button(ButtonEvent::Click));
+    for page in cycled() {
+        assert_eq!(
+            translate(&click, &state_on(page, BREATH), &services),
+            Some(BusinessIntent::Navigation(NavigationIntent::NextPage)),
+            "{page:?} kept the click"
+        );
+    }
+    assert_eq!(
+        translate(&click, &state_on(PageId::Splash, BREATH), &services),
+        None,
+        "a transient page owns the panel"
+    );
+    assert_eq!(
+        translate(&click, &state_on(PageId::Headless, BREATH), &services),
+        Some(BusinessIntent::Light {
+            instance: 0,
+            action: LightAction::NextEffect,
+        }),
+        "a board with no panel has no page to turn"
+    );
 }

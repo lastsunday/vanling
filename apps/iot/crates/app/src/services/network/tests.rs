@@ -200,10 +200,10 @@ fn the_strip_is_the_page_s_own_control_and_the_bands_stop_above_it() {
 }
 
 #[test]
-fn the_button_is_the_strip_verb_and_the_setup_box_asks_about_its_passphrase() {
+fn the_button_turns_the_page_and_the_setup_box_asks_about_its_passphrase() {
     assert_eq!(
         on_network().ask(InputEvent::Button(ButtonEvent::Click)),
-        Some(BusinessIntent::Network(NetworkIntent::ScanNow))
+        Some(BusinessIntent::Navigation(NavigationIntent::NextPage))
     );
 
     let mut announcing = on_network();

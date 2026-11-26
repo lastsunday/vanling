@@ -16,6 +16,7 @@ impl super::Service for HeadlessPage {}
 
 impl super::LocalPage for HeadlessPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+        // No page to turn here, so the click stays on the lamp.
         match op.event {
             InputEvent::Button(ButtonEvent::Click)
             | InputEvent::Gesture(GestureEvent::Tap { .. }) => {

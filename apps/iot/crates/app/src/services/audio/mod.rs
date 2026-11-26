@@ -6,7 +6,7 @@ mod sweep;
 mod tests;
 
 use iot_core::drivers::audio::{dbfs, spl};
-use iot_core::drivers::input::{ButtonEvent, GestureEvent, InputEvent};
+use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::text::{format_dba, format_i32, format_u16};
 use iot_core::ui::{Canvas, Rect, Screen, Style, Ui};
 
@@ -35,8 +35,7 @@ impl super::Service for AudioPage {
 impl super::LocalPage for AudioPage {
     fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         match op.event {
-            InputEvent::Button(ButtonEvent::Click)
-            | InputEvent::Gesture(GestureEvent::Tap { .. }) => {
+            InputEvent::Gesture(GestureEvent::Tap { .. }) => {
                 let intent = if state.audio.phase == AudioPhase::Recording {
                     AudioIntent::Stop
                 } else {

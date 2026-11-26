@@ -1,28 +1,19 @@
-//! The Audio page's input contract: the button and the tap are its record control, and
-//! nowhere else's.
+//! The Audio page's input contract: the tap is its record control, and nowhere else's.
 
 use crate::shared::intent::AudioIntent;
 use crate::state::test_support::*;
 
 #[test]
-fn a_button_click_records_on_the_audio_page_and_does_nothing_elsewhere() {
-    let click = op(InputEvent::Button(ButtonEvent::Click));
+fn a_button_click_only_turns_the_page() {
     assert_eq!(
         translate(
-            &click,
+            &op(InputEvent::Button(ButtonEvent::Click)),
             &state_on(PageId::Audio, BREATH),
             &Services::default()
         ),
-        Some(BusinessIntent::Audio(AudioIntent::Start)),
-        "on the audio page the button is the record control, the same as the tap"
+        Some(BusinessIntent::Navigation(NavigationIntent::NextPage)),
+        "the button is the page cycle, not the record control"
     );
-    for page in [PageId::Input, PageId::Attitude, PageId::Camera] {
-        assert_eq!(
-            translate(&click, &state_on(page, BREATH), &Services::default()),
-            Some(BusinessIntent::Navigation(NavigationIntent::NextPage)),
-            "{page:?} does not consume the click, so it turns the page"
-        );
-    }
 }
 
 #[test]

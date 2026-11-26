@@ -10,8 +10,8 @@ use iot_core::drivers::input::{ButtonEvent, InputEvent};
 pub struct NavService;
 
 impl NavService {
-    /// The button fallback when a panel page did not consume it: a click turns the page, a hold
-    /// goes home. A board with no panel has no pages to turn.
+    /// The button's own bindings: a click turns the page, a hold goes home. A board with no
+    /// panel has no pages to turn.
     pub(super) fn from_anywhere(op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
         if !state.has_screen() || state.page() == PageId::Headless {
             return None;
