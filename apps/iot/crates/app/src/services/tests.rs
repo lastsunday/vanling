@@ -97,8 +97,8 @@ fn fingerprint(frame: &[u8]) -> u32 {
 
 /// One line per page and debug state. Regenerate with `PAGE_GOLDEN_UPDATE=1`.
 const GOLDEN: [(&str, bool, u32); 34] = [
-    ("menu", false, 0x593001cd),
-    ("menu", true, 0xe221dd7d),
+    ("menu", false, 0xa7812a81),
+    ("menu", true, 0xe3a13e31),
     ("input", false, 0xc18e7dc5),
     ("input", true, 0xb334d787),
     ("attitude", false, 0x5d452faf),

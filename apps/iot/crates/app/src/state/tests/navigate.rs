@@ -146,10 +146,11 @@ fn a_menu_button_opens_its_page_from_a_tap() {
     assert_eq!(manager.state().page(), PageId::Menu);
 
     // Ask the page where its button is, so a change to the head or the grid cannot strand
-    // this test on a coordinate that no longer holds a button.
+    // this test on a coordinate that no longer holds a button. `Attitude` sits in the first
+    // band, so it is on screen at offset 0.
     let (x, y) = crate::services::menu::MenuPage::default()
-        .button_centre(PageId::Text)
-        .expect("`Text` is listed");
+        .button_centre(PageId::Attitude)
+        .expect("`Attitude` is listed");
     feed_input(
         &mut manager,
         op(InputEvent::Gesture(GestureEvent::Press { id: 0, x, y })),
@@ -164,5 +165,5 @@ fn a_menu_button_opens_its_page_from_a_tap() {
             at_ms: 40,
         })),
     );
-    assert_eq!(manager.state().page(), PageId::Text);
+    assert_eq!(manager.state().page(), PageId::Attitude);
 }

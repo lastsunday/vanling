@@ -1,4 +1,4 @@
-//! The Menu page: every page the board can back, one button away, three to a row.
+//! The Menu page: every page the board can back, grouped by what it demonstrates, three to a row.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::TOUCH_MIN;
@@ -18,6 +18,7 @@ use crate::shared::ui::scroll::{
 };
 use crate::shared::ui::state::State;
 use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{Button, Chip};
 
 use super::{Descriptor, Repaint};
@@ -26,8 +27,53 @@ const AREA: ScrollId = ScrollId::new(1);
 const COLUMNS: usize = 3;
 const BUTTON_W: i16 = 98;
 const GAP: i16 = 6;
-const COUNT: usize = PageId::ALL.len() - 2;
-const ROWS: usize = COUNT.div_ceil(COLUMNS);
+
+/// One named band of the grid, in [`PageId::ALL`] order so the menu and the cycle stay one list.
+struct Section {
+    name: Msg,
+    pages: &'static [PageId],
+}
+
+const SECTIONS: [Section; 3] = [
+    Section {
+        name: Msg::SectionDevices,
+        pages: &[
+            PageId::Input,
+            PageId::Attitude,
+            PageId::Audio,
+            PageId::Speaker,
+            PageId::Camera,
+            PageId::Network,
+            PageId::Env,
+        ],
+    },
+    Section {
+        name: Msg::SectionUi,
+        pages: &[
+            PageId::Text,
+            PageId::Widgets,
+            PageId::Advanced,
+            PageId::Feedback,
+            PageId::Extended,
+            PageId::Data,
+            PageId::List,
+        ],
+    },
+    Section {
+        name: Msg::SectionGlow,
+        pages: &[PageId::Lighting],
+    },
+];
+
+const COUNT: usize = {
+    let mut count = 0;
+    let mut index = 0;
+    while index < SECTIONS.len() {
+        count += SECTIONS[index].pages.len();
+        index += 1;
+    }
+    count
+};
 
 /// The settings chips sit outside the grid, so their tags stay clear of the page codes.
 const TAG_LANG_EN: u16 = 100;
@@ -354,25 +400,26 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             },
         );
         page::scroller(ui, AREA, snapshot.pages.menu.area, |ui| {
-            for row in 0..ROWS {
-                ui.row(Style::new().gap(GAP), |ui| {
-                    for column in 0..COLUMNS {
-                        let Some(page) = entry(row * COLUMNS + column) else {
-                            continue;
-                        };
-                        let state = if page.is_backed(backed) {
-                            State::NONE
-                        } else {
-                            State::DISABLED
-                        };
-                        ui.add(
-                            Button::new(page_name(page).bytes(lang))
-                                .width(BUTTON_W)
-                                .tag(page.code() as u16 + 1)
-                                .state(state),
-                        );
-                    }
-                });
+            let theme = *Theme::of(snapshot.theme);
+            for section in &SECTIONS {
+                page::section(ui, section.name.bytes(lang), &theme);
+                for row in section.pages.chunks(COLUMNS) {
+                    ui.row(Style::new().gap(GAP), |ui| {
+                        for &page in row {
+                            let state = if page.is_backed(backed) {
+                                State::NONE
+                            } else {
+                                State::DISABLED
+                            };
+                            ui.add(
+                                Button::new(page_name(page).bytes(lang))
+                                    .width(BUTTON_W)
+                                    .tag(page.code() as u16 + 1)
+                                    .state(state),
+                            );
+                        }
+                    });
+                }
             }
         });
     });
@@ -434,16 +481,12 @@ fn page_name(page: PageId) -> Msg {
     }
 }
 
-/// Every page the menu offers, in the grid's own order. A board that cannot back one still
-/// lists it, greyed, so the grid does not change shape with the wiring.
+/// Every page the menu offers, in the grid's own order.
+#[cfg(test)]
 fn entries() -> impl Iterator<Item = PageId> {
-    PageId::ALL
-        .into_iter()
-        .filter(|page| !page.is_transient() && *page != PageId::Menu)
-}
-
-fn entry(index: usize) -> Option<PageId> {
-    entries().nth(index)
+    SECTIONS
+        .iter()
+        .flat_map(|section| section.pages.iter().copied())
 }
 
 #[cfg(test)]
@@ -500,6 +543,34 @@ mod tests {
         assert!(!listed.contains(&PageId::Menu));
         assert!(!listed.contains(&PageId::Splash));
         assert!(listed.contains(&PageId::Camera));
+    }
+
+    #[test]
+    fn every_listed_page_sits_in_exactly_one_section() {
+        let mut listed = entries().collect::<alloc::vec::Vec<_>>();
+        listed.sort_by_key(|page| page.code());
+        let mut expected = PageId::ALL
+            .into_iter()
+            .filter(|page| !page.is_transient() && *page != PageId::Menu)
+            .collect::<alloc::vec::Vec<_>>();
+        expected.sort_by_key(|page| page.code());
+        assert_eq!(listed, expected);
+        assert!(SECTIONS.iter().all(|section| !section.pages.is_empty()));
+    }
+
+    #[test]
+    fn every_section_name_fits_the_grid() {
+        let metrics = iot_core::ui::font::Metrics::at(12);
+        for section in &SECTIONS {
+            for lang in crate::shared::i18n::Lang::ALL {
+                let width = metrics.measure(section.name.bytes(*lang));
+                assert!(
+                    width <= usize::try_from(page::CONTENT_W).unwrap(),
+                    "{:?} in {lang:?} is {width} px wide",
+                    section.name
+                );
+            }
+        }
     }
 
     #[test]
@@ -567,50 +638,60 @@ mod tests {
     fn the_gaps_between_buttons_are_not_buttons() {
         let mut page = MenuPage::default();
         let area = page.scroll.areas()[0].rect;
-        assert_eq!(page_at(&page, area.x, area.y), entry(0));
-        assert_eq!(page_at(&page, area.x + i32::from(BUTTON_W), area.y), None);
-        assert_eq!(
-            page_at(&page, area.x, area.y + i32::from(TOUCH_MIN as i16)),
-            None
-        );
         assert_eq!(page_at(&page, area.x - 1, area.y), None);
 
-        // The grid is `COLUMNS` wide, so the last row is as long as `COUNT` leaves it.
-        let rest = COUNT % COLUMNS;
-        let last_row = if rest == 0 { COLUMNS } else { rest };
-        let first = COUNT - last_row;
-        let last = page
-            .tags
-            .rect(entry(first).expect("a page").code() as u16 + 1)
-            .expect("the last row is laid out");
-        scroll_to(&mut page, last.y + last.h / 2);
-        let area = page.scroll.areas()[0].rect;
-        let column = |index: usize| area.x + i32::from(BUTTON_W + GAP) * index as i32;
-        assert_eq!(
-            page_at(&page, area.x, area.bottom() - 1),
-            entry(first),
-            "the last row starts under the first column"
-        );
-        for index in 1..COLUMNS {
-            assert_eq!(
-                page_at(&page, column(index), area.bottom() - 1),
-                if index < last_row {
-                    entry(first + index)
-                } else {
-                    None
-                },
-                "column {index} of the last row"
-            );
+        for section in &SECTIONS {
+            for row in section.pages.chunks(COLUMNS) {
+                let first = row[0];
+                let rect = page
+                    .tags
+                    .rect(first.code() as u16 + 1)
+                    .expect("the page is listed");
+                scroll_to(&mut page, rect.y + rect.h / 2);
+                let offset = i32::from(page.scroll.areas()[0].offset);
+
+                for (index, &expected) in row.iter().enumerate() {
+                    let rect = page
+                        .tags
+                        .rect(expected.code() as u16 + 1)
+                        .expect("the page is listed");
+                    let x = rect.x + rect.w / 2;
+                    let y = rect.y + rect.h / 2 - offset;
+                    assert_eq!(page_at(&page, x, y), Some(expected), "{expected:?}");
+                    assert_eq!(
+                        page_at(&page, x, rect.bottom() - offset),
+                        None,
+                        "the row pitch leaves air under {expected:?}"
+                    );
+                    if index + 1 < row.len() {
+                        assert_eq!(
+                            page_at(&page, rect.right() + i32::from(GAP) / 2, y),
+                            None,
+                            "the gap after {expected:?}"
+                        );
+                    }
+                }
+
+                let last = row[row.len() - 1];
+                let rect = page
+                    .tags
+                    .rect(last.code() as u16 + 1)
+                    .expect("the page is listed");
+                let y = rect.y + rect.h / 2 - offset;
+                for step in 1..=COLUMNS - row.len() {
+                    let x = rect.right()
+                        + i32::from(GAP)
+                        + i32::from(BUTTON_W) * (step as i32 - 1)
+                        + i32::from(BUTTON_W) / 2;
+                    assert_eq!(
+                        page_at(&page, x, y),
+                        None,
+                        "column {} past {last:?} is empty",
+                        row.len() + step
+                    );
+                }
+            }
         }
-        assert_eq!(
-            page_at(&page, area.right() - 1, area.bottom() - 1),
-            if last_row == COLUMNS {
-                entry(COUNT - 1)
-            } else {
-                None
-            },
-            "the last row holds only the buttons it has"
-        );
     }
 
     fn apply(page: &mut MenuPage, intent: BusinessIntent) {
