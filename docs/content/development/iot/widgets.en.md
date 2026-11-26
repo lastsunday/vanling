@@ -2,7 +2,7 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "c77bb74521b56b46bcfe6aa88705eba3b6316fea"
+source_file_hash = "194de0ef99fdab5a6c8dd5df03e78dfc852649c5"
 translated_at = "2026-11-26T13:45:00Z"
 +++
 
@@ -269,7 +269,11 @@ Navigation, composed, planning, records, feedback, input, data and overlay, all 
 | `Heatmap` | C | 53×7 cells (4 px cell, 1 px gap); levels come deterministically from a seed, and `cell_at` shares the paint's geometry |
 | `ReorderableList` | C | 32 px rows with a 44×44 handle at the right owning the drag; a move is `remove(old)` → `insert(clamped)` on release |
 
-### Feedback
+#### Repaint extent
+
+A wheel page redraws only the blocks that moved: `Planner`'s dialog wheel reports the column that moved, the inline hour wheel reports "the visible wheel rect plus the reading line that prints its hour" (the snapshot publishes `inline_box` / `hour_line`, already intersected with the scroll viewport), and `services::Descriptor::with_partial` hands that to the painter; a page that cannot name its pixels falls back to a whole frame. A partial frame first lays the ground back down inside the damage — page text is drawn by turning the ground over, so painting the same block twice would toggle it — which is why `Picker`'s scrim is split into bands and a card-body repaint touches no blend. Measurements and numbers are in `records/iot/panel-buffering.md`.
+
+## Feedback
 
 | Widget | Shape | Notes |
 | --- | --- | --- |
@@ -305,7 +309,7 @@ Navigation, composed, planning, records, feedback, input, data and overlay, all 
 | `Dialog` | C | Opaque scrim and a centred card; `action_at` splits OK from cancel |
 | `PopupMenu` | C | Opaque scrim and a three-row menu hung under its trigger; `item_at` splits rows, the selected one filled |
 | `Sheet` | C | Opaque scrim and an edge drawer (`Edge::Bottom` / `Edge::Left`); `row_at` splits rows, the demo uses the bottom edge |
-| `Picker` (dialog) | C | A scrim, a centred card, a title, a body and Cancel/OK; the card is `min(rect − 2×8, 360×480)` and the action band 32~44; `action_at` splits OK, cancel and a scrim tap |
+| `Picker` (dialog) | C | A scrim, a centred card, a title, a body and Cancel/OK; the card is `min(rect − 2×8, 360×480)` and the action band 32~44; `action_at` splits OK, cancel and a scrim tap; the scrim covers only the bands around the card and its four corners, so repainting the card's body costs no blend |
 
 Every tappable control reports a tag: widgets through `Style::tag`, canvas slots (Dialog, Keypad, Table, Chart, Gauge, SwipeAction) on the slot itself, all measured once at construction with `TagTable::measure`. A gallery's `bind` returns only `Gallery { wire, intent }`, where `wire` is the route code, so `shared::intent` does not depend on `shared::route`. A canvas slot's hit test uses the rectangle from `Ui::paint_rect`, the same geometry as the paint, and Table rows, Chart bars and Keypad cells reuse the equal-split arithmetic their painters use. Overlay items (three menu rows, two sheet rows) are not declared nodes; `bind` splits them with `item_at` / `row_at`.
 

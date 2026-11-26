@@ -4,8 +4,8 @@ description = "A PSRAM staging copy raised the panel from 24 to 28 fps but doubl
 weight = 25
 sort_by = "weight"
 [extra]
-source_file_hash = "b8d3d2cfd938cfe6bb0e103a89f6a8db1f92813a"
-translated_at = "2026-11-25T14:49:09Z"
+source_file_hash = "3c69dfd0a313bec6d6ee3f68ab11998c4ae9be20"
+translated_at = "2026-11-26T14:55:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -59,6 +59,24 @@ Striped double buffering (LVGL's partial-buffer semantics) is the only theoretic
 ## To raise the panel frame rate, cut the paint first
 
 `[measured]` A single-buffered frame is paint 19–20 ms + wire 15–16 ms. Double buffering can only touch the second half, and cannot touch it without PSRAM. The first half has no such limit: the Menu demo's paint is 19 ms (`fill` is only 1–2 ms), and cutting that is the only path that needs no extra memory.
+
+## Partial repaint: draw only the pixels that changed
+
+`[measured]` When a page can say which blocks of pixels this frame changed, the painter redraws and ships only those blocks, `keeps_frame` stays true, and the bsp does not fill the panel. The entry point is `services::Descriptor::with_partial`: the page returns `Partial { damage, redraw }`, where `redraw` is either "draw this custom slot only" or "repaint the whole page clipped to the damage"; `AppPainter::plan` asks after the scroll check and falls back to a full frame when it gets nothing.
+
+`[measured]` The planner page's two wheels each report their own pixels: the dialog wheel reports only the column that moved (`time_picker::column_rect` / `date_picker::column_rect`), the month grid reports its whole body, and the inline hour wheel reports "the wheel's visible rect plus the reading line that prints its hour" (both published by `PlannerSnapshot::inline_box` / `hour_line`, already intersected with the scroll viewport). A partial frame first lays the ground back down inside the damage: page text is drawn by turning the ground over, so painting the same block twice would toggle it (a new pixel-level test pins this); the dialog card then covers the part that is card with its own opaque `surface`.
+
+`[measured]` Same S3, `320×240`, debug build, one window per 2 s (a temporary bench drove the wheels; removed before landing):
+
+| Metric | Whole frame | Dialog wheel (one column) | Inline hour wheel (wheel visible) |
+| --- | --- | --- | --- |
+| repaints / 2 s | 38 | 100–101 | 100–101 |
+| frame rate | ≈19 fps | ≈50 fps | ≈50 fps |
+| `held the executor` | 66% | 33% | 46–50% |
+| `worst render` | 36 ms | 6–9 ms | 9–13 ms |
+| `worst write` | 10 ms | 4–5 ms | 3 ms |
+
+50 fps is the `STEP_MS = 20` ceiling, not the renderer's ability; the whole-frame column is the same bench's baseline. There is no gain beyond frame rate: the pixels are identical to a whole-frame repaint point for point (a test compares a partial frame with the same frame painted whole).
 
 ## Breath repaints: the cause was not the buffer
 

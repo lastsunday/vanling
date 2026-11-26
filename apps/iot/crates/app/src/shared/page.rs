@@ -1,7 +1,7 @@
 //! The page's furniture: margins, line rhythm, title, scrolling body, and the reading row.
 
 use iot_core::ui::panel;
-use iot_core::ui::{Length, ScrollId, Style, Ui};
+use iot_core::ui::{Length, NodeId, ScrollId, Style, Ui};
 
 use crate::shared::snapshot::ScrollAreaView;
 use crate::shared::ui::scroll::{BAR, MIN_THUMB, thumb};
@@ -98,9 +98,9 @@ pub fn section(ui: &mut Ui<'_, '_>, run: &[u8], theme: &Theme) {
     caption(ui, run, theme);
 }
 
-pub fn reading(ui: &mut Ui<'_, '_>, label: &[u8], value: &[u8]) {
+pub fn reading(ui: &mut Ui<'_, '_>, label: &[u8], value: &[u8]) -> NodeId {
     let mut buf = [0u8; 96];
-    ui.text(line(&mut buf, label, value), Style::new().nowrap());
+    ui.text(line(&mut buf, label, value), Style::new().nowrap())
 }
 
 /// `label` in its slot, `value` right-aligned in its own; one width either way.

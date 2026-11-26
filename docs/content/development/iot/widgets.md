@@ -302,7 +302,7 @@ pub enum Slot<'a> {
 | `Dialog` | C | 不透明遮罩 + 居中卡片，`action_at` 分确定/取消 |
 | `PopupMenu` | C | 不透明遮罩 + 挂在触发按钮下的三行菜单，`item_at` 分行，选中行高亮 |
 | `Sheet` | C | 不透明遮罩 + 贴边抽屉（`Edge::Bottom` / `Edge::Left`），`row_at` 分行，演示用底部 |
-| `Picker`（弹窗框） | C | scrim + 居中卡片 + 标题 + body + Cancel/OK；卡片 `min(rect − 2×8, 360×480)`，动作带 32~44，`action_at` 分确定 / 取消 / 点遮罩 |
+| `Picker`（弹窗框） | C | scrim + 居中卡片 + 标题 + body + Cancel/OK；卡片 `min(rect − 2×8, 360×480)`，动作带 32~44，`action_at` 分确定 / 取消 / 点遮罩；scrim 只铺卡片四周的条带与四个角，卡片 body 重绘不产生混合 |
 
 所有可点控件都报 tag：Widget 用 `Style::tag`，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag，构造期 `TagTable::measure` 量一次；画廊的 `bind` 只回 `Gallery { wire, intent }`，`wire` 是路由码，`shared::intent` 不因此引用 `shared::route`。Canvas 槽的命中用 `Ui::paint_rect` 量到的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格再按绘制时的同一套等分算子格。浮层项（菜单三行、抽屉两行）不是声明节点，`bind` 用 `item_at` / `row_at` 直接分。
 
@@ -331,6 +331,10 @@ pub enum Slot<'a> {
 - 页面 custom 槽高度用 `page::TOUCH` 的整数倍，例如表盘/图表两行、键格四行，不写示例魔法数。
 - 日期/时间组件不读面板常量，也不写死 306 / 42 / 32：`Wheel` 的可见行由 `rect.h / 28` 取 3~7 的奇数、行高 `rect.h / 可见行` 封顶 44；`MonthGrid` 的格宽 `(rect.w − 6×1) / 7`、格高 `(rect.h − 12) / 6`，都封顶 48；`Picker` 卡片 `min(rect − 2×8, 360×480)` 居中。320×228、480×320、800×600、240×180 四组尺寸各有一条测试。
 - 父层按 `fits` 选形态：`MonthGrid::fits` 要求 28 px 格，320×228 的弹窗 body 只有 140 px，所以 `DatePicker::kind` 自动选三滚轮；480×320 以上才出月格。小屏不把月格压到 21 px。
+
+### 重绘范围
+
+滚轮页只重绘动的那几块像素：`Planner` 的弹窗滚轮报动的那一列，内联小时轮报「可见滚轮矩形 + 打印小时的读数行」（快照发布 `inline_box` / `hour_line`，已和滚动视口求交），经 `services::Descriptor::with_partial` 交给 painter；页面报不出就退回整帧。partial 帧先把 damage 铺回底色——页面文字靠反色地面绘制，同一块画两遍会来回翻转——所以 `Picker` 的 scrim 拆成条带，卡片 body 重绘不碰混合。实测与数字见 `records/iot/panel-buffering.md`。
 
 ## Feed
 

@@ -57,6 +57,24 @@ Menu demo 页（构建期未设 `IOT_BOOT_PAGE`），`[DISPLAY]` 稳态三窗：
 
 `[实测]` 单缓冲每帧 = paint 19–20 ms + wire 15–16 ms。双缓冲能动的只有后半段，而不走 PSRAM 就动不了。前半段没有这个限制：Menu demo 的 paint 是 19 ms（`fill` 只占 1–2 ms），把它压下来是唯一不需要额外内存的路。
 
+## 局部重绘：只画变了的像素
+
+`[实测]` 一个页面能说清「这一帧只改了哪几块像素」时，painter 只重绘、只下发这几块，`keeps_frame` 仍为真，bsp 不整屏填充。入口是 `services::Descriptor::with_partial`：页面返回 `Partial { damage, redraw }`，`redraw` 是「只画这个 custom 槽」或「整页按 damage 裁剪重画」；`AppPainter::plan` 在 scroll 之后问它，拿不到就退回整帧。
+
+`[实测]` 规划页的两个滚轮分别报自己的像素：弹窗滚轮只报动的那一列（`time_picker::column_rect` / `date_picker::column_rect`），月格报整个 body，内联小时轮报「滚轮可见矩形 + 打印小时的读数行」（两者由 `PlannerSnapshot::inline_box` / `hour_line` 发布，已经和滚动视口求交）。partial 帧先把 damage 铺回底色：页面文字靠反色地面绘制，同一块画两遍会来回翻转（新增的像素级测试钉住这一点）；弹窗卡片随后用自己的不透明 `surface` 盖住属于它的那部分。
+
+`[实测]` 同一块 S3、`320×240`、debug 构建、每 2 s 一窗（临时 bench 驱动滚轮，收工前已删）：
+
+| 指标 | 整帧 | 弹窗滚轮（只报一列） | 内联小时轮（轮子可见） |
+| --- | --- | --- | --- |
+| repaints / 2 s | 38 | 100–101 | 100–101 |
+| 帧率 | ≈19 fps | ≈50 fps | ≈50 fps |
+| `held the executor` | 66% | 33% | 46–50% |
+| `worst render` | 36 ms | 6–9 ms | 9–13 ms |
+| `worst write` | 10 ms | 4–5 ms | 3 ms |
+
+50 fps 是 `STEP_MS = 20` 的上限，不是渲染能力；整帧那列是同一 bench 的基线。帧率之外没有别的收益：像素与整帧重绘逐点相同（测试对比同一帧的 partial 与整帧结果）。
+
 ## 呼吸重绘：真因不在缓冲
 
 > 以下三节记录 2026-11 中旬的实现；入口现在是 `DeviceState.glow` + `LightingView.breath`（`GlowScope` 三档 + `GlowPattern` 三档），背光独立、0 即全黑。见 `development/iot/architecture.md`。

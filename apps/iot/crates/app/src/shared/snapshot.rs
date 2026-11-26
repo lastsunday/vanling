@@ -270,6 +270,10 @@ pub struct PlannerSnapshot {
     pub val: u8,
     /// The inline hour wheel.
     pub inline: WheelView,
+    /// The part of the wheel the page shows, and the reading line that prints its hour. Both
+    /// are the pixels an inline turn moves.
+    pub inline_box: Rect,
+    pub hour_line: Rect,
     pub dialog: PickerView,
 }
 
@@ -294,6 +298,8 @@ impl Default for PlannerSnapshot {
                 wrap: true,
                 moving: false,
             },
+            inline_box: Rect::default(),
+            hour_line: Rect::default(),
             dialog: PickerView::default(),
         }
     }

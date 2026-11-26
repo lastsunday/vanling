@@ -25,12 +25,41 @@ pub struct AppPainter {
     damage: FrameDamage,
 }
 
+/// What the frame in the buffer can be reused for: a scroll to blit, the pixels the page says
+/// it changed, or nothing.
+#[derive(Clone, Copy)]
+enum Plan {
+    Full,
+    Shift(ScrollShift),
+    Partial(crate::services::Partial),
+}
+
 impl AppPainter {
     pub const fn new(overlay: bool) -> Self {
         Self {
             overlay,
             last: None,
             damage: FrameDamage::FULL,
+        }
+    }
+
+    /// How much of the buffer `next` may keep. A theme or page change moves every pixel, so it
+    /// is always a full repaint.
+    fn plan(&self, next: &FrameSnapshot) -> Plan {
+        let Some(prev) = self
+            .last
+            .as_ref()
+            .filter(|prev| prev.theme == next.theme && prev.page == next.page)
+        else {
+            return Plan::Full;
+        };
+        let descriptor = descriptor(next.page);
+        if let Some(shift) = descriptor.scroll_shift(prev, next) {
+            return Plan::Shift(shift);
+        }
+        match descriptor.partial_hint(prev, next) {
+            Some(partial) if !partial.damage.is_full() => Plan::Partial(partial),
+            _ => Plan::Full,
         }
     }
 
@@ -64,13 +93,9 @@ impl ScreenPainter for AppPainter {
             self.reset();
             return;
         };
-        let shift = self
-            .last
-            .as_ref()
-            .filter(|prev| prev.theme == frame.theme)
-            .and_then(|prev| descriptor(frame.page).scroll_shift(prev, frame));
-        let repaint = match shift {
-            Some(shift) => {
+        let plan = self.plan(frame);
+        let repaint = match plan {
+            Plan::Shift(shift) => {
                 scroll_blit(target.frame, target.width, &shift);
                 let (mut repaint, mut ship) =
                     scroll_damage(&shift, target.width as u16, target.height as u16);
@@ -88,13 +113,38 @@ impl ScreenPainter for AppPainter {
                 self.damage = ship;
                 repaint
             }
-            None => {
+            Plan::Partial(mut partial) => {
+                // The badge sits below every dialog, so a partial frame leaves it stale unless
+                // it is named too.
+                if self.overlay {
+                    partial.damage.add(footer_damage());
+                }
+                // Page text is drawn by turning the ground over, so a region painted twice
+                // would toggle: every partial region starts from the ground again. The dialog
+                // card then lays its own opaque surface over the part of it that is card.
+                if let Some(ground) = target.ground {
+                    clear_damage(target.frame, target.width, ground, partial.damage);
+                }
+                self.damage = partial.damage;
+                partial.damage
+            }
+            Plan::Full => {
                 self.damage = FrameDamage::FULL;
                 FrameDamage::FULL
             }
         };
         let mut panel = self.panel(target, context, repaint, frame.theme);
-        paint(frame.page, frame, &mut panel);
+        match plan {
+            // The page around the slot is the frame the buffer already holds, so a slot-only
+            // frame draws it and leaves the rest alone.
+            Plan::Partial(partial) => match partial.redraw {
+                crate::services::Redraw::Slot { slot, rect } => {
+                    panel.slot(frame, descriptor(frame.page).custom(), slot, rect)
+                }
+                crate::services::Redraw::Page => paint(frame.page, frame, &mut panel),
+            },
+            _ => paint(frame.page, frame, &mut panel),
+        }
         self.last = Some(*frame);
     }
 
@@ -127,9 +177,7 @@ impl ScreenPainter for AppPainter {
         let Some(next) = snapshot.downcast_ref::<FrameSnapshot>() else {
             return false;
         };
-        self.last.as_ref().is_some_and(|prev| {
-            prev.theme == next.theme && descriptor(next.page).scroll_shift(prev, next).is_some()
-        })
+        !matches!(self.plan(next), Plan::Full)
     }
 
     fn reset(&mut self) {
@@ -256,6 +304,7 @@ mod tests {
     use crate::services::{Services, descriptor};
     use crate::shared::route::PageId;
     use crate::shared::snapshot::{PageSnapshot, ScrollAreaView, TEXT_AREAS, TextSnapshot};
+    use crate::shared::ui::theme::Theme;
     use alloc::vec;
     use iot_core::ui::Rect;
 
@@ -317,6 +366,219 @@ mod tests {
             .filter(|rect| rect.x == x && rect.w == 100)
             .map(|rect| (rect.y, rect.h))
             .collect()
+    }
+
+    fn dialog_frame(minute: u16) -> FrameSnapshot {
+        use crate::shared::snapshot::PickerOpen;
+        use crate::shared::ui::widgets::time_picker::TimeView;
+        let mut frame = FrameSnapshot {
+            page: PageId::Planner,
+            ..FrameSnapshot::default()
+        };
+        let wheel = |position: i32| crate::shared::ui::widgets::WheelView {
+            position,
+            count: 60,
+            wrap: true,
+            moving: true,
+        };
+        frame.pages.planner.dialog.open = PickerOpen::Time;
+        frame.pages.planner.dialog.time = TimeView {
+            wheels: [
+                wheel(9 * 256),
+                wheel(i32::from(minute) * 256),
+                wheel(30 * 256),
+            ],
+            columns: 3,
+        };
+        frame
+    }
+
+    /// The minute column of the dialog the planner page declares over the whole panel.
+    fn minute_column() -> DamageRect {
+        let body = crate::shared::ui::widgets::picker::frame(Rect::new(0, 0, 320, 228)).body;
+        let column = crate::shared::ui::widgets::time_picker::column_rect(body, 3, 1);
+        DamageRect::new(
+            column.x as u16,
+            column.y as u16,
+            column.w as u16,
+            column.h as u16,
+        )
+    }
+
+    #[test]
+    fn a_dialog_wheel_frame_ships_only_the_column_that_moved() {
+        let context = ScreenContext {
+            instance: 0,
+            fps: 60,
+            spl_offset_db: 100,
+            stack_probe: None,
+        };
+        let mut painter = AppPainter::new(false);
+        let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
+        painter.last = Some(dialog_frame(5));
+        assert!(
+            painter.keeps_frame(&dialog_frame(6)),
+            "a wheel under an open card leaves the card's own pixels alone"
+        );
+        painter.paint(
+            ScreenTarget {
+                frame: &mut frame,
+                width: WIDTH,
+                height: HEIGHT,
+                ground: Some(Rgb(0, 0, 0)),
+            },
+            context,
+            &dialog_frame(6),
+        );
+        assert_eq!(painter.damage().rects(), &[minute_column()]);
+        let column = minute_column();
+        assert_eq!(
+            pixel(&frame, usize::from(column.x) + 1, usize::from(column.y) + 1),
+            rgb565(Theme::of(ThemeId::Dark).surface.rgb888()),
+            "the column was laid back down as the card"
+        );
+        assert_eq!(
+            pixel(&frame, 0, 0),
+            0xABAB,
+            "a pixel outside the column is still the one the last frame left"
+        );
+    }
+
+    #[test]
+    fn a_partial_column_matches_the_same_frame_painted_whole() {
+        let context = ScreenContext {
+            instance: 0,
+            fps: 60,
+            spl_offset_db: 100,
+            stack_probe: None,
+        };
+        let ground = Some(Rgb(0, 0, 0));
+        let whole = {
+            let mut painter = AppPainter::new(false);
+            let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
+            painter.paint(
+                ScreenTarget {
+                    frame: &mut frame,
+                    width: WIDTH,
+                    height: HEIGHT,
+                    ground,
+                },
+                context,
+                &dialog_frame(6),
+            );
+            frame
+        };
+        let mut painter = AppPainter::new(false);
+        painter.last = Some(dialog_frame(5));
+        let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
+        painter.paint(
+            ScreenTarget {
+                frame: &mut frame,
+                width: WIDTH,
+                height: HEIGHT,
+                ground,
+            },
+            context,
+            &dialog_frame(6),
+        );
+        let column = minute_column();
+        for y in usize::from(column.y)..usize::from(column.bottom()) {
+            for x in usize::from(column.x)..usize::from(column.right()) {
+                assert_eq!(
+                    pixel(&frame, x, y),
+                    pixel(&whole, x, y),
+                    "the column at ({x}, {y}) is the one a whole repaint leaves"
+                );
+            }
+        }
+    }
+
+    /// The planner page scrolled down to the inline hour wheel, at `hour`.
+    fn inline_frame(hour: u8) -> FrameSnapshot {
+        let mut page = crate::services::planner::PlannerPage::default();
+        page.park(300);
+        let mut planner = page.snapshot();
+        planner.hour = hour;
+        planner.inline = crate::shared::ui::widgets::WheelView {
+            position: i32::from(hour) * 256,
+            count: 24,
+            wrap: true,
+            moving: true,
+        };
+        let mut frame = FrameSnapshot {
+            page: PageId::Planner,
+            ..FrameSnapshot::default()
+        };
+        frame.pages.planner = planner;
+        frame
+    }
+
+    #[test]
+    fn an_inline_wheel_frame_repaints_only_the_wheel_and_its_reading() {
+        let context = ScreenContext {
+            instance: 0,
+            fps: 60,
+            spl_offset_db: 100,
+            stack_probe: None,
+        };
+        let ground = Some(Rgb(0, 0, 0));
+        let whole = {
+            let mut painter = AppPainter::new(false);
+            let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
+            painter.paint(
+                ScreenTarget {
+                    frame: &mut frame,
+                    width: WIDTH,
+                    height: HEIGHT,
+                    ground,
+                },
+                context,
+                &inline_frame(10),
+            );
+            frame
+        };
+        let mut painter = AppPainter::new(false);
+        painter.last = Some(inline_frame(9));
+        let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
+        painter.paint(
+            ScreenTarget {
+                frame: &mut frame,
+                width: WIDTH,
+                height: HEIGHT,
+                ground,
+            },
+            context,
+            &inline_frame(10),
+        );
+        let planner = inline_frame(10).pages.planner;
+        let damage = |rect: Rect| {
+            DamageRect::new(rect.x as u16, rect.y as u16, rect.w as u16, rect.h as u16)
+        };
+        assert_eq!(
+            painter.damage().rects(),
+            &[damage(planner.inline_box), damage(planner.hour_line)],
+            "the wheel and the reading line are the only pixels that moved"
+        );
+        for rect in [planner.inline_box, planner.hour_line] {
+            for y in rect.y..rect.bottom() {
+                for x in rect.x..rect.right() {
+                    assert_eq!(
+                        pixel(&frame, x as usize, y as usize),
+                        pixel(&whole, x as usize, y as usize),
+                        "the scroller at ({x}, {y}) is the one a whole repaint leaves"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_dialog_opening_is_still_a_full_repaint() {
+        let mut painter = AppPainter::new(false);
+        painter.last = Some(dialog_frame(5));
+        let mut opened = dialog_frame(5);
+        opened.pages.planner.dialog.open = crate::shared::snapshot::PickerOpen::None;
+        assert!(!painter.keeps_frame(&opened));
     }
 
     #[test]

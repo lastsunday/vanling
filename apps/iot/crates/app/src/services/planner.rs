@@ -3,9 +3,10 @@
 //! share one geometry.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
+use iot_core::drivers::surface::{DamageRect, FrameDamage};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{Canvas, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{Canvas, NodeId, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
@@ -20,12 +21,12 @@ use crate::shared::ui::scroll::{BAR, Drag, ScrollConfig};
 use crate::shared::ui::tag::TagTable;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
-    Button, Picker, WheelState, calendar, color_picker, date_picker, picker, rating, time_picker,
-    wheel,
+    Button, Picker, WheelState, WheelView, calendar, color_picker, date_picker, picker, rating,
+    time_picker, wheel,
 };
 
 use super::gallery::{REPAINT_MS, Scroller};
-use super::{Descriptor, Repaint};
+use super::{Descriptor, Partial, Redraw, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
 const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
@@ -50,6 +51,9 @@ const TAG_DAY: u16 = 210;
 const AREA_INLINE: u8 = 0;
 const AREA_DATE: u8 = 1;
 const AREA_TIME: u8 = 2;
+
+/// The full-panel rect the dialog slot covers, and the rect the dialog's card is drawn in.
+const DIALOG_RECT: Rect = Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32);
 
 const WHEEL_W: i16 = 56;
 const WHEEL_H: i16 = 132;
@@ -98,6 +102,8 @@ pub struct PlannerPage {
     wheel: Rect,
     stars: Rect,
     picker: Rect,
+    /// The reading line that prints the inline wheel's hour, in content coordinates.
+    hour_line: Rect,
     /// The full-panel rect the dialog slot shares.
     overlay: Rect,
     /// The finger that is painting the picker, so its drags do not scroll the page.
@@ -114,7 +120,7 @@ pub struct PlannerPage {
 impl Default for PlannerPage {
     fn default() -> Self {
         let mut ui = headless();
-        declare(&FrameSnapshot::default(), &mut ui);
+        let hour_line = declare(&FrameSnapshot::default(), &mut ui);
         finish(&mut ui);
         let mut scroll = Scroller::default();
         scroll.measure(&ui, AREA, SCROLL);
@@ -126,6 +132,7 @@ impl Default for PlannerPage {
             wheel: ui.paint_rect(WHEEL_SLOT).unwrap_or_default(),
             stars: ui.paint_rect(RATING_SLOT).unwrap_or_default(),
             picker: ui.paint_rect(PICKER_SLOT).unwrap_or_default(),
+            hour_line: ui.rect(hour_line),
             overlay: ui.paint_rect(DIALOG_SLOT).unwrap_or_default(),
             picker_drag: None,
             wheel_drag: None,
@@ -144,17 +151,26 @@ impl Default for PlannerPage {
 }
 
 impl PlannerPage {
+    /// Puts the page at `offset`, for tests that need a control below the fold on screen.
+    #[cfg(test)]
+    pub(crate) fn park(&mut self, offset: i16) {
+        self.scroll.park(offset);
+    }
+
     fn tag_at(&self, x: i32, y: i32) -> u16 {
         self.scroll
             .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
     }
 
-    fn snapshot(&self) -> PlannerSnapshot {
+    pub(crate) fn snapshot(&self) -> PlannerSnapshot {
         let mut view = self.values;
+        let area = self.scroll.area();
         view.area = self.scroll.view();
         view.moving = self.scroll.moving();
         view.hour = self.inline.index() as u8;
         view.inline = self.inline.view();
+        view.inline_box = visible(self.wheel, area.rect, area.offset);
+        view.hour_line = visible(self.hour_line, area.rect, area.offset);
         view.dialog = PickerView {
             open: self.dialog,
             date: self.date.views(),
@@ -657,6 +673,7 @@ impl super::LocalPage for PlannerPage {
             .with_repaint_ms(REPAINT_MS)
             .with_repaints(Repaint::WhenOrOverlay(planner_moved))
             .with_scroll(planner_shift)
+            .with_partial(planner_partial)
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -674,12 +691,18 @@ impl super::LocalPage for PlannerPage {
     }
 }
 
-fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
+/// Where a content rect shows inside a scrolled viewport.
+fn visible(rect: Rect, viewport: Rect, offset: i16) -> Rect {
+    Rect::new(rect.x, rect.y - i32::from(offset), rect.w, rect.h).intersect(viewport)
+}
+
+fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) -> NodeId {
     let lang = snapshot.lang;
     let w = snapshot.pages.planner;
     let theme = *Theme::of(snapshot.theme);
     let mut date = [0u8; 12];
     let mut time = [0u8; 10];
+    let mut hour_line = NodeId::NONE;
     page::body(ui, |ui| {
         page::title(ui, Msg::PlannerTitle.bytes(lang));
         page::scroller(ui, AREA, w.area, |ui| {
@@ -726,7 +749,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Msg::Date.bytes(lang),
                 date_text(w.year, w.month, w.day, &mut date),
             );
-            page::reading(
+            hour_line = page::reading(
                 ui,
                 Msg::Time.bytes(lang),
                 time_text(w.hour, w.minute, w.second, &mut time),
@@ -752,12 +775,13 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
     ui.custom(
         Style::new()
             .absolute()
-            .left(0)
-            .top(0)
-            .width(PANEL_COLUMNS as i16)
-            .height(CONTENT_BOTTOM as i16),
+            .left(DIALOG_RECT.x as i16)
+            .top(DIALOG_RECT.y as i16)
+            .width(DIALOG_RECT.w as i16)
+            .height(DIALOG_RECT.h as i16),
         DIALOG_SLOT,
     );
+    hour_line
 }
 
 fn date_text(year: u16, month: u8, day: u8, buf: &mut [u8; 12]) -> &[u8] {
@@ -847,6 +871,103 @@ fn draw_dialog(snapshot: &FrameSnapshot, canvas: &mut Canvas<'_>, rect: Rect, th
 
 fn planner_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
     prev.lang != next.lang || prev.pages.planner != next.pages.planner
+}
+
+/// A wheel inside an open dialog moves nothing else: the card, its title and its answers keep
+/// their pixels, so the frame only has to repaint the column that turned. Every other change —
+/// the dialog opening or closing, the page behind it moving — is a full repaint.
+fn planner_partial(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<Partial> {
+    let (was, now) = (prev.pages.planner, next.pages.planner);
+    if prev.lang != next.lang {
+        return None;
+    }
+    if was.dialog.open == PickerOpen::None && now.dialog.open == PickerOpen::None {
+        return inline_partial(was, now);
+    }
+    if was.dialog.open != now.dialog.open || now.dialog.open == PickerOpen::None {
+        return None;
+    }
+    let (mut was_rest, mut now_rest) = (was, now);
+    was_rest.dialog = PickerView::default();
+    now_rest.dialog = PickerView::default();
+    if was_rest != now_rest {
+        return None;
+    }
+    let body = picker::frame(DIALOG_RECT).body;
+    let mut damage = FrameDamage::NONE;
+    match now.dialog.open {
+        // Only the column under the finger moves; the rest of the card keeps its pixels.
+        PickerOpen::Time => {
+            let columns = now.dialog.time.columns;
+            for column in 0..columns {
+                let index = usize::from(column);
+                if wheel_moved(was.dialog.time.wheels[index], now.dialog.time.wheels[index]) {
+                    add_damage(&mut damage, time_picker::column_rect(body, columns, column));
+                }
+            }
+        }
+        PickerOpen::Date => {
+            for column in 0..date_picker::COLUMNS {
+                let index = usize::from(column);
+                if wheel_moved(was.dialog.date[index], now.dialog.date[index]) {
+                    add_damage(&mut damage, date_picker::column_rect(body, column));
+                }
+            }
+        }
+        // The grid's cells and its month title both move with a turn or a pick.
+        PickerOpen::Month => add_damage(&mut damage, body),
+        PickerOpen::None => return None,
+    }
+    Some(Partial {
+        damage,
+        redraw: Redraw::Slot {
+            slot: DIALOG_SLOT,
+            rect: DIALOG_RECT,
+        },
+    })
+}
+
+/// The inline hour wheel: its own rows move, and the reading line that prints the hour it
+/// landed on. Both sit inside the scroller's viewport, so the page repaints that and nothing
+/// else — the row itself is a layout node, not a slot.
+fn inline_partial(was: PlannerSnapshot, now: PlannerSnapshot) -> Option<Partial> {
+    if !wheel_moved(was.inline, now.inline) {
+        return None;
+    }
+    let (mut was_rest, mut now_rest) = (was, now);
+    was_rest.inline = WheelView::default();
+    now_rest.inline = WheelView::default();
+    was_rest.hour = 0;
+    now_rest.hour = 0;
+    if was_rest != now_rest {
+        return None;
+    }
+    let mut damage = FrameDamage::NONE;
+    for rect in [now.inline_box, now.hour_line] {
+        if rect.w > 0 && rect.h > 0 {
+            add_damage(&mut damage, rect);
+        }
+    }
+    Some(Partial {
+        damage,
+        redraw: Redraw::Page,
+    })
+}
+
+/// Whether a wheel's pixels moved. `moving` alone changes nothing on the glass.
+fn wheel_moved(was: WheelView, now: WheelView) -> bool {
+    (was.position, was.count, was.wrap) != (now.position, now.count, now.wrap)
+}
+
+fn add_damage(damage: &mut FrameDamage, rect: Rect) {
+    if let (Ok(x), Ok(y), Ok(w), Ok(h)) = (
+        u16::try_from(rect.x),
+        u16::try_from(rect.y),
+        u16::try_from(rect.w),
+        u16::try_from(rect.h),
+    ) {
+        damage.add(DamageRect::new(x, y, w, h));
+    }
 }
 
 fn planner_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
@@ -1046,6 +1167,102 @@ mod tests {
         press_drag_swipe(&mut page, x, start, end);
         assert_eq!(page.inline.index(), 10, "the lift keeps the crossed row");
         assert_eq!(page.snapshot().hour, 10, "the reading follows the wheel");
+    }
+
+    #[test]
+    fn a_wheel_frame_repaints_only_what_moved() {
+        let mut page = PlannerPage::default();
+        page.park(300);
+        let base = page.snapshot();
+        let frame = |dialog: PickerOpen, minute: u16, hour: u8| {
+            let mut planner = base;
+            planner.dialog.open = dialog;
+            planner.dialog.time = time_picker::TimeView {
+                wheels: [
+                    WheelView {
+                        position: 9 * 256,
+                        count: 24,
+                        wrap: true,
+                        moving: false,
+                    },
+                    WheelView {
+                        position: i32::from(minute) * 256,
+                        count: 60,
+                        wrap: true,
+                        moving: false,
+                    },
+                    WheelView {
+                        position: 30 * 256,
+                        count: 60,
+                        wrap: true,
+                        moving: false,
+                    },
+                ],
+                columns: 3,
+            };
+            planner.hour = hour;
+            planner.inline = WheelView {
+                position: i32::from(hour) * 256,
+                count: 24,
+                wrap: true,
+                moving: false,
+            };
+            let mut pages = PageSnapshot::default();
+            pages.planner = planner;
+            FrameSnapshot {
+                page: PageId::Planner,
+                pages,
+                ..FrameSnapshot::default()
+            }
+        };
+
+        let body = picker::frame(DIALOG_RECT).body;
+        let column = time_picker::column_rect(body, 3, 1);
+        let partial = planner_partial(
+            &frame(PickerOpen::Time, 5, 9),
+            &frame(PickerOpen::Time, 6, 9),
+        )
+        .expect("a minute wheel under an open dialog is a partial frame");
+        assert_eq!(
+            partial.redraw,
+            Redraw::Slot {
+                slot: DIALOG_SLOT,
+                rect: DIALOG_RECT
+            }
+        );
+        assert_eq!(
+            partial.damage.rects(),
+            &[DamageRect::new(
+                column.x as u16,
+                column.y as u16,
+                column.w as u16,
+                column.h as u16
+            )]
+        );
+
+        let inline = planner_partial(
+            &frame(PickerOpen::None, 5, 9),
+            &frame(PickerOpen::None, 5, 10),
+        )
+        .expect("the inline wheel is a partial frame too");
+        assert_eq!(inline.redraw, Redraw::Page);
+        let damage = |rect: Rect| {
+            DamageRect::new(rect.x as u16, rect.y as u16, rect.w as u16, rect.h as u16)
+        };
+        assert_eq!(
+            inline.damage.rects(),
+            &[damage(base.inline_box), damage(base.hour_line)],
+            "the wheel and the line that prints its hour"
+        );
+
+        assert_eq!(
+            planner_partial(
+                &frame(PickerOpen::None, 5, 9),
+                &frame(PickerOpen::Time, 5, 9)
+            ),
+            None,
+            "the dialog opening moves the page under it"
+        );
     }
 
     #[test]

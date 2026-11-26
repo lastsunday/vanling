@@ -3,7 +3,7 @@
 //! The card is capped rather than stretched, so a large screen keeps a readable dialog and a
 //! small one keeps a usable body. Drawing and hit testing share [`frame`].
 
-use iot_core::ui::{Canvas, Rect};
+use iot_core::ui::{Canvas, Color, Rect};
 
 use crate::shared::ui::theme::Theme;
 
@@ -50,6 +50,29 @@ pub fn frame(rect: Rect) -> Frame {
     }
 }
 
+/// The card's corner radius, and the square each corner's arc is cut from.
+const RADIUS: u8 = 4;
+
+/// Dims the page around the card. The card is opaque and paints over its own pixels, so the
+/// scrim is laid in the four bands around it plus the corner squares its arcs leave showing:
+/// a frame that repaints only the card's body then costs no blend at all.
+fn scrim(canvas: &mut Canvas<'_>, rect: Rect, card: Rect, color: Color) {
+    canvas.set_color(Some(color));
+    let r = i32::from(RADIUS);
+    for band in [
+        Rect::new(rect.x, rect.y, rect.w, card.y - rect.y),
+        Rect::new(rect.x, card.bottom(), rect.w, rect.bottom() - card.bottom()),
+        Rect::new(rect.x, card.y, card.x - rect.x, card.h),
+        Rect::new(card.right(), card.y, rect.right() - card.right(), card.h),
+        Rect::new(card.x, card.y, r, r),
+        Rect::new(card.right() - r, card.y, r, r),
+        Rect::new(card.x, card.bottom() - r, r, r),
+        Rect::new(card.right() - r, card.bottom() - r, r, r),
+    ] {
+        canvas.fill_rect(band);
+    }
+}
+
 /// `Some(true)` for OK, `Some(false)` for cancel or a tap on the scrim.
 pub fn action_at(rect: Rect, x: i32, y: i32) -> Option<bool> {
     let frame = frame(rect);
@@ -73,12 +96,11 @@ pub fn draw(
     theme: &Theme,
 ) {
     let frame = frame(rect);
-    canvas.set_color(Some(theme.overlay));
-    canvas.fill_rect(rect);
+    scrim(canvas, rect, frame.card, theme.overlay);
     canvas.set_color(Some(theme.surface));
-    canvas.fill_round_rect(frame.card, 4);
+    canvas.fill_round_rect(frame.card, RADIUS);
     canvas.set_color(Some(theme.muted));
-    canvas.stroke_round_rect(frame.card, 4);
+    canvas.stroke_round_rect(frame.card, RADIUS);
     let width = canvas.measure(title) as i32;
     canvas.set_color(Some(theme.foreground));
     canvas.draw_text(

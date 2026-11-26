@@ -81,6 +81,16 @@ impl<'a> Panel<'a> {
         }
     }
 
+    /// Draws one custom slot without laying the page out: the pixels a partial frame names.
+    /// The caller has already narrowed the canvas to them.
+    pub fn slot(&mut self, snapshot: &FrameSnapshot, custom: Custom, slot: u8, rect: Rect) {
+        let screen = self.screen;
+        custom(snapshot, screen, slot, &mut self.canvas, rect);
+        if screen.debug {
+            self.draw_fps();
+        }
+    }
+
     fn draw_fps(&mut self) {
         let mut digits_buf = [0u8; 6];
         let digits = iot_core::ui::text::format_u16(u16::from(self.screen.fps), &mut digits_buf);

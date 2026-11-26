@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "fe567d66bd76bb08c8cc18ad6024674de09e4b87"
-translated_at = "2026-11-25T14:49:09Z"
+source_file_hash = "f40a24f7ef0f13d210fe544c99ec85ae01d053d3"
+translated_at = "2026-11-26T15:05:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -668,3 +668,7 @@ can go below it.
   start; (4) the safe-mode `vanling-safe-xxxx` AP opening in a real browser and serving the
   diagnostic page. What can be defended is the register semantics, that both `ResetCore` and
   `software_reset()` are core resets, and the emulator log above.
+
+## The panel size is a compile-time constant (`[test]`, 2026-11-26)
+
+`[test]` Component geometry is derived from the `Rect` it is handed: `Wheel`, `MonthGrid`, `Picker` and `DatePicker`/`TimePicker` each have four size tests (320×228, 480×320, 800×600, 240×180) and read no panel constant. The pages and the renderer still treat the panel as a constant, though: `ui::panel::{PANEL_COLUMNS, CONTENT_BOTTOM}` is referenced directly by `CONTENT_W`, `DIALOG_RECT`, `ScrollAreaView` and the painter — 111 `PANEL_*` sites across 27 files. Fitting one firmware to a different panel needs `PanelMetrics` threaded through declaration, layout and painter, with each page's `CONTENT_W` derived from it. Not done, because there is one product target (320×240) today; a new board should change this first instead of copying another constant into a page.
