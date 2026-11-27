@@ -2,8 +2,8 @@
 title = "UI Widgets"
 weight = 80
 [extra]
-source_file_hash = "194de0ef99fdab5a6c8dd5df03e78dfc852649c5"
-translated_at = "2026-11-26T13:45:00Z"
+source_file_hash = "5a77f4b1ebb718dae997d2025e3043163fcf1e44"
+translated_at = "2026-11-27T02:00:00Z"
 +++
 
 # UI Widgets
@@ -271,7 +271,7 @@ Navigation, composed, planning, records, feedback, input, data and overlay, all 
 
 #### Repaint extent
 
-A wheel page redraws only the blocks that moved: `Planner`'s dialog wheel reports the column that moved, the inline hour wheel reports "the visible wheel rect plus the reading line that prints its hour" (the snapshot publishes `inline_box` / `hour_line`, already intersected with the scroll viewport), and `services::Descriptor::with_partial` hands that to the painter; a page that cannot name its pixels falls back to a whole frame. A partial frame first lays the ground back down inside the damage — page text is drawn by turning the ground over, so painting the same block twice would toggle it — which is why `Picker`'s scrim is split into bands and a card-body repaint touches no blend. Measurements and numbers are in `records/iot/panel-buffering.md`.
+A page does not name repaint rectangles: after layout the framework derives the damage from per-node fingerprints (`Style`, the text bytes and a custom slot's `state`), and only a changed structure is a whole frame. A custom slot declares one `u32` covering its drawing through `Ui::custom_state(style, slot, state)`; `Ui::custom` says the page does not describe its pixels, so the slot is repainted whenever the snapshot moves. When the slot paints its whole rectangle itself, add `Style::cover()` so the framework may skip the nodes it hides. A partial frame lays the ground back down inside the damage, then redraws the intersecting nodes in tree order, so a card or scrim drawn later covers it again. Measurements are in `records/iot/panel-buffering.md`.
 
 ## Feedback
 

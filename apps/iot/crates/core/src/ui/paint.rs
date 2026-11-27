@@ -41,7 +41,7 @@ pub(crate) fn node(
             let run = &text[usize::from(start)..usize::from(start + len)];
             draw_text(canvas, start, run, content, info.style, palette, spans);
         }
-        NodeKind::Paint { slot } => {
+        NodeKind::Paint { slot, .. } => {
             canvas.set_color(color);
             paint(slot, canvas, content);
             canvas.set_color(None);

@@ -334,7 +334,7 @@ pub enum Slot<'a> {
 
 ### 重绘范围
 
-滚轮页只重绘动的那几块像素：`Planner` 的弹窗滚轮报动的那一列，内联小时轮报「可见滚轮矩形 + 打印小时的读数行」（快照发布 `inline_box` / `hour_line`，已和滚动视口求交），经 `services::Descriptor::with_partial` 交给 painter；页面报不出就退回整帧。partial 帧先把 damage 铺回底色——页面文字靠反色地面绘制，同一块画两遍会来回翻转——所以 `Picker` 的 scrim 拆成条带，卡片 body 重绘不碰混合。实测与数字见 `records/iot/panel-buffering.md`。
+页面不指定重绘矩形：布局后框架按节点指纹（`Style` + 文本 + custom 槽的 `state`）自己推导 damage，结构变了才整帧。custom 槽用 `Ui::custom_state(style, slot, state)` 声明一个覆盖其绘制的 `u32`；`Ui::custom` 表示不描述像素（快照一动就重画）。槽的整块矩形都由自己上色时加 `Style::cover()`，框架才会跳过被它盖住的节点。partial 帧先把 damage 铺回底色，再按树序重画相交节点，后画的卡片和 scrim 会盖回去。实测与数字见 `records/iot/panel-buffering.md`。
 
 ## Feed
 

@@ -95,6 +95,13 @@ impl WheelView {
     pub fn index(self) -> u16 {
         map_index(round_div(self.position, UNIT), self.count, self.wrap)
     }
+
+    /// A fingerprint of the rows this wheel draws. `moving` is the animation, not the picture:
+    /// a frame between two rows is already in `position`.
+    pub fn state(self) -> u32 {
+        let position = self.position as u32;
+        (position.wrapping_mul(31) ^ u32::from(self.count)).wrapping_mul(31) ^ u32::from(self.wrap)
+    }
 }
 
 /// A wheel's live state: where it rests, where it is going, and the finger that moves it.
@@ -388,6 +395,19 @@ pub fn draw(
     }
     canvas.pop_clip();
     canvas.set_color(None);
+}
+
+/// The `:` between two columns, drawn inside the left column's rectangle: a frame that
+/// repaints one column then owns every pixel of it, the separator included.
+pub fn separator(canvas: &mut Canvas<'_>, col: Rect, theme: &Theme) {
+    let m = metrics(col);
+    let width = canvas.measure(b":") as i32;
+    canvas.set_color(Some(theme.muted));
+    canvas.draw_text(
+        b":",
+        (col.right() - width).max(0) as usize,
+        (m.centre + (i32::from(m.row_h) - 12) / 2).max(0) as usize,
+    );
 }
 
 #[cfg(test)]

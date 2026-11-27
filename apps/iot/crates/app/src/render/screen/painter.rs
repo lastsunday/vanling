@@ -6,32 +6,23 @@
 use core::any::Any;
 
 use crate::services::camera::CameraPage;
-use crate::services::{descriptor, paint};
+use crate::services::descriptor;
 use crate::shared::snapshot::{FrameSnapshot, ScrollShift};
-use crate::shared::surface::{Panel, no_custom};
+use crate::shared::surface::{Panel, footer_damage, no_custom};
 use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{
     DamageRect, FrameDamage, ScreenContext, ScreenPainter, ScreenTarget,
 };
-use iot_core::light::{Rgb, rgb565};
-use iot_core::ui::panel::{CONTENT_BOTTOM, FOOTER_ROWS, PANEL_COLUMNS};
-use iot_core::ui::{Canvas, Screen, ThemeId};
+use iot_core::ui::{Canvas, FramePrint, Screen, Source, ThemeId};
 
 pub struct AppPainter {
     overlay: bool,
     /// The snapshot the frame currently in the buffer was painted from.
     last: Option<FrameSnapshot>,
+    /// What that frame's pixels depend on, so the next paint can name the ones that moved.
+    print: Option<FramePrint>,
     /// The pixels the panel has to receive for the frame in the buffer.
     damage: FrameDamage,
-}
-
-/// What the frame in the buffer can be reused for: a scroll to blit, the pixels the page says
-/// it changed, or nothing.
-#[derive(Clone, Copy)]
-enum Plan {
-    Full,
-    Shift(ScrollShift),
-    Partial(crate::services::Partial),
 }
 
 impl AppPainter {
@@ -39,39 +30,32 @@ impl AppPainter {
         Self {
             overlay,
             last: None,
+            print: None,
             damage: FrameDamage::FULL,
         }
     }
 
-    /// How much of the buffer `next` may keep. A theme or page change moves every pixel, so it
-    /// is always a full repaint.
-    fn plan(&self, next: &FrameSnapshot) -> Plan {
-        let Some(prev) = self
-            .last
+    /// The snapshot the buffer holds, when it is the same page and theme as `next`. A theme or
+    /// page change moves every pixel, so nothing of the old frame survives it.
+    fn previous(&self, next: &FrameSnapshot) -> Option<&FrameSnapshot> {
+        self.last
             .as_ref()
             .filter(|prev| prev.theme == next.theme && prev.page == next.page)
-        else {
-            return Plan::Full;
-        };
-        let descriptor = descriptor(next.page);
-        if let Some(shift) = descriptor.scroll_shift(prev, next) {
-            return Plan::Shift(shift);
-        }
-        match descriptor.partial_hint(prev, next) {
-            Some(partial) if !partial.damage.is_full() => Plan::Partial(partial),
-            _ => Plan::Full,
-        }
+    }
+
+    /// The scroll `next` is of the buffer's frame, when it is a scroll and nothing else.
+    fn shift(&self, next: &FrameSnapshot) -> Option<ScrollShift> {
+        self.previous(next)
+            .and_then(|prev| descriptor(next.page).scroll_shift(prev, next))
     }
 
     fn panel<'a>(
         &'a mut self,
         target: ScreenTarget<'a>,
         context: ScreenContext,
-        damage: FrameDamage,
         theme: ThemeId,
     ) -> Panel<'a> {
-        let canvas = Canvas::new(target.frame, target.width, target.height, target.ground)
-            .with_damage(damage);
+        let canvas = Canvas::new(target.frame, target.width, target.height, target.ground);
         Panel::new(
             canvas,
             Screen {
@@ -93,58 +77,38 @@ impl ScreenPainter for AppPainter {
             self.reset();
             return;
         };
-        let plan = self.plan(frame);
-        let repaint = match plan {
-            Plan::Shift(shift) => {
-                scroll_blit(target.frame, target.width, &shift);
-                let (mut repaint, mut ship) =
-                    scroll_damage(&shift, target.width as u16, target.height as u16);
-                // The badge sits below every scroll box, so the blit leaves it intact; it is
-                // still damage so its fps reading keeps moving while the page scrolls.
-                if self.overlay {
-                    repaint.add(footer_damage());
-                    ship.add(footer_damage());
-                }
-                // Text is drawn by turning the ground over, so a band that is painted twice
-                // would toggle: every painted band starts from the ground again.
-                if let Some(ground) = target.ground {
-                    clear_damage(target.frame, target.width, ground, repaint);
-                }
-                self.damage = ship;
-                repaint
+        let previous = self.print;
+        let mut ship = None;
+        let source = if self.previous(frame).is_none() {
+            Source::Full
+        } else if let Some(shift) = self.shift(frame) {
+            scroll_blit(target.frame, target.width, &shift);
+            let (repaint, mut rows) =
+                scroll_damage(&shift, target.width as u16, target.height as u16);
+            // The badge sits below every scroll box, so the blit leaves it intact; it is still
+            // damage so its fps reading keeps moving while the page scrolls.
+            if self.overlay {
+                rows.add(footer_damage());
             }
-            Plan::Partial(mut partial) => {
-                // The badge sits below every dialog, so a partial frame leaves it stale unless
-                // it is named too.
-                if self.overlay {
-                    partial.damage.add(footer_damage());
-                }
-                // Page text is drawn by turning the ground over, so a region painted twice
-                // would toggle: every partial region starts from the ground again. The dialog
-                // card then lays its own opaque surface over the part of it that is card.
-                if let Some(ground) = target.ground {
-                    clear_damage(target.frame, target.width, ground, partial.damage);
-                }
-                self.damage = partial.damage;
-                partial.damage
-            }
-            Plan::Full => {
-                self.damage = FrameDamage::FULL;
-                FrameDamage::FULL
+            ship = Some(rows);
+            Source::Window(repaint)
+        } else {
+            Source::Diff {
+                prev: previous.as_ref(),
+                moved: self.last.as_ref() != Some(frame),
             }
         };
-        let mut panel = self.panel(target, context, repaint, frame.theme);
-        match plan {
-            // The page around the slot is the frame the buffer already holds, so a slot-only
-            // frame draws it and leaves the rest alone.
-            Plan::Partial(partial) => match partial.redraw {
-                crate::services::Redraw::Slot { slot, rect } => {
-                    panel.slot(frame, descriptor(frame.page).custom(), slot, rect)
-                }
-                crate::services::Redraw::Page => paint(frame.page, frame, &mut panel),
-            },
-            _ => paint(frame.page, frame, &mut panel),
-        }
+        let mut next = FramePrint::new();
+        let mut panel = self.panel(target, context, frame.theme);
+        let damage = panel.view_measured(
+            frame,
+            descriptor(frame.page).view(),
+            descriptor(frame.page).custom(),
+            &mut next,
+            source,
+        );
+        self.damage = ship.unwrap_or(damage);
+        self.print = Some(next);
         self.last = Some(*frame);
     }
 
@@ -160,7 +124,7 @@ impl ScreenPainter for AppPainter {
             self.reset();
             return;
         };
-        let mut panel = self.panel(target, context, FrameDamage::FULL, frame.theme);
+        let mut panel = self.panel(target, context, frame.theme);
         panel.declare(frame, no_custom, |snapshot, ui| {
             CameraPage::view_frame(snapshot, ui, readout)
         });
@@ -177,11 +141,12 @@ impl ScreenPainter for AppPainter {
         let Some(next) = snapshot.downcast_ref::<FrameSnapshot>() else {
             return false;
         };
-        !matches!(self.plan(next), Plan::Full)
+        self.previous(next).is_some()
     }
 
     fn reset(&mut self) {
         self.last = None;
+        self.print = None;
         self.damage = FrameDamage::FULL;
     }
 }
@@ -257,17 +222,6 @@ fn scroll_damage(shift: &ScrollShift, width: u16, height: u16) -> (FrameDamage, 
     (repaint, ship)
 }
 
-/// The footer band the debug badge draws in. It sits below every scroll box, so a scroll
-/// blit never moves it; adding it to damage only lets the badge's fps reading refresh.
-fn footer_damage() -> DamageRect {
-    DamageRect::new(
-        0,
-        CONTENT_BOTTOM as u16,
-        PANEL_COLUMNS as u16,
-        FOOTER_ROWS as u16,
-    )
-}
-
 fn add_damage(damage: &mut FrameDamage, x: i32, y: i32, w: i32, h: i32, width: u16, height: u16) {
     let (frame_w, frame_h) = (i32::from(width), i32::from(height));
     let x0 = x.max(0).min(frame_w);
@@ -284,20 +238,6 @@ fn add_damage(damage: &mut FrameDamage, x: i32, y: i32, w: i32, h: i32, width: u
     }
 }
 
-fn clear_damage(frame: &mut [u8], width: usize, ground: Rgb, damage: FrameDamage) {
-    let packed = rgb565(ground).to_be_bytes();
-    for rect in damage.rects() {
-        let (x0, x1) = (usize::from(rect.x), usize::from(rect.right()));
-        let row_bytes = (x1 - x0) * 2;
-        for y in usize::from(rect.y)..usize::from(rect.bottom()) {
-            let start = y * width * 2 + x0 * 2;
-            for pixel in frame[start..start + row_bytes].as_chunks_mut::<2>().0 {
-                pixel.copy_from_slice(&packed);
-            }
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -306,10 +246,36 @@ mod tests {
     use crate::shared::snapshot::{PageSnapshot, ScrollAreaView, TEXT_AREAS, TextSnapshot};
     use crate::shared::ui::theme::Theme;
     use alloc::vec;
+    use iot_core::light::{Rgb, rgb565};
     use iot_core::ui::Rect;
 
     const WIDTH: usize = 320;
     const HEIGHT: usize = 240;
+
+    fn context() -> ScreenContext {
+        ScreenContext {
+            instance: 0,
+            fps: 60,
+            spl_offset_db: 100,
+            stack_probe: None,
+        }
+    }
+
+    /// Paints `previous` so the painter knows its fingerprints, the way the screen's last
+    /// frame does before the frame under test arrives.
+    fn seed(painter: &mut AppPainter, previous: &FrameSnapshot) {
+        let mut scratch = vec![0u8; WIDTH * HEIGHT * 2];
+        painter.paint(
+            ScreenTarget {
+                frame: &mut scratch,
+                width: WIDTH,
+                height: HEIGHT,
+                ground: Some(Rgb(0, 0, 0)),
+            },
+            context(),
+            previous,
+        );
+    }
 
     fn view(x: i32, y: i32, w: i32, h: i32, offset: i16) -> ScrollAreaView {
         ScrollAreaView {
@@ -415,7 +381,7 @@ mod tests {
         };
         let mut painter = AppPainter::new(false);
         let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
-        painter.last = Some(dialog_frame(5));
+        seed(&mut painter, &dialog_frame(5));
         assert!(
             painter.keeps_frame(&dialog_frame(6)),
             "a wheel under an open card leaves the card's own pixels alone"
@@ -469,7 +435,7 @@ mod tests {
             frame
         };
         let mut painter = AppPainter::new(false);
-        painter.last = Some(dialog_frame(5));
+        seed(&mut painter, &dialog_frame(5));
         let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
         painter.paint(
             ScreenTarget {
@@ -515,12 +481,6 @@ mod tests {
 
     #[test]
     fn an_inline_wheel_frame_repaints_only_the_wheel_and_its_reading() {
-        let context = ScreenContext {
-            instance: 0,
-            fps: 60,
-            spl_offset_db: 100,
-            stack_probe: None,
-        };
         let ground = Some(Rgb(0, 0, 0));
         let whole = {
             let mut painter = AppPainter::new(false);
@@ -532,40 +492,59 @@ mod tests {
                     height: HEIGHT,
                     ground,
                 },
-                context,
+                context(),
                 &inline_frame(10),
             );
             frame
         };
         let mut painter = AppPainter::new(false);
-        painter.last = Some(inline_frame(9));
-        let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
-        painter.paint(
-            ScreenTarget {
-                frame: &mut frame,
-                width: WIDTH,
-                height: HEIGHT,
-                ground,
-            },
-            context,
-            &inline_frame(10),
+        let mut frame = vec![0u8; WIDTH * HEIGHT * 2];
+        for hour in [9, 10] {
+            painter.paint(
+                ScreenTarget {
+                    frame: &mut frame,
+                    width: WIDTH,
+                    height: HEIGHT,
+                    ground,
+                },
+                context(),
+                &inline_frame(hour),
+            );
+        }
+        let damage = painter.damage();
+        assert!(
+            !damage.is_full(),
+            "the wheel frame repaints a corner of the page"
         );
-        let planner = inline_frame(10).pages.planner;
-        let damage = |rect: Rect| {
-            DamageRect::new(rect.x as u16, rect.y as u16, rect.w as u16, rect.h as u16)
+        let inside = |x: usize, y: usize| {
+            damage.rects().iter().any(|rect| {
+                (rect.x as usize..rect.right() as usize).contains(&x)
+                    && (rect.y as usize..rect.bottom() as usize).contains(&y)
+            })
         };
-        assert_eq!(
-            painter.damage().rects(),
-            &[damage(planner.inline_box), damage(planner.hour_line)],
-            "the wheel and the reading line are the only pixels that moved"
-        );
-        for rect in [planner.inline_box, planner.hour_line] {
-            for y in rect.y..rect.bottom() {
-                for x in rect.x..rect.right() {
+        let mut painted = 0u32;
+        for rect in damage.rects() {
+            painted += u32::from(rect.w) * u32::from(rect.h);
+            for y in rect.y as usize..rect.bottom() as usize {
+                for x in rect.x as usize..rect.right() as usize {
                     assert_eq!(
-                        pixel(&frame, x as usize, y as usize),
-                        pixel(&whole, x as usize, y as usize),
-                        "the scroller at ({x}, {y}) is the one a whole repaint leaves"
+                        pixel(&frame, x, y),
+                        pixel(&whole, x, y),
+                        "the wheel at ({x}, {y}) is the one a whole repaint leaves"
+                    );
+                }
+            }
+        }
+        assert!(
+            painted < (WIDTH * HEIGHT / 4) as u32,
+            "the frame is a corner of the page, not the page"
+        );
+        for y in 0..HEIGHT {
+            for x in 0..WIDTH {
+                if pixel(&frame, x, y) != pixel(&whole, x, y) {
+                    assert!(
+                        inside(x, y),
+                        "a pixel outside the damage moved at ({x}, {y})"
                     );
                 }
             }
@@ -573,12 +552,27 @@ mod tests {
     }
 
     #[test]
-    fn a_dialog_opening_is_still_a_full_repaint() {
+    fn a_dialog_opening_repaints_every_pixel() {
         let mut painter = AppPainter::new(false);
-        painter.last = Some(dialog_frame(5));
+        seed(&mut painter, &dialog_frame(5));
         let mut opened = dialog_frame(5);
         opened.pages.planner.dialog.open = crate::shared::snapshot::PickerOpen::None;
-        assert!(!painter.keeps_frame(&opened));
+        assert!(painter.keeps_frame(&opened), "the plan is still a diff");
+        let mut frame = vec![0xABu8; WIDTH * HEIGHT * 2];
+        painter.paint(
+            ScreenTarget {
+                frame: &mut frame,
+                width: WIDTH,
+                height: HEIGHT,
+                ground: Some(Rgb(0, 0, 0)),
+            },
+            context(),
+            &opened,
+        );
+        assert!(
+            painter.damage().is_full(),
+            "a different tree cannot be patched"
+        );
     }
 
     #[test]
@@ -590,8 +584,8 @@ mod tests {
             "the badge is a footer strip, not a reason to redraw every pixel"
         );
         assert!(
-            !painter.keeps_frame(&two(10)),
-            "a still page has nothing to blit"
+            painter.keeps_frame(&two(10)),
+            "a still page keeps its frame and ships nothing"
         );
     }
 
@@ -799,8 +793,10 @@ mod tests {
     fn clearing_damage_lays_the_ground_back() {
         let mut frame = vec![0xFFu8; WIDTH * HEIGHT * 2];
         let (damage, _) = scroll_damage(&shift([6, 0]), WIDTH as u16, HEIGHT as u16);
-        clear_damage(&mut frame, WIDTH, Rgb(0x12, 0x34, 0x56), damage);
-        let ground = rgb565(Rgb(0x12, 0x34, 0x56));
+        let ground = Rgb(0x12, 0x34, 0x56);
+        let mut canvas = Canvas::new(&mut frame, WIDTH, HEIGHT, Some(ground));
+        canvas.clear(damage);
+        let ground = rgb565(ground);
         assert_eq!(pixel(&frame, 10, 64), ground);
         assert_eq!(pixel(&frame, 10, 27), ground);
         assert_eq!(pixel(&frame, 10, 50), 0xFFFF, "outside damage is untouched");

@@ -34,9 +34,7 @@ use crate::shared::snapshot::PageSnapshot;
 use crate::shared::snapshot::ScrollShift;
 use crate::shared::surface::{Custom, Panel, View, no_custom};
 use iot_core::drivers::input::{ButtonEvent, InputEvent};
-use iot_core::drivers::surface::FrameDamage;
 use iot_core::light::Rgb;
-use iot_core::ui::Rect;
 use iot_core::ui::Ui;
 
 use self::advanced::AdvancedPage;
@@ -358,30 +356,6 @@ fn no_scroll(_: &FrameSnapshot, _: &FrameSnapshot) -> Option<ScrollShift> {
     None
 }
 
-/// A frame that repaints part of a page: the pixels that moved, and what draws them. The page
-/// answers only when the change it sees lies inside `damage`; a frame without a hint is painted
-/// and shipped whole.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct Partial {
-    pub damage: FrameDamage,
-    pub redraw: Redraw,
-}
-
-/// How a partial frame's pixels are drawn.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Redraw {
-    /// The change lies inside one custom slot: draw that slot and nothing else.
-    Slot { slot: u8, rect: Rect },
-    /// The change crosses the page's own layout, so the page paints into the damage.
-    Page,
-}
-
-pub(super) type PartialFn = fn(&FrameSnapshot, &FrameSnapshot) -> Option<Partial>;
-
-fn no_partial(_: &FrameSnapshot, _: &FrameSnapshot) -> Option<Partial> {
-    None
-}
-
 /// How one page occupies the panel: its draw call, the fill under it, where its frames come
 /// from, how often a snapshot drift earns a repaint, and what a pure scroll of it looks like.
 #[derive(Debug, Clone, Copy)]
@@ -393,7 +367,6 @@ pub struct Descriptor {
     repaint_ms: u64,
     repaints: Repaint,
     scroll: ScrollFn,
-    partial: PartialFn,
 }
 
 impl Descriptor {
@@ -406,7 +379,6 @@ impl Descriptor {
             repaint_ms: REPAINT_FLOOR_MS,
             repaints: Repaint::Never,
             scroll: no_scroll,
-            partial: no_partial,
         }
     }
 
@@ -443,13 +415,6 @@ impl Descriptor {
         self
     }
 
-    /// How a frame that is not a pure scroll repaints itself, when the page can name the
-    /// pixels that moved. Without one, every change is a full repaint.
-    pub(super) fn with_partial(mut self, partial: PartialFn) -> Self {
-        self.partial = partial;
-        self
-    }
-
     pub fn ground(self) -> Option<Rgb> {
         self.ground
     }
@@ -471,9 +436,9 @@ impl Descriptor {
         (self.scroll)(prev, next)
     }
 
-    /// The pixels the page says moved, when `next` is not a scroll of `prev`.
-    pub fn partial_hint(self, prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<Partial> {
-        (self.partial)(prev, next)
+    /// The page's declaration.
+    pub fn view(self) -> View {
+        self.view
     }
 
     /// The page's own drawing for a custom slot.

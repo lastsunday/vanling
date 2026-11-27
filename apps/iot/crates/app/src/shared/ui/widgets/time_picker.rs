@@ -130,26 +130,27 @@ pub fn column_at(rect: Rect, columns: u8, x: i32, y: i32) -> Option<u8> {
 pub fn draw(canvas: &mut Canvas<'_>, rect: Rect, view: TimeView, theme: &Theme) {
     let columns = view.columns.clamp(1, MAX_COLUMNS);
     for column in 0..columns {
-        let col = column_rect(rect, columns, column);
-        wheel::draw(
-            canvas,
-            col,
-            view.wheels[usize::from(column)],
-            labels(column),
-            theme,
-        );
-        if column > 0 {
-            let m = wheel::metrics(col);
-            let width = canvas.measure(b":") as i32;
-            canvas.set_color(Some(theme.muted));
-            canvas.draw_text(
-                b":",
-                (col.x - width / 2).max(0) as usize,
-                (m.centre + (i32::from(m.row_h) - 12) / 2).max(0) as usize,
-            );
-        }
+        draw_column(canvas, rect, view, column, theme);
     }
     canvas.set_color(None);
+}
+
+/// One column and the separator at its right edge: everything inside that column's rectangle,
+/// so a frame can repaint the column alone.
+pub fn draw_column(canvas: &mut Canvas<'_>, rect: Rect, view: TimeView, column: u8, theme: &Theme) {
+    let columns = view.columns.clamp(1, MAX_COLUMNS);
+    let column = column.min(columns - 1);
+    let col = column_rect(rect, columns, column);
+    wheel::draw(
+        canvas,
+        col,
+        view.wheels[usize::from(column)],
+        labels(column),
+        theme,
+    );
+    if column + 1 < columns {
+        wheel::separator(canvas, col, theme);
+    }
 }
 
 #[cfg(test)]

@@ -57,21 +57,21 @@ Menu demo 页（构建期未设 `IOT_BOOT_PAGE`），`[DISPLAY]` 稳态三窗：
 
 `[实测]` 单缓冲每帧 = paint 19–20 ms + wire 15–16 ms。双缓冲能动的只有后半段，而不走 PSRAM 就动不了。前半段没有这个限制：Menu demo 的 paint 是 19 ms（`fill` 只占 1–2 ms），把它压下来是唯一不需要额外内存的路。
 
-## 局部重绘：只画变了的像素
+## 局部重绘：框架自己算 damage
 
-`[实测]` 一个页面能说清「这一帧只改了哪几块像素」时，painter 只重绘、只下发这几块，`keeps_frame` 仍为真，bsp 不整屏填充。入口是 `services::Descriptor::with_partial`：页面返回 `Partial { damage, redraw }`，`redraw` 是「只画这个 custom 槽」或「整页按 damage 裁剪重画」；`AppPainter::plan` 在 scroll 之后问它，拿不到就退回整帧。
+`[实测]` 页面不再指定重绘矩形。布局后框架给每个节点算两份指纹：`structure`（节点数 + 每个节点的 kind、矩形、裁剪）和 `content`（`Style` 逐字段哈希、文本字节、custom 槽的 `state`）。上一帧只留 `FramePrint { structure, content: [u32; 64], len }`（约 262 B，放栈上）；结构变了就整帧，否则只重绘 content 变了的节点矩形（与裁剪求交）。`Ui::custom_state(style, slot, state)` 让页面用一个 `u32` 说明「这个槽这次画的是不是同一张图」；`Ui::custom` 表示页面不描述像素，快照一动就重画该槽。
 
-`[实测]` 规划页的两个滚轮分别报自己的像素：弹窗滚轮只报动的那一列（`time_picker::column_rect` / `date_picker::column_rect`），月格报整个 body，内联小时轮报「滚轮可见矩形 + 打印小时的读数行」（两者由 `PlannerSnapshot::inline_box` / `hour_line` 发布，已经和滚动视口求交）。partial 帧先把 damage 铺回底色：页面文字靠反色地面绘制，同一块画两遍会来回翻转（新增的像素级测试钉住这一点）；弹窗卡片随后用自己的不透明 `surface` 盖住属于它的那部分。
+`[实测]` partial 帧先把 damage 铺回底色（页面文字靠反色地面绘制，同一块画两遍会翻转），再按树序重画与 damage 相交的节点，所以后画的卡片和 scrim 会自动盖回去。弹窗的每列声明 `Style::cover()`（整块矩形都由自己上色），框架据此跳过被它完全盖住的节点；不声明时卡片后面的页面文字每帧都要重新排版，弹窗滚轮只有 ≈35 fps，声明后回到 50 fps。`Picker` 的 scrim 仍是卡片四周条带，卡片 body 重绘不碰混合。
 
 `[实测]` 同一块 S3、`320×240`、debug 构建、每 2 s 一窗（临时 bench 驱动滚轮，收工前已删）：
 
-| 指标 | 整帧 | 弹窗滚轮（只报一列） | 内联小时轮（轮子可见） |
+| 指标 | 整帧基线 | 弹窗滚轮（一列 + 页脚） | 内联小时轮（滚轮 + 读数行） |
 | --- | --- | --- | --- |
-| repaints / 2 s | 38 | 100–101 | 100–101 |
-| 帧率 | ≈19 fps | ≈50 fps | ≈50 fps |
-| `held the executor` | 66% | 33% | 46–50% |
-| `worst render` | 36 ms | 6–9 ms | 9–13 ms |
-| `worst write` | 10 ms | 4–5 ms | 3 ms |
+| repaints / 2 s | 38 | 91–99 | 100–101 |
+| 帧率 | ≈19 fps | ≈45–50 fps | ≈50 fps |
+| `held the executor` | 66% | 46% | 26–29% |
+| `worst render` | 36 ms | 10–15 ms | 5–9 ms |
+| `worst write` | 10 ms | 4–5 ms | 3–4 ms |
 
 50 fps 是 `STEP_MS = 20` 的上限，不是渲染能力；整帧那列是同一 bench 的基线。帧率之外没有别的收益：像素与整帧重绘逐点相同（测试对比同一帧的 partial 与整帧结果）。
 

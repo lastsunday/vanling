@@ -5,10 +5,12 @@ use super::color::{Color, ColorId};
 use super::geometry::Rect;
 use super::layout::Span;
 use super::layout::{
-    BoxConstraints, NodeId, NodeKind, RunStyle, ScrollId, ScrollInfo, Style, Tree,
+    BoxConstraints, FramePrint, NodeId, NodeInfo, NodeKind, RunStyle, ScrollId, ScrollInfo, Source,
+    Style, Tree,
 };
 use super::paint;
 use super::screen::Screen;
+use crate::drivers::surface::{DamageRect, FrameDamage};
 
 /// Bytes of run a single declaration may hold. Enough for a full debug page and two screens of
 /// keys.
@@ -219,7 +221,18 @@ impl<'a, 's> Ui<'a, 's> {
 
     /// Declares a leaf the page paints itself: a sweep, a dial, a band. The `slot` is what the
     /// page's own painter switches on when [`Self::paint`] reaches the leaf.
+    ///
+    /// The page does not say where its pixels changed. A frame repaints the leaf whenever the
+    /// snapshot moved; [`Self::custom_state`] narrows that to the frames the leaf's own picture
+    /// moved.
     pub fn custom(&mut self, style: Style, slot: u8) -> NodeId {
+        self.custom_state(style, slot, super::layout::UNKNOWN_PAINT)
+    }
+
+    /// The same, with a fingerprint of what the leaf draws. `state` must cover every input of
+    /// the page's drawing for `slot`: a frame whose state and style are unchanged leaves the
+    /// leaf's pixels alone.
+    pub fn custom_state(&mut self, style: Style, slot: u8, state: u32) -> NodeId {
         if usize::from(slot) >= PAINTS {
             debug_assert!(
                 false,
@@ -228,7 +241,7 @@ impl<'a, 's> Ui<'a, 's> {
             return self.node(style);
         }
         self.tree
-            .push(style, NodeKind::Paint { slot }, self.current)
+            .push(style, NodeKind::Paint { slot, state }, self.current)
     }
 
     /// The slot `color` is held in for this declaration, so a style can name it in one byte.
@@ -312,12 +325,204 @@ impl<'a, 's> Ui<'a, 's> {
         paint: &mut dyn FnMut(u8, &mut Canvas<'_>, Rect),
     ) {
         self.layout(constraints);
+        self.draw_all(paint);
+    }
+
+    /// Lays the declaration out, records its fingerprints in `next`, and draws only what
+    /// `source` says the frame still needs. `extra` names pixels the caller draws outside the
+    /// tree — the debug badge — which are repainted with every partial frame.
+    ///
+    /// The answer is the rectangle set the canvas was narrowed to. The caller ships it to the
+    /// panel; a full answer means every pixel was drawn.
+    pub fn paint_measured(
+        &mut self,
+        constraints: BoxConstraints,
+        next: &mut FramePrint,
+        source: Source<'_>,
+        extra: FrameDamage,
+        paint: &mut dyn FnMut(u8, &mut Canvas<'_>, Rect),
+    ) -> FrameDamage {
+        self.layout(constraints);
+        self.record(next);
+        let mut damage = match source {
+            Source::Full => FrameDamage::FULL,
+            Source::Window(window) => window,
+            Source::Diff { prev, moved } => prev.map_or(FrameDamage::FULL, |prev| {
+                self.damage_since(prev, next, moved)
+            }),
+        };
+        if damage.is_full() || extra.is_full() {
+            damage = FrameDamage::FULL;
+        } else {
+            for rect in extra.rects() {
+                damage.add(*rect);
+            }
+        }
+        // A partial frame starts from the ground: page text is the ground turned over, so a
+        // band drawn twice would toggle. The caller filled the frame for `Source::Full`.
+        if !matches!(source, Source::Full)
+            && let Some(canvas) = self.canvas.as_deref_mut()
+        {
+            canvas.clear(damage);
+            canvas.set_damage(damage);
+        }
+        self.draw_all(paint);
+        damage
+    }
+
+    fn draw_all(&mut self, paint: &mut dyn FnMut(u8, &mut Canvas<'_>, Rect)) {
         if self.canvas.is_none() {
             return;
         }
+        let damage = self
+            .canvas
+            .as_deref()
+            .and_then(|canvas| canvas.damage())
+            .unwrap_or(FrameDamage::FULL);
+        let mut covers = 0u64;
+        for index in 0..self.tree.len() {
+            if self.tree.info(NodeId(index as u16)).style.covers() {
+                covers |= 1 << index;
+            }
+        }
         for index in 0..self.tree.len() {
             let info = self.tree.info(NodeId(index as u16));
+            if self
+                .canvas
+                .as_deref()
+                .is_some_and(|canvas| !canvas.touches(info.rect))
+            {
+                continue;
+            }
+            if self.covered(index, info.rect, damage, covers) {
+                continue;
+            }
             self.draw(info, paint);
+        }
+    }
+
+    /// Whether every damaged pixel this node could draw is inside a later node that paints its
+    /// whole rectangle: the cover redraws them, so this node's are hidden.
+    fn covered(&self, index: usize, rect: Rect, damage: FrameDamage, covers: u64) -> bool {
+        if damage.is_full() {
+            return false;
+        }
+        let later = covers & (u64::MAX << (index + 1));
+        damage
+            .rects()
+            .iter()
+            .filter(|area| {
+                i32::from(area.x) < rect.right()
+                    && i32::from(area.right()) > rect.x
+                    && i32::from(area.y) < rect.bottom()
+                    && i32::from(area.bottom()) > rect.y
+            })
+            .all(|area| {
+                let mut rest = later;
+                while rest != 0 {
+                    let at = rest.trailing_zeros() as usize;
+                    rest &= rest - 1;
+                    let cover = self.tree.info(NodeId(at as u16)).rect;
+                    if cover.x <= i32::from(area.x)
+                        && cover.y <= i32::from(area.y)
+                        && cover.right() >= i32::from(area.right())
+                        && cover.bottom() >= i32::from(area.bottom())
+                    {
+                        return true;
+                    }
+                }
+                false
+            })
+    }
+
+    /// Hashes the tree's shape and every node's content into `next`.
+    fn record(&self, next: &mut FramePrint) {
+        let mut structure = 0x811C_9DC5 ^ self.tree.len() as u32;
+        next.len = self.tree.len() as u16;
+        for index in 0..self.tree.len() {
+            let info = self.tree.info(NodeId(index as u16));
+            let kind = match info.kind {
+                NodeKind::Box => 0,
+                NodeKind::Text { .. } => 1,
+                NodeKind::Paint { slot, .. } => 2 + u32::from(slot),
+            };
+            structure = mix(structure, kind);
+            for value in [info.rect.x, info.rect.y, info.rect.w, info.rect.h] {
+                structure = mix(structure, value as u32);
+            }
+            for value in [info.clip.x, info.clip.y, info.clip.w, info.clip.h] {
+                structure = mix(structure, value as u32);
+            }
+            structure = mix(structure, u32::from(info.clipped));
+            next.content[index] = self.content(&info);
+        }
+        next.structure = structure;
+    }
+
+    fn content(&self, info: &NodeInfo) -> u32 {
+        let seed = info.style.fingerprint();
+        match info.kind {
+            NodeKind::Box => seed,
+            NodeKind::Text { start, len } => {
+                let mut hash = seed;
+                for &byte in &self.text[usize::from(start)..usize::from(start + len)] {
+                    hash = mix(hash, u32::from(byte));
+                }
+                let end = start + len;
+                for span in &self.spans[..usize::from(self.span_count)] {
+                    if span.end > start && span.start < end {
+                        hash = mix(hash, u32::from(span.start));
+                        hash = mix(hash, u32::from(span.end));
+                        hash = mix(hash, span.style.fingerprint());
+                    }
+                }
+                hash
+            }
+            NodeKind::Paint { slot, state } => mix(mix(seed, u32::from(slot)), state),
+        }
+    }
+
+    /// The pixels `prev` and `next` disagree on. A different shape cannot be patched, so it is
+    /// the whole frame.
+    fn damage_since(&self, prev: &FramePrint, next: &FramePrint, moved: bool) -> FrameDamage {
+        if prev.structure != next.structure || prev.len != next.len {
+            return FrameDamage::FULL;
+        }
+        let mut damage = FrameDamage::NONE;
+        for index in 0..self.tree.len() {
+            let info = self.tree.info(NodeId(index as u16));
+            let unknown = moved
+                && matches!(info.kind, NodeKind::Paint { state, .. } if state == super::layout::UNKNOWN_PAINT);
+            if prev.content[index] != next.content[index] || unknown {
+                // `clip` only means something for a node inside a scroll box; an unclipped
+                // node's clip is the empty default.
+                let rect = if info.clipped {
+                    info.rect.intersect(info.clip)
+                } else {
+                    info.rect
+                };
+                self.mark_damage(&mut damage, rect);
+            }
+        }
+        damage
+    }
+
+    fn mark_damage(&self, damage: &mut FrameDamage, rect: Rect) {
+        let (x0, y0) = (
+            rect.x.clamp(0, self.width as i32),
+            rect.y.clamp(0, self.height as i32),
+        );
+        let (x1, y1) = (
+            rect.right().clamp(0, self.width as i32),
+            rect.bottom().clamp(0, self.height as i32),
+        );
+        if x1 > x0 && y1 > y0 {
+            damage.add(DamageRect::new(
+                x0 as u16,
+                y0 as u16,
+                (x1 - x0) as u16,
+                (y1 - y0) as u16,
+            ));
         }
     }
 
@@ -355,9 +560,15 @@ impl<'a, 's> Ui<'a, 's> {
     }
 }
 
+/// One step of the 32-bit FNV-1a every fingerprint uses.
+fn mix(seed: u32, value: u32) -> u32 {
+    (seed ^ value).wrapping_mul(0x0100_0193)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::drivers::surface::DamageRect;
     use crate::ui::layout::PX;
     use crate::ui::{DecorationStyle, FontWeight, Length, Overflow, TextAlign};
 
@@ -661,6 +872,91 @@ mod tests {
         let underlined = row_count(&raster(b"HHHH", Style::new().underline(), &[]), 11);
         assert_eq!(plain, 0);
         assert!(underlined >= 20, "the rule spans the run: {underlined} px");
+    }
+
+    /// One declaration of `build`, measured headless, and the damage it needs against
+    /// `prev`.
+    fn damage_of(
+        prev: Option<&FramePrint>,
+        moved: bool,
+        build: impl FnOnce(&mut Ui<'_, '_>),
+    ) -> (FramePrint, FrameDamage) {
+        let mut print = FramePrint::new();
+        let mut ui = Ui::headless(40, 30, Screen::default());
+        build(&mut ui);
+        let mut ignore = |_: u8, _: &mut Canvas<'_>, _: Rect| {};
+        let damage = ui.paint_measured(
+            BoxConstraints::tight(40 * PX, 30 * PX),
+            &mut print,
+            Source::Diff { prev, moved },
+            FrameDamage::NONE,
+            &mut ignore,
+        );
+        (print, damage)
+    }
+
+    fn leaf(ui: &mut Ui<'_, '_>) {
+        ui.custom(Style::new().width(10).height(10), 0);
+    }
+
+    #[test]
+    fn an_unstated_custom_slot_repaints_when_the_snapshot_moves() {
+        let (first, full) = damage_of(None, false, leaf);
+        assert!(
+            full.is_full(),
+            "the first frame has nothing to compare with"
+        );
+
+        let (_, still) = damage_of(Some(&first), false, leaf);
+        assert_eq!(still, FrameDamage::NONE, "a still snapshot leaves it alone");
+
+        let (_, moved) = damage_of(Some(&first), true, leaf);
+        assert_eq!(moved.rects(), &[DamageRect::new(0, 0, 10, 10)]);
+    }
+
+    #[test]
+    fn a_stated_custom_slot_repaints_only_when_its_state_moves() {
+        let state = |ui: &mut Ui<'_, '_>, state: u32| {
+            ui.custom_state(Style::new().width(10).height(10), 0, state);
+        };
+        let (first, _) = damage_of(None, false, |ui| state(ui, 1));
+        let (_, same) = damage_of(Some(&first), true, |ui| state(ui, 1));
+        assert_eq!(same, FrameDamage::NONE, "the picture did not move");
+        let (_, moved) = damage_of(Some(&first), false, |ui| state(ui, 2));
+        assert_eq!(moved.rects(), &[DamageRect::new(0, 0, 10, 10)]);
+    }
+
+    #[test]
+    fn a_different_tree_cannot_be_patched() {
+        let (first, _) = damage_of(None, false, leaf);
+        let (_, grown) = damage_of(Some(&first), false, |ui| {
+            leaf(ui);
+            ui.custom(Style::new().width(5).height(5), 1);
+        });
+        assert!(grown.is_full(), "one more node moves the pixels under it");
+    }
+
+    #[test]
+    fn a_run_that_changes_its_bytes_repaints_its_rectangle() {
+        let run = |ui: &mut Ui<'_, '_>, text: &'static [u8]| {
+            ui.text(text, Style::new().width(20).height(10).nowrap());
+        };
+        let (first, _) = damage_of(None, false, |ui| run(ui, b"AB"));
+        let (_, changed) = damage_of(Some(&first), false, |ui| run(ui, b"AC"));
+        assert_eq!(changed.rects(), &[DamageRect::new(0, 0, 20, 10)]);
+    }
+
+    #[test]
+    fn a_leaf_that_moves_the_layout_is_a_whole_frame() {
+        let styled = |ui: &mut Ui<'_, '_>, width: i16| {
+            ui.custom(Style::new().width(width).height(10), 0);
+        };
+        let (first, _) = damage_of(None, false, |ui| styled(ui, 10));
+        let (_, resized) = damage_of(Some(&first), false, |ui| styled(ui, 12));
+        assert!(
+            resized.is_full(),
+            "a leaf that grew moves the boxes after it"
+        );
     }
 
     #[test]

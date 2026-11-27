@@ -4,13 +4,15 @@
 
 mod constraints;
 mod node;
+mod print;
 mod scroll;
 mod style;
 
 pub use self::constraints::{BoxConstraints, PX};
 pub use self::node::MAX_NODES;
 pub use self::node::NodeId;
-pub(crate) use self::node::{NodeInfo, NodeKind, Span};
+pub(crate) use self::node::{NodeInfo, NodeKind, Span, UNKNOWN_PAINT};
+pub use self::print::{FramePrint, Source};
 pub use self::scroll::{ScrollId, ScrollInfo};
 pub use self::style::{
     Align, Axis, Decoration, DecorationStyle, Flow, FontWeight, Inset, Justify, Length, Overflow,
@@ -192,7 +194,7 @@ impl Tree {
     pub(crate) fn paint_rect(&self, slot: u8) -> Option<Rect> {
         self.nodes[..usize::from(self.len)]
             .iter()
-            .find(|node| node.kind == NodeKind::Paint { slot })
+            .find(|node| matches!(node.kind, NodeKind::Paint { slot: found, .. } if found == slot))
             .map(|node| node.rect)
     }
 

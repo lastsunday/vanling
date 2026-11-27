@@ -53,8 +53,67 @@ impl<'a> Canvas<'a> {
         self
     }
 
+    /// Narrows every following mark to `damage`, for a frame whose changed pixels are only
+    /// known after the page is laid out.
+    pub fn set_damage(&mut self, damage: FrameDamage) {
+        self.damage = Some(damage);
+    }
+
+    /// Lays the frame's ground back inside `damage`, past both the damage window and the
+    /// content clamp: the caller is about to redraw exactly these pixels, footer included.
+    pub fn clear(&mut self, damage: FrameDamage) {
+        let Some(ground) = self.ground else {
+            return;
+        };
+        let packed = rgb565(ground).to_be_bytes();
+        if damage.is_full() {
+            for pixel in self.frame.as_chunks_mut::<2>().0 {
+                pixel.copy_from_slice(&packed);
+            }
+            return;
+        }
+        for rect in damage.rects() {
+            let (x0, x1) = (
+                usize::from(rect.x).min(self.width),
+                usize::from(rect.right()).min(self.width),
+            );
+            if x1 <= x0 {
+                continue;
+            }
+            let row_bytes = (x1 - x0) * 2;
+            for y in usize::from(rect.y)..usize::from(rect.bottom()).min(self.height) {
+                let start = y * self.width * 2 + x0 * 2;
+                for pixel in self.frame[start..start + row_bytes].as_chunks_mut::<2>().0 {
+                    pixel.copy_from_slice(&packed);
+                }
+            }
+        }
+    }
+
     fn damaged(&self, x: usize, y: usize) -> bool {
         in_damage(self.damage, x, y)
+    }
+
+    /// The pixels this frame may draw, as the caller narrowed them.
+    pub fn damage(&self) -> Option<FrameDamage> {
+        self.damage
+    }
+
+    /// Whether `rect` holds a pixel this frame may draw. A node outside the damage is skipped
+    /// whole, so its drawing does not walk pixels the canvas would discard.
+    pub fn touches(&self, rect: Rect) -> bool {
+        let Some(damage) = self.damage else {
+            return true;
+        };
+        if damage.is_full() {
+            return true;
+        }
+        damage.rects().iter().any(|area| {
+            i32::from(area.x) < rect.right()
+                && i32::from(area.right()) > rect.x
+                && i32::from(area.y) < rect.bottom()
+                && i32::from(area.bottom()) > rect.y
+        })
     }
 
     pub fn width(&self) -> usize {

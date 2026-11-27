@@ -4,8 +4,8 @@ description = "A PSRAM staging copy raised the panel from 24 to 28 fps but doubl
 weight = 25
 sort_by = "weight"
 [extra]
-source_file_hash = "3c69dfd0a313bec6d6ee3f68ab11998c4ae9be20"
-translated_at = "2026-11-26T14:55:00Z"
+source_file_hash = "8a06037cdcfd740d7649d10edda772e5afe77f6f"
+translated_at = "2026-11-27T02:00:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -60,21 +60,21 @@ Striped double buffering (LVGL's partial-buffer semantics) is the only theoretic
 
 `[measured]` A single-buffered frame is paint 19–20 ms + wire 15–16 ms. Double buffering can only touch the second half, and cannot touch it without PSRAM. The first half has no such limit: the Menu demo's paint is 19 ms (`fill` is only 1–2 ms), and cutting that is the only path that needs no extra memory.
 
-## Partial repaint: draw only the pixels that changed
+## Partial repaint: the framework derives the damage
 
-`[measured]` When a page can say which blocks of pixels this frame changed, the painter redraws and ships only those blocks, `keeps_frame` stays true, and the bsp does not fill the panel. The entry point is `services::Descriptor::with_partial`: the page returns `Partial { damage, redraw }`, where `redraw` is either "draw this custom slot only" or "repaint the whole page clipped to the damage"; `AppPainter::plan` asks after the scroll check and falls back to a full frame when it gets nothing.
+`[measured]` A page no longer names its repaint rectangles. After layout the framework fingerprints every node twice: `structure` (node count plus each node's kind, rectangle and clip) and `content` (a field-by-field hash of `Style`, the text bytes, and a custom slot's `state`). The previous frame keeps only `FramePrint { structure, content: [u32; 64], len }` (about 262 B, on the stack); a different structure is a whole frame, otherwise only the nodes whose content moved are repainted inside their own rectangles (intersected with their clips). `Ui::custom_state(style, slot, state)` lets a page answer "is this the same picture?" with one `u32`; `Ui::custom` says the page does not describe its pixels, so the slot is repainted whenever the snapshot moves.
 
-`[measured]` The planner page's two wheels each report their own pixels: the dialog wheel reports only the column that moved (`time_picker::column_rect` / `date_picker::column_rect`), the month grid reports its whole body, and the inline hour wheel reports "the wheel's visible rect plus the reading line that prints its hour" (both published by `PlannerSnapshot::inline_box` / `hour_line`, already intersected with the scroll viewport). A partial frame first lays the ground back down inside the damage: page text is drawn by turning the ground over, so painting the same block twice would toggle it (a new pixel-level test pins this); the dialog card then covers the part that is card with its own opaque `surface`.
+`[measured]` A partial frame first lays the ground back down inside the damage (page text is drawn by turning the ground over, so painting the same block twice would toggle it), then redraws every node that intersects the damage in tree order, so a card or scrim drawn later covers it again. Each dialog column declares `Style::cover()` (it paints its whole rectangle), which lets the framework skip the nodes it hides; without it the page text behind the card is re-typeset every frame and the dialog wheel drops to ≈35 fps, and with it the wheel is back at 50 fps. The `Picker` scrim is still the four bands around the card, so a body repaint touches no blend.
 
 `[measured]` Same S3, `320×240`, debug build, one window per 2 s (a temporary bench drove the wheels; removed before landing):
 
-| Metric | Whole frame | Dialog wheel (one column) | Inline hour wheel (wheel visible) |
+| Metric | Whole-frame baseline | Dialog wheel (one column + footer) | Inline hour wheel (wheel + reading line) |
 | --- | --- | --- | --- |
-| repaints / 2 s | 38 | 100–101 | 100–101 |
-| frame rate | ≈19 fps | ≈50 fps | ≈50 fps |
-| `held the executor` | 66% | 33% | 46–50% |
-| `worst render` | 36 ms | 6–9 ms | 9–13 ms |
-| `worst write` | 10 ms | 4–5 ms | 3 ms |
+| repaints / 2 s | 38 | 91–99 | 100–101 |
+| frame rate | ≈19 fps | ≈45–50 fps | ≈50 fps |
+| `held the executor` | 66% | 46% | 26–29% |
+| `worst render` | 36 ms | 10–15 ms | 5–9 ms |
+| `worst write` | 10 ms | 4–5 ms | 3–4 ms |
 
 50 fps is the `STEP_MS = 20` ceiling, not the renderer's ability; the whole-frame column is the same bench's baseline. There is no gain beyond frame rate: the pixels are identical to a whole-frame repaint point for point (a test compares a partial frame with the same frame painted whole).
 

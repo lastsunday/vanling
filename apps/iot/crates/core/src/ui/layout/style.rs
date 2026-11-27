@@ -23,6 +23,16 @@ pub enum Length {
 }
 
 impl Length {
+    fn fingerprint(self) -> u32 {
+        match self {
+            Self::Auto => 0,
+            Self::Px(value) => 1 | u32::from(value as u16) << 8,
+            Self::Percent(value) => 2 | u32::from(value as u16) << 8,
+            Self::Dp(value) => 3 | u32::from(value as u16) << 8,
+            Self::Rem(value) => 4 | u32::from(value as u16) << 8,
+        }
+    }
+
     pub const fn px(value: i16) -> Self {
         Self::Px(value)
     }
@@ -226,6 +236,7 @@ mod bits {
     pub const ABSOLUTE: u8 = 1;
     pub const FILL: u8 = 1 << 1;
     pub const BORDER: u8 = 1 << 2;
+    pub const COVER: u8 = 1 << 3;
 }
 
 /// Bits of [`Style::text_flags`]. Four bits of weight, three of decoration, three of
@@ -250,6 +261,15 @@ pub struct RunStyle {
 }
 
 impl RunStyle {
+    /// A hash of what a span paints over its bytes.
+    pub(crate) fn fingerprint(self) -> u32 {
+        u32::from(self.color.0)
+            | u32::from(self.decoration_color.0) << 8
+            | u32::from(self.background_color.0) << 16
+            | u32::from(self.decoration.0) << 24
+            | (self.decoration_style as u32) << 28
+    }
+
     /// Recolours the span; the other slots keep the node's.
     pub const fn color(mut self, color: ColorId) -> Self {
         self.color = color;
@@ -374,6 +394,67 @@ impl Style {
             background_color: ColorId::NONE,
             decoration_color: ColorId::NONE,
         }
+    }
+
+    /// A hash of every field that can change a node's pixels, so a frame can repaint one box
+    /// whose look moved without repainting the page. Layout differences surface in the node's
+    /// rectangle instead; this covers the marks a same-sized node draws.
+    pub(crate) fn fingerprint(self) -> u32 {
+        const OFFSET: u32 = 0x811C_9DC5;
+        const PRIME: u32 = 0x0100_0193;
+        let mut hash = OFFSET;
+        let mut add = |value: u32| hash = (hash ^ value).wrapping_mul(PRIME);
+        for length in [
+            self.width,
+            self.height,
+            self.min_width,
+            self.min_height,
+            self.max_width,
+            self.max_height,
+            self.basis,
+        ] {
+            add(length.fingerprint());
+        }
+        for edge in [
+            self.padding.left,
+            self.padding.top,
+            self.padding.right,
+            self.padding.bottom,
+        ] {
+            add(u32::from(edge as u16));
+        }
+        for inset in [
+            self.inset.left,
+            self.inset.top,
+            self.inset.right,
+            self.inset.bottom,
+        ] {
+            add(inset.map_or(u32::MAX, |value| u32::from(value as u16)));
+        }
+        add(u32::from(self.gap as u16));
+        add(self.flow as u32);
+        add(self.axis as u32);
+        add(self.justify as u32);
+        add(self.align as u32);
+        add(self.align_self as u32);
+        add(self.align_content as u32);
+        add(u32::from(self.grow));
+        add(u32::from(self.shrink));
+        add(u32::from(self.flags));
+        add(self.text_align as u32);
+        add(u32::from(self.nowrap));
+        add(self.overflow as u32);
+        add(u32::from(self.max_lines));
+        add(u32::from(self.scroll_offset as u16));
+        add(u32::from(self.scroll_area.0));
+        add(u32::from(self.tag));
+        add(u32::from(self.radius));
+        add(u32::from(self.font_size));
+        add(u32::from(self.text_flags));
+        add(u32::from(self.color.0));
+        add(u32::from(self.background_color.0));
+        add(u32::from(self.decoration_color.0));
+        hash
     }
 
     pub const fn row(mut self) -> Self {
@@ -584,6 +665,18 @@ impl Style {
 
     pub const fn has_border(self) -> bool {
         self.flags & bits::BORDER != 0
+    }
+
+    /// Declares that the node paints every pixel of its rectangle, whatever is under it. A
+    /// partial frame then skips the nodes this one hides, and a custom leaf that fills its own
+    /// surface is the usual caller.
+    pub const fn cover(mut self) -> Self {
+        self.flags |= bits::COVER;
+        self
+    }
+
+    pub(crate) const fn covers(self) -> bool {
+        self.flags & bits::COVER != 0
     }
 
     /// Rounds the box's painted corners, clamped to half the shorter side and to 16 px, so a

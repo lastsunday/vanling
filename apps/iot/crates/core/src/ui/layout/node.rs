@@ -13,9 +13,20 @@ pub const NONE: u16 = u16::MAX;
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NodeKind {
     Box,
-    Text { start: u16, len: u16 },
-    Paint { slot: u8 },
+    Text {
+        start: u16,
+        len: u16,
+    },
+    /// A leaf the page paints itself. `state` is the page's own fingerprint of what it draws;
+    /// [`UNKNOWN_PAINT`] says the page does not describe its pixels.
+    Paint {
+        slot: u8,
+        state: u32,
+    },
 }
+
+/// The `state` a custom leaf carries when the page cannot say whether its pixels moved.
+pub const UNKNOWN_PAINT: u32 = u32::MAX;
 
 /// The constraints a measurement was taken at. A box keys on all four; a run keys on width alone
 /// (a line breaks on width, not on the height it is offered) and keeps its natural height in the

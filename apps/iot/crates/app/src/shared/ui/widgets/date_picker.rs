@@ -154,26 +154,32 @@ pub fn draw_wheels(
     theme: &Theme,
 ) {
     for column in 0..COLUMNS {
-        let col = column_rect(rect, column);
-        wheel::draw(
-            canvas,
-            col,
-            wheels[usize::from(column)],
-            labels(column),
-            theme,
-        );
-        if column > 0 {
-            let m = wheel::metrics(col);
-            let width = canvas.measure(b":") as i32;
-            canvas.set_color(Some(theme.muted));
-            canvas.draw_text(
-                b":",
-                (col.x - width / 2).max(0) as usize,
-                (m.centre + (i32::from(m.row_h) - 12) / 2).max(0) as usize,
-            );
-        }
+        draw_column(canvas, rect, wheels, column, theme);
     }
     canvas.set_color(None);
+}
+
+/// One column and the separator at its right edge: everything inside that column's rectangle,
+/// so a frame can repaint the column alone.
+pub fn draw_column(
+    canvas: &mut Canvas<'_>,
+    rect: Rect,
+    wheels: [WheelView; COLUMNS as usize],
+    column: u8,
+    theme: &Theme,
+) {
+    let column = column.min(COLUMNS - 1);
+    let col = column_rect(rect, column);
+    wheel::draw(
+        canvas,
+        col,
+        wheels[usize::from(column)],
+        labels(column),
+        theme,
+    );
+    if column + 1 < COLUMNS {
+        wheel::separator(canvas, col, theme);
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
