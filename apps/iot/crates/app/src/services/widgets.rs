@@ -2,17 +2,13 @@
 //! scroll box. Controls that can hold a value keep it in this page, not in the device state.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::{Canvas, Layout, NodeId, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, Key, WidgetsAction, WidgetsIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
-use crate::shared::route::PageId;
-use crate::shared::snapshot::{
-    FrameSnapshot, PageSnapshot, ScrollAreaView, ScrollShift, WidgetsSnapshot,
-};
+use crate::shared::page::{self, CONTENT_W};
+use crate::shared::snapshot::{FrameSnapshot, PageSnapshot, ScrollAreaView, WidgetsSnapshot};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::keyboard;
 use crate::shared::ui::keyboard::FIELD_BYTES;
@@ -32,8 +28,7 @@ use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
 
-/// The gallery's column: the panel less the page margin and the thumb's gutter.
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
+/// The gallery's column is the page's own; these are the gaps between its tiles.
 const GAP: i16 = 6;
 const BUTTON: i16 = (CONTENT_W - 2 * GAP) / 3;
 /// Wide enough for `OUTLINED` at 14 px and fixed, so the row holds its shape in either language.
@@ -118,15 +113,6 @@ impl WidgetsPage {
         };
         view.moving = self.scroll.moving();
         view
-    }
-
-    /// The control a panel point lands on, by tag; zero when none.
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        let area = self.scroll.areas()[0];
-        if !area.rect.contains(x, y) {
-            return 0;
-        }
-        layout.at(x, y).unwrap_or(0)
     }
 
     fn toggle(&mut self, action: WidgetsAction) {
@@ -284,14 +270,14 @@ impl super::LocalPage for WidgetsPage {
                         at_ms: Some(at_ms),
                     }));
                 }
-                let action =
-                    WidgetsAction::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)))?;
+                let action = WidgetsAction::from_tag(layout.at(i32::from(x), i32::from(y))?)?;
                 Some(BusinessIntent::Widgets(WidgetsIntent::Tap { action }))
             }
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let action =
-                    WidgetsAction::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)));
-                if let Some(action) = action {
+                if let Some(action) = layout
+                    .at(i32::from(x), i32::from(y))
+                    .and_then(WidgetsAction::from_tag)
+                {
                     return Some(BusinessIntent::Widgets(WidgetsIntent::Press {
                         action,
                         id,
@@ -387,8 +373,8 @@ impl super::LocalPage for WidgetsPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(widgets_moved))
-            .with_scroll(widgets_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -566,35 +552,6 @@ fn choice(lang: Lang, index: u8) -> &'static [u8] {
     }
 }
 
-fn widgets_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.widgets != next.pages.widgets
-}
-
-fn widgets_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    if prev.page != PageId::Widgets || next.page != PageId::Widgets {
-        return None;
-    }
-    let areas = [next.pages.widgets.area];
-    let mut before = prev.pages.widgets;
-    let mut after = next.pages.widgets;
-    let shift = after.area.offset.wrapping_sub(before.area.offset);
-    before.area.offset = 0;
-    after.area.offset = 0;
-    if before.area.rect.w <= 0 || before.area.rect.h <= 0 {
-        return None;
-    }
-    let moving_ended = before.moving && !after.moving;
-    before.moving = false;
-    after.moving = false;
-    if before != after {
-        return None;
-    }
-    if !moving_ended && shift == 0 {
-        return None;
-    }
-    Some(ScrollShift::new(&areas, &[shift]))
-}
-
 fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
     let w = snapshot.pages.widgets;
     let lang = snapshot.lang;
@@ -618,16 +575,16 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
 }
 
 /// The gallery never draws wider than the panel.
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
 const _: () = assert!(3 * BUTTON + 2 * GAP == CONTENT_W);
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
+    use crate::shared::route::PageId;
     use alloc::vec::Vec;
     use iot_core::drivers::input::{RawPoint, TouchContinuity, TouchGestures};
-    use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
     use iot_core::ui::{Layout, PX};
 
     fn op(event: GestureEvent) -> InputIntent {
@@ -1090,7 +1047,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.widgets.area.offset > 0);
-        let shift = widgets_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.widgets.area.offset);
     }
 

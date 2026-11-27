@@ -1,12 +1,12 @@
 +++
 title = "Advanced widgets and Feed"
-description = "25 advanced widgets, one Feed and four galleries are in place: 568 host tests, 32 golden rows, an S3 main stack of 82,296 B, images of 2,065,824 / 1,866,448 B, both flashed and booting."
+description = "25 advanced widgets, one Feed and four galleries are in place: 676 host tests, 32 golden rows, an S3 main stack of 94,168 B, images of 1,940,448 / 1,734,064 B, both flashed and booting."
 weight = 70
 sort_by = "weight"
 
 [extra]
-source_file_hash = "6c5cfdae902c05c8a55b9a3cb1d0e479ce79e56e"
-translated_at = "2026-11-25T14:49:09Z"
+source_file_hash = "633b6b50e97b610067c82bf2ecda413e512959de"
+translated_at = "2026-11-27T15:37:50Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -174,3 +174,31 @@ Menu and sheet: converted from always-inline `Widget`s to canvas overlays shaped
 | Images | S3 **2,065,824 / 6,291,456 B** (32.84%); C6 **1,866,448 / 6,291,456 B** (29.67%) |
 | S3 main stack | Serial `[DISPLAY] … main stack 82296 B`; `[STACK] core 1 peak 2000 B of 24576 B` |
 | Flashing | One write each to S3 and C6; both print `this boot is healthy` |
+
+## One entry point for gestures and repaints
+
+Each gallery page used to carry its own plumbing: a `TagTable` with `SubTag<FIRST, COUNT>` families, a `tag_at` closure, a `*_moved` repaint predicate and a `*_shift` scroll translation. This round moved them to where the framework can answer, leaving a page with only "which control was touched" and "this page changed".
+
+- **Action**: one fieldless `#[repr(u16)] enum Action` per page, `tag()` is the discriminant, and `ALL` lists every variant the page can report (boxes plus the bases its arithmetic returns), so the default `from_tag` scans `ALL` and every reported tag decodes. `SubTag` and `TAG_*` are gone; a calendar day, a star, a dialog month cell, a table row, a chart bar, a heatmap cell and a list row carry their index in `GalleryIntent::Tap { tag, value }` / `Press { id, tag, value, x, y }`, settled by one `match` per page, and `mark_at` returns `(tag, value)` instead of subtracting a base tag. Family bases stay out of `ALL`, so `every_control_is_drawn_once` still pairs up.
+- **Hits**: `Layout` stores `Hit { tag, slide, rect }` plus a private clip slot instead of `(tag, rect)`. `hit` takes the topmost box, later declarations covering earlier ones; `slides` answers the sideways-drag capability set by `Style::slide()`, so a page hands `Scroller` no predicate; whatever a scroll box clips away takes no part in a hit, while `rect` still reports the whole box (a slider or a menu anchor needs that geometry). `Scroller::bind(op, wire, layout)` takes `&Layout` and no closures.
+- **Repaints and scrolling**: one `Repaint::Page` rule (overlay pages `PageOrOverlay`) checks the page stamp, `lang`, `theme`, `backed`, `glow`, `backlight` and the page's own record, and 18 `*_moved` functions are gone; a pure scroll keeps only `Pages::scroll` / `settled`, `Descriptor::with_scroll()` and one generic `gallery::shift`, and 11 `*_shift` functions are gone (including `lighting_moved`, `text_moved` and the text page's own `scroll_shift`).
+- `CONTENT_W` was copied into seven pages and now lives in `shared::page`; date, time and two-digit padding moved into the new `shared/ui/fmt.rs`.
+
+`PageSnapshot` keeps its twelve literal fields rather than becoming an enum: one page is published per frame, so an enum would only rename them; it waits for a second consumer.
+
+### Deferred
+
+- `Ui::env` (`lang` / `theme` in the declaration context, replacing 199 `Msg::X.bytes(lang)` calls): a mechanical swap that only saves one argument, while `Ui` already takes 13,048 of 13,312 B.
+- `ROUTES` / `DESCRIPTORS` tables: `route()` is a `const fn` that `path()` / `from_path()` const-evaluate, so a table would push both to run time; services are owned values, so `get` / `service_mut` cannot look one up either.
+
+### Measured
+
+| Item | Result |
+| --- | --- |
+| Host tests | `moon run iot:test`: core **594** + app **676**, 0 failed |
+| Format / lint | `cargo fmt --all -- --check` clean; `cargo clippy -p iot-core --all-targets -- -D warnings` and `cargo clippy -p iot-app --lib --no-default-features --features host -- -D warnings` pass |
+| Target checks | `moon run iot:check-host` / `check-c6` / `check-s3` all pass |
+| Golden | Not re-recorded: this round only touched hit testing and repaint entry points, so the 32 rows' pixels are unchanged |
+| Images | S3 **1,940,448 / 6,291,456 B** (30.84%); C6 **1,734,064 / 6,291,456 B** (27.56%) |
+| S3 main stack | `_stack_start_cpu0 0x3fce9710 − _stack_end_cpu0 0x3fcd2738 = 94,168 B`, **36,824 B** left above the 57,344 B floor; serial `main stack 94168 B`, peak 15,144 B |
+| Flashing | One write each to S3 and C6; both serial logs print `this boot is healthy` |

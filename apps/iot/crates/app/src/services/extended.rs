@@ -2,7 +2,6 @@
 //! and the keypad that shows what a pad cell reports.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
-use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 
 use super::gallery::{REPAINT_MS, Scroller};
@@ -10,12 +9,12 @@ use super::{Descriptor, Repaint};
 use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent, Key};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
+use crate::shared::page::{self, CONTENT_W};
 use crate::shared::route::PageId;
-use crate::shared::snapshot::{ExtendedSnapshot, FrameSnapshot, PageSnapshot, ScrollShift};
+use crate::shared::snapshot::{ExtendedSnapshot, FrameSnapshot, PageSnapshot};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::keyboard;
-use crate::shared::ui::scroll::{BAR, ScrollConfig};
+use crate::shared::ui::scroll::ScrollConfig;
 use crate::shared::ui::state::State;
 use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
@@ -23,12 +22,9 @@ use crate::shared::ui::widgets::keypad;
 use crate::shared::ui::widgets::{FilterChips, FormField, Keypad, NumberField, SearchField};
 
 const AREA: ScrollId = ScrollId::new(1);
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
 const KEY_SLOT: u8 = 0;
 /// Four pad rows, each a full touch target.
 const KEYPAD_H: i16 = page::TOUCH * 4;
-/// The pad's own tag: the arena remembers a press on it instead of claiming the scroll.
-const TAG_KEYPAD: u16 = 90;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -47,6 +43,8 @@ enum Action {
     Form,
     Dec,
     Inc,
+    /// The pad's own tag: the arena remembers a press on it instead of claiming the scroll.
+    Keypad = 90,
 }
 
 impl Tag for Action {
@@ -58,6 +56,7 @@ impl Tag for Action {
         Self::Form,
         Self::Dec,
         Self::Inc,
+        Self::Keypad,
     ];
 
     fn tag(self) -> u16 {
@@ -90,11 +89,6 @@ impl Default for ExtendedPage {
 }
 
 impl ExtendedPage {
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        self.scroll
-            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
-    }
-
     fn snapshot(&self) -> ExtendedSnapshot {
         let mut view = self.values;
         view.area = self.scroll.view();
@@ -111,6 +105,7 @@ impl ExtendedPage {
             Action::Form => self.values.form_error = !self.values.form_error,
             Action::Dec => self.values.number = self.values.number.saturating_sub(1),
             Action::Inc => self.values.number = self.values.number.saturating_add(1),
+            Action::Keypad => {}
         }
     }
 }
@@ -129,7 +124,7 @@ impl super::Service for ExtendedPage {
             return (None, Effects::default());
         }
         match *intent {
-            GalleryIntent::Tap { tag } => {
+            GalleryIntent::Tap { tag, .. } => {
                 if let Some(action) = Action::from_tag(tag) {
                     self.tap(action);
                 }
@@ -185,12 +180,7 @@ impl super::LocalPage for ExtendedPage {
                 return tap(GalleryIntent::Pad { cell });
             }
         }
-        self.scroll.bind(
-            op,
-            PageId::Extended.code(),
-            |x, y| self.tag_at(layout, x, y),
-            |_| false,
-        )
+        self.scroll.bind(op, PageId::Extended.code(), layout)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -205,8 +195,8 @@ impl super::LocalPage for ExtendedPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(extended_moved))
-            .with_scroll(extended_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -279,7 +269,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(KEYPAD_H)
-                    .tag(TAG_KEYPAD),
+                    .tag(Action::Keypad.tag()),
                 KEY_SLOT,
             );
             let key: &[u8] = match w.key {
@@ -306,29 +296,14 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
     }
 }
 
-fn extended_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.extended != next.pages.extended
-}
-
-fn extended_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::Extended,
-        prev,
-        next,
-        |pages| pages.extended.area,
-        |pages| pages.extended.moving,
-    )
-}
-
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
+    use crate::shared::ui::scroll::LINE_PX as SCROLL_LINE;
     use alloc::vec::Vec;
-    use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
     use iot_core::ui::{Layout, PX};
 
     fn layout(page: &ExtendedPage) -> Layout {
@@ -339,7 +314,7 @@ mod tests {
         let mut state = DeviceState::default();
         let intent = BusinessIntent::Gallery {
             wire: PageId::Extended.code(),
-            intent: GalleryIntent::Tap { tag },
+            intent: GalleryIntent::Tap { tag, value: 0 },
         };
         page.apply(&intent, &mut state, &layout(page));
     }
@@ -448,12 +423,21 @@ mod tests {
 
     #[test]
     fn the_keypad_carries_its_own_tag() {
-        let page = ExtendedPage::default();
+        let mut page = ExtendedPage::default();
+        let rect = layout(&page).slot(KEY_SLOT).expect("a pad");
+        let area = page.scroll.area();
+        let rows = rect.y + rect.h / 2 - (area.rect.y + area.rect.h / 2);
+        let lines = i8::try_from((rows / i32::from(SCROLL_LINE)).clamp(-127, 127)).unwrap_or(0);
+        page.scroll.apply(GalleryIntent::Scroll {
+            area: 0,
+            lines,
+            speed: 0,
+        });
         let layout = layout(&page);
         let keypad = layout.slot(KEY_SLOT).expect("a pad");
         assert_eq!(
             layout.at(keypad.x + 2, keypad.y + 2),
-            Some(TAG_KEYPAD),
+            Some(Action::Keypad.tag()),
             "the arena claims the scroll unless the pad is tagged"
         );
     }
@@ -575,7 +559,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.extended.area.offset > 0);
-        let shift = extended_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.extended.area.offset);
     }
 }

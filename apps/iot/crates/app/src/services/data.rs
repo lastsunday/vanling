@@ -9,11 +9,11 @@ use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
+use crate::shared::page::{self, CONTENT_W};
 use crate::shared::route::PageId;
-use crate::shared::snapshot::{DataSnapshot, FrameSnapshot, PageSnapshot, ScrollShift};
+use crate::shared::snapshot::{DataSnapshot, FrameSnapshot, PageSnapshot};
 use crate::shared::surface::{finish, headless};
-use crate::shared::ui::scroll::{BAR, ScrollConfig};
+use crate::shared::ui::scroll::ScrollConfig;
 use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::{ButtonKind, Theme};
 use crate::shared::ui::widgets::{
@@ -25,8 +25,6 @@ use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
-
 /// The full-panel rect all three overlay slots declare; the hit tests read the same constant.
 const OVERLAY: Rect = Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32);
 
@@ -41,14 +39,6 @@ const SHEET_SLOT: u8 = 6;
 const TABLE_H: i16 = table::HEADER_H + 4 * table::ROW_H;
 const CHART_H: i16 = page::TOUCH * 2;
 const GAUGE_H: i16 = page::TOUCH * 2;
-
-/// Tags the custom slots compute for themselves: their sub-cells are not declared nodes.
-const TAG_TABLE: u16 = 60;
-const TAG_CHART: u16 = 70;
-const TAG_GAUGE: u16 = 80;
-const TAG_DIALOG_OK: u16 = 90;
-const TAG_DIALOG_CANCEL: u16 = 91;
-const TAG_DISMISS: u16 = 92;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -70,6 +60,14 @@ enum Action {
     SheetOpen,
     Sheet0,
     Sheet1,
+    /// A table row: the row travels in the intent's `value`.
+    Table = 60,
+    /// A chart column: the column travels in the intent's `value`.
+    Chart = 70,
+    Gauge = 80,
+    DialogOk = 90,
+    DialogCancel,
+    Dismiss,
 }
 
 impl Tag for Action {
@@ -84,6 +82,12 @@ impl Tag for Action {
         Self::SheetOpen,
         Self::Sheet0,
         Self::Sheet1,
+        Self::Table,
+        Self::Chart,
+        Self::Gauge,
+        Self::DialogOk,
+        Self::DialogCancel,
+        Self::Dismiss,
     ];
 
     fn tag(self) -> u16 {
@@ -96,6 +100,9 @@ impl Action {
     /// overlay slots instead of declared.
     #[cfg(test)]
     const DECLARED: &'static [Self] = &[
+        Self::Table,
+        Self::Chart,
+        Self::Gauge,
         Self::Swipe,
         Self::Empty,
         Self::DialogOpen,
@@ -105,6 +112,8 @@ impl Action {
 }
 
 const MENU_ITEMS: [Msg; 3] = [Msg::Name, Msg::Mail, Msg::Save];
+const MENU_ITEMS_ACTION: [Action; 3] = [Action::Menu0, Action::Menu1, Action::Menu2];
+const SHEET_ACTIONS: [Action; 2] = [Action::Sheet0, Action::Sheet1];
 const SHEET_ROWS: [Msg; 2] = [Msg::Name, Msg::Mail];
 
 fn menu_item(index: u8, lang: Lang) -> &'static [u8] {
@@ -152,11 +161,6 @@ impl Default for DataPage {
 }
 
 impl DataPage {
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        self.scroll
-            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
-    }
-
     /// The trigger's bottom edge in panel pixels, so the menu hangs under it.
     fn menu_anchor(&self) -> i16 {
         self.anchor
@@ -171,7 +175,7 @@ impl DataPage {
     }
 
     /// The cell of a custom mark a panel point picks.
-    fn mark_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
+    fn mark_at(&self, layout: &Layout, x: i32, y: i32) -> Option<(u16, u16)> {
         let row = |rect: Rect, header: i32| -> Option<u8> {
             if !rect.contains(x, y) || y < rect.y + header {
                 return None;
@@ -182,51 +186,44 @@ impl DataPage {
             .slot(TABLE_SLOT)
             .and_then(|rect| row(rect, i32::from(table::HEADER_H)))
         {
-            return TAG_TABLE + u16::from(row);
+            return Some((Action::Table.tag(), u16::from(row)));
         }
         if let Some(chart) = layout.slot(CHART_SLOT)
             && chart.contains(x, y)
         {
             let count = i32::try_from(BARS.len()).unwrap_or(1).max(1);
             let column = (x - chart.x) * count / chart.w.max(1);
-            return TAG_CHART + u16::try_from(column.clamp(0, count - 1)).unwrap_or(0);
+            let column = u16::try_from(column.clamp(0, count - 1)).unwrap_or(0);
+            return Some((Action::Chart.tag(), column));
         }
         if layout
             .slot(GAUGE_SLOT)
             .is_some_and(|gauge| gauge.contains(x, y))
         {
-            return TAG_GAUGE;
+            return Some((Action::Gauge.tag(), 0));
         }
-        0
+        None
     }
 
-    fn tap(&mut self, tag: u16) {
-        if tag == TAG_GAUGE {
-            self.values.gauge = if self.values.gauge >= 100 {
-                0
-            } else {
-                (self.values.gauge + 25).min(100)
-            };
-            return;
-        }
-        if let Some(row) = tag
-            .checked_sub(TAG_TABLE)
-            .filter(|row| usize::from(*row) < ROWS.len())
-        {
-            self.values.table = Some(u8::try_from(row).unwrap_or(0));
-            return;
-        }
-        if let Some(column) = tag
-            .checked_sub(TAG_CHART)
-            .filter(|column| usize::from(*column) < BARS.len())
-        {
-            let column = u8::try_from(column).unwrap_or(0);
-            self.values.bar = Some(column);
-            self.values.gauge = BARS[usize::from(column)];
-            return;
-        }
-        if let Some(action) = Action::from_tag(tag) {
-            self.tap_action(action);
+    fn tap(&mut self, tag: u16, value: u16) {
+        match Action::from_tag(tag) {
+            Some(Action::Gauge) => {
+                self.values.gauge = if self.values.gauge >= 100 {
+                    0
+                } else {
+                    (self.values.gauge + 25).min(100)
+                };
+            }
+            Some(Action::Table) if usize::from(value) < ROWS.len() => {
+                self.values.table = Some(u8::try_from(value).unwrap_or(0));
+            }
+            Some(Action::Chart) if usize::from(value) < BARS.len() => {
+                let column = u8::try_from(value).unwrap_or(0);
+                self.values.bar = Some(column);
+                self.values.gauge = BARS[usize::from(column)];
+            }
+            Some(action) => self.tap_action(action),
+            None => {}
         }
     }
 
@@ -263,6 +260,8 @@ impl DataPage {
                 self.values.sheet = 1;
                 self.values.sheet_open = false;
             }
+            Action::Table | Action::Chart | Action::Gauge => {}
+            Action::DialogOk | Action::DialogCancel | Action::Dismiss => self.close_overlays(),
         }
     }
 
@@ -287,17 +286,14 @@ impl super::Service for DataPage {
             return (None, Effects::default());
         }
         match *intent {
-            GalleryIntent::Tap { tag } => match tag {
-                TAG_DIALOG_OK | TAG_DIALOG_CANCEL | TAG_DISMISS => self.close_overlays(),
-                _ => {
-                    if tag == Action::MenuOpen.tag() {
-                        self.anchor = layout
-                            .rect(tag)
-                            .map_or(0, |rect| i16::try_from(rect.bottom()).unwrap_or(0));
-                    }
-                    self.tap(tag)
+            GalleryIntent::Tap { tag, value } => {
+                if tag == Action::MenuOpen.tag() {
+                    self.anchor = layout
+                        .rect(tag)
+                        .map_or(0, |rect| i16::try_from(rect.bottom()).unwrap_or(0));
                 }
-            },
+                self.tap(tag, value);
+            }
             GalleryIntent::Slide { dx, .. } => self.values.reveal = (-dx).clamp(0, REVEAL_MAX),
             GalleryIntent::SlideEnd { dx, .. } => {
                 self.values.reveal = if dx <= -REVEAL_MAX / 2 { REVEAL_MAX } else { 0 };
@@ -327,10 +323,10 @@ impl super::LocalPage for DataPage {
                 return None;
             };
             let tag = match dialog::action_at(OVERLAY, i32::from(x), i32::from(y)) {
-                Some(true) => TAG_DIALOG_OK,
-                Some(false) | None => TAG_DIALOG_CANCEL,
+                Some(true) => Action::DialogOk.tag(),
+                Some(false) | None => Action::DialogCancel.tag(),
             };
-            return tap(GalleryIntent::Tap { tag });
+            return tap(GalleryIntent::Tap { tag, value: 0 });
         }
         if self.values.menu_open || self.values.sheet_open {
             let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event else {
@@ -339,36 +335,27 @@ impl super::LocalPage for DataPage {
             let (x, y) = (i32::from(x), i32::from(y));
             let tag = if self.values.menu_open {
                 popup_menu::item_at(popup_menu::card(OVERLAY, self.menu_anchor()), x, y)
-                    .map(|row| Action::Menu0.tag() + u16::from(row))
+                    .and_then(|row| MENU_ITEMS_ACTION.get(usize::from(row)).copied())
             } else {
                 sheet::row_at(sheet::card(OVERLAY, SheetEdge::Bottom), x, y)
-                    .map(|row| Action::Sheet0.tag() + u16::from(row))
+                    .and_then(|row| SHEET_ACTIONS.get(usize::from(row)).copied())
             };
             return tap(GalleryIntent::Tap {
-                tag: tag.unwrap_or(TAG_DISMISS),
+                tag: tag.unwrap_or(Action::Dismiss).tag(),
+                value: 0,
             });
         }
         if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event
             && !self.scroll.dragging()
         {
             let area = self.scroll.area();
-            if area.rect.contains(i32::from(x), i32::from(y)) {
-                let tag = self.mark_at(layout, i32::from(x), i32::from(y));
-                if tag != 0 {
-                    return tap(GalleryIntent::Tap { tag });
-                }
-            }
-            if let Some(action) = Action::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)))
+            if area.rect.contains(i32::from(x), i32::from(y))
+                && let Some((tag, value)) = self.mark_at(layout, i32::from(x), i32::from(y))
             {
-                return tap(GalleryIntent::Tap { tag: action.tag() });
+                return tap(GalleryIntent::Tap { tag, value });
             }
         }
-        self.scroll.bind(
-            op,
-            PageId::Data.code(),
-            |x, y| self.tag_at(layout, x, y),
-            |tag| tag == Action::Swipe.tag(),
-        )
+        self.scroll.bind(op, PageId::Data.code(), layout)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -383,8 +370,8 @@ impl super::LocalPage for DataPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(data_moved))
-            .with_scroll(data_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -406,17 +393,26 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
         page::scroller(ui, AREA, w.area, |ui| {
             page::caption(ui, Msg::CapTable.bytes(lang), &theme);
             ui.custom(
-                Style::new().width(CONTENT_W).height(TABLE_H).tag(TAG_TABLE),
+                Style::new()
+                    .width(CONTENT_W)
+                    .height(TABLE_H)
+                    .tag(Action::Table.tag()),
                 TABLE_SLOT,
             );
             page::caption(ui, Msg::CapChart.bytes(lang), &theme);
             ui.custom(
-                Style::new().width(CONTENT_W).height(CHART_H).tag(TAG_CHART),
+                Style::new()
+                    .width(CONTENT_W)
+                    .height(CHART_H)
+                    .tag(Action::Chart.tag()),
                 CHART_SLOT,
             );
             page::caption(ui, Msg::CapGauge.bytes(lang), &theme);
             ui.custom(
-                Style::new().width(CONTENT_W).height(GAUGE_H).tag(TAG_GAUGE),
+                Style::new()
+                    .width(CONTENT_W)
+                    .height(GAUGE_H)
+                    .tag(Action::Gauge.tag()),
                 GAUGE_SLOT,
             );
             page::caption(ui, Msg::CapSwipe.bytes(lang), &theme);
@@ -424,7 +420,8 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(page::TOUCH)
-                    .tag(Action::Swipe.tag()),
+                    .tag(Action::Swipe.tag())
+                    .slide(),
                 SWIPE_SLOT,
             );
             page::caption(ui, Msg::CapEmpty.bytes(lang), &theme);
@@ -553,27 +550,12 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
     }
 }
 
-fn data_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.data != next.pages.data
-}
-
-fn data_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::Data,
-        prev,
-        next,
-        |pages| pages.data.area,
-        |pages| pages.data.moving,
-    )
-}
-
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
+    use crate::shared::ui::scroll::LINE_PX as SCROLL_LINE;
     use alloc::vec::Vec;
     use iot_core::ui::panel::CONTENT_BOTTOM;
     use iot_core::ui::{Layout, PX};
@@ -583,10 +565,14 @@ mod tests {
     }
 
     fn tap(page: &mut DataPage, tag: u16) {
+        tap_value(page, tag, 0);
+    }
+
+    fn tap_value(page: &mut DataPage, tag: u16, value: u16) {
         let mut state = DeviceState::default();
         let intent = BusinessIntent::Gallery {
             wire: PageId::Data.code(),
-            intent: GalleryIntent::Tap { tag },
+            intent: GalleryIntent::Tap { tag, value },
         };
         page.apply(&intent, &mut state, &layout(page));
     }
@@ -639,20 +625,35 @@ mod tests {
 
     #[test]
     fn every_canvas_mark_carries_its_own_tag() {
-        let page = DataPage::default();
-        let layout = layout(&page);
+        let mut page = DataPage::default();
         for (tag, slot) in [
-            (TAG_TABLE, TABLE_SLOT),
-            (TAG_CHART, CHART_SLOT),
-            (TAG_GAUGE, GAUGE_SLOT),
+            (Action::Table.tag(), TABLE_SLOT),
+            (Action::Chart.tag(), CHART_SLOT),
+            (Action::Gauge.tag(), GAUGE_SLOT),
         ] {
+            scroll_to(&mut page, slot);
+            let layout = layout(&page);
             let rect = layout.slot(slot).expect("a mark");
+            let visible = rect.intersect(page.scroll.area().rect);
             assert_eq!(
-                layout.at(rect.x + 2, rect.y + 2),
+                layout.at(visible.x + 2, visible.y + 2),
                 Some(tag),
                 "the arena claims the scroll unless the mark is tagged"
             );
         }
+    }
+
+    /// Brings a mark to the middle of the gallery, the way a drag would.
+    fn scroll_to(page: &mut DataPage, slot: u8) {
+        let rect = layout(page).slot(slot).expect("a mark");
+        let area = page.scroll.area();
+        let rows = rect.y + rect.h / 2 - (area.rect.y + area.rect.h / 2);
+        let lines = i8::try_from((rows / i32::from(SCROLL_LINE)).clamp(-127, 127)).unwrap_or(0);
+        page.scroll.apply(GalleryIntent::Scroll {
+            area: 0,
+            lines,
+            speed: 0,
+        });
     }
 
     fn tap_at(page: &mut DataPage, x: i32, y: i32) {
@@ -763,19 +764,19 @@ mod tests {
         let table = layout(&page).slot(TABLE_SLOT).expect("a table");
         let chart = layout(&page).slot(CHART_SLOT).expect("a chart");
         let row = table.y + i32::from(table::HEADER_H) + i32::from(table::ROW_H) * 2 + 4;
-        let tag = page.mark_at(&layout(&page), table.x + 4, row);
-        assert_eq!(tag, TAG_TABLE + 2);
-        tap(&mut page, tag);
+        let mark = page.mark_at(&layout(&page), table.x + 4, row);
+        assert_eq!(mark, Some((Action::Table.tag(), 2)));
+        tap_value(&mut page, Action::Table.tag(), 2);
         assert_eq!(page.values.table, Some(2));
 
-        let tag = page.mark_at(&layout(&page), chart.x + 4, chart.y + 4);
-        assert_eq!(tag, TAG_CHART);
-        tap(&mut page, tag);
+        let mark = page.mark_at(&layout(&page), chart.x + 4, chart.y + 4);
+        assert_eq!(mark, Some((Action::Chart.tag(), 0)));
+        tap_value(&mut page, Action::Chart.tag(), 0);
         assert_eq!(page.values.bar, Some(0));
         assert_eq!(page.values.gauge, BARS[0]);
 
         let before = page.values.gauge;
-        tap(&mut page, TAG_GAUGE);
+        tap(&mut page, Action::Gauge.tag());
         assert_eq!(page.values.gauge, (before + 25).min(100));
     }
 
@@ -783,7 +784,7 @@ mod tests {
     fn the_dial_cycles_back_to_zero_after_a_full_sweep() {
         let mut page = DataPage::default();
         page.values.gauge = 100;
-        tap(&mut page, TAG_GAUGE);
+        tap(&mut page, Action::Gauge.tag());
         assert_eq!(page.values.gauge, 0);
     }
 
@@ -843,7 +844,7 @@ mod tests {
         assert!(page.values.empty_error);
         tap(&mut page, Action::DialogOpen.tag());
         assert!(page.values.dialog);
-        tap(&mut page, TAG_DIALOG_CANCEL);
+        tap(&mut page, Action::DialogCancel.tag());
         assert!(!page.values.dialog);
     }
 
@@ -972,7 +973,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.data.area.offset > 0);
-        let shift = data_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.data.area.offset);
     }
 }

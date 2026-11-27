@@ -12,7 +12,7 @@ mod style;
 
 pub use self::constraints::{BoxConstraints, PX};
 pub use self::hash::{Fnv, hash_of};
-pub use self::measure::{Layout, MAX_TAGS, PAINTS};
+pub use self::measure::{Hit, Layout, MAX_TAGS, PAINTS};
 pub use self::node::MAX_NODES;
 pub use self::node::NodeId;
 pub(crate) use self::node::{NodeInfo, NodeKind, Span, UNKNOWN_PAINT};
@@ -219,13 +219,11 @@ impl Tree {
             })
     }
 
-    /// Keeps what one named scroll box reported. A box measured twice in one layout — loose
-    /// by its parent, then at its allotted size — is recorded by its placement, so the slot is
-    /// found by node rather than appended.
+    /// Keeps what one scroll box reported, named or not. A box measured twice in one layout —
+    /// loose by its parent, then at its allotted size — is recorded by its placement, so the
+    /// slot is found by node rather than appended. A hit test needs the unnamed boxes too: they
+    /// clip their content all the same.
     fn record_scroll(&mut self, id: NodeId, area: ScrollId, content: Subpx, viewport: Subpx) {
-        if area.is_none() {
-            return;
-        }
         let node = self.nodes[usize::from(id.0)];
         let slot = ScrollSlot {
             id: area,
@@ -243,15 +241,6 @@ impl Tree {
             return;
         }
         debug_assert!(false, "the page ran out of scroll areas");
-    }
-
-    /// The last tagged node under `(x, y)`: later declarations are on top.
-    pub(crate) fn tag_at(&self, x: i32, y: i32) -> Option<u16> {
-        self.nodes[..usize::from(self.len)]
-            .iter()
-            .filter(|node| node.style.tag != 0 && node.rect.contains(x, y))
-            .map(|node| node.style.tag)
-            .next_back()
     }
 
     /// Lays the tree out into `constraints` and fixes every node's pixel rectangle.

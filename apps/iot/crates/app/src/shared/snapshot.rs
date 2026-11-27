@@ -440,6 +440,75 @@ pub struct PageSnapshot {
     pub lighting: LightingView,
 }
 
+impl PageSnapshot {
+    /// The page's scroll boxes and whether one is still gliding: the only pair a frame that
+    /// merely scrolled may differ in. A page keeps its own box count, so `Text` is two.
+    pub fn scroll(&self, page: PageId) -> (&[ScrollAreaView], bool) {
+        match page {
+            PageId::Text => (&self.text.areas, self.text.moving),
+            PageId::Menu => (core::slice::from_ref(&self.menu.area), self.menu.moving),
+            PageId::Widgets => (
+                core::slice::from_ref(&self.widgets.area),
+                self.widgets.moving,
+            ),
+            PageId::Advanced => (
+                core::slice::from_ref(&self.advanced.area),
+                self.advanced.moving,
+            ),
+            PageId::Feedback => (
+                core::slice::from_ref(&self.feedback.area),
+                self.feedback.moving,
+            ),
+            PageId::Extended => (
+                core::slice::from_ref(&self.extended.area),
+                self.extended.moving,
+            ),
+            PageId::Data => (core::slice::from_ref(&self.data.area), self.data.moving),
+            PageId::Planner => (
+                core::slice::from_ref(&self.planner.area),
+                self.planner.moving,
+            ),
+            PageId::Records => (
+                core::slice::from_ref(&self.records.area),
+                self.records.moving,
+            ),
+            PageId::List => (core::slice::from_ref(&self.list.area), self.list.moving),
+            _ => (&[], false),
+        }
+    }
+
+    /// The same records with every offset zeroed and every glide flag cleared, so two frames
+    /// that compare equal here differ only in where their boxes are scrolled to.
+    pub fn settled(&self) -> Self {
+        let mut out = *self;
+        out.text.areas = out.text.areas.map(settled_area);
+        out.text.moving = false;
+        out.menu.area = settled_area(out.menu.area);
+        out.menu.moving = false;
+        out.widgets.area = settled_area(out.widgets.area);
+        out.widgets.moving = false;
+        out.advanced.area = settled_area(out.advanced.area);
+        out.advanced.moving = false;
+        out.feedback.area = settled_area(out.feedback.area);
+        out.feedback.moving = false;
+        out.extended.area = settled_area(out.extended.area);
+        out.extended.moving = false;
+        out.data.area = settled_area(out.data.area);
+        out.data.moving = false;
+        out.planner.area = settled_area(out.planner.area);
+        out.planner.moving = false;
+        out.records.area = settled_area(out.records.area);
+        out.records.moving = false;
+        out.list.area = settled_area(out.list.area);
+        out.list.moving = false;
+        out
+    }
+}
+
+fn settled_area(area: ScrollAreaView) -> ScrollAreaView {
+    ScrollAreaView { offset: 0, ..area }
+}
+
 /// One frame's drawing data, extracted from the state so a renderer holds no reference into
 /// it. `demand` stays because the screen gates repaint and camera cadence on it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]

@@ -12,14 +12,33 @@ pub const PAINTS: usize = 8;
 /// The tags one declaration can report; the menu's grid is the widest at twenty-one.
 pub const MAX_TAGS: usize = 24;
 
+/// The control under a panel point: `slide` says a sideways drag belongs to the box, not the
+/// scroll region it sits in, and `clip` names that region when the box hangs out of it.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Hit {
+    pub tag: u16,
+    pub slide: bool,
+    pub rect: Rect,
+    clip: u8,
+}
+
+impl Hit {
+    const NONE: Self = Self {
+        tag: 0,
+        slide: false,
+        rect: Rect::new(0, 0, 0, 0),
+        clip: 0,
+    };
+}
+
 /// A frame's geometry, in panel pixels: layout has already applied the scroll offsets, so a
 /// hit test adds nothing.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Layout {
     page: u8,
     slots: [Option<Rect>; PAINTS],
-    tags: [(u16, Rect); MAX_TAGS],
-    tag_count: u8,
+    hits: [Hit; MAX_TAGS],
+    hit_count: u8,
     scrolls: [ScrollInfo; MAX_SCROLL_AREAS],
 }
 
@@ -34,8 +53,8 @@ impl Layout {
     pub const EMPTY: Self = Self {
         page: u8::MAX,
         slots: [None; PAINTS],
-        tags: [(0, Rect::new(0, 0, 0, 0)); MAX_TAGS],
-        tag_count: 0,
+        hits: [Hit::NONE; MAX_TAGS],
+        hit_count: 0,
         scrolls: [ScrollInfo {
             id: ScrollId::NONE,
             rect: Rect::new(0, 0, 0, 0),
@@ -59,25 +78,53 @@ impl Layout {
         self.slots.get(usize::from(slot)).copied().flatten()
     }
 
-    /// Where the node tagged `tag` sits.
+    /// Where the node tagged `tag` sits; the last declaration wins, the one drawn on top.
     pub fn rect(&self, tag: u16) -> Option<Rect> {
-        self.tags[..usize::from(self.tag_count)]
+        self.lookup(tag).map(|hit| hit.rect)
+    }
+
+    fn lookup(&self, tag: u16) -> Option<Hit> {
+        self.hits[..usize::from(self.hit_count)]
             .iter()
-            .find(|(candidate, _)| *candidate == tag)
-            .map(|(_, rect)| *rect)
+            .rev()
+            .find(|hit| hit.tag == tag)
+            .copied()
     }
 
     /// Every tagged node's tag and rectangle, in declaration order.
     pub fn tags(&self) -> impl Iterator<Item = (u16, Rect)> + '_ {
-        self.tags[..usize::from(self.tag_count)].iter().copied()
+        self.hits[..usize::from(self.hit_count)]
+            .iter()
+            .map(|hit| (hit.tag, hit.rect))
+    }
+
+    /// The control a panel point lands on: the topmost tagged box that contains it and is not
+    /// clipped away at that point.
+    pub fn hit(&self, x: i32, y: i32) -> Option<Hit> {
+        self.hits[..usize::from(self.hit_count)]
+            .iter()
+            .rev()
+            .find(|hit| hit.tag != 0 && hit.rect.contains(x, y) && self.through(hit, x, y))
+            .copied()
+    }
+
+    /// Whether a hit's box is still inside the region that clips it.
+    fn through(&self, hit: &Hit, x: i32, y: i32) -> bool {
+        hit.clip == 0
+            || self
+                .scrolls
+                .get(usize::from(hit.clip) - 1)
+                .is_some_and(|slot| slot.rect.contains(x, y))
     }
 
     /// The tag a panel point lands on.
     pub fn at(&self, x: i32, y: i32) -> Option<u16> {
-        self.tags[..usize::from(self.tag_count)]
-            .iter()
-            .find(|(tag, rect)| *tag != 0 && rect.contains(x, y))
-            .map(|(tag, _)| *tag)
+        self.hit(x, y).map(|hit| hit.tag)
+    }
+
+    /// Whether a sideways drag at `x`, `y` belongs to the control under it.
+    pub fn slides(&self, x: i32, y: i32) -> bool {
+        self.hit(x, y).is_some_and(|hit| hit.slide)
     }
 
     /// The last layout of the scroll box named `area`.
@@ -95,12 +142,20 @@ impl super::Tree {
         let mut layout = Layout::default();
         for index in 0..usize::from(self.len) {
             let info = self.info(NodeId(index as u16));
-            if info.style.tag != 0 {
-                let tag = info.style.tag;
-                if let Some(cell) = layout.tags.get_mut(usize::from(layout.tag_count)) {
-                    *cell = (tag, info.rect);
-                    layout.tag_count += 1;
-                }
+            if info.style.tag != 0
+                && let Some(cell) = layout.hits.get_mut(usize::from(layout.hit_count))
+            {
+                *cell = Hit {
+                    tag: info.style.tag,
+                    slide: info.style.slides(),
+                    rect: info.rect,
+                    clip: if info.clipped {
+                        self.clip_of(info.clip)
+                    } else {
+                        0
+                    },
+                };
+                layout.hit_count += 1;
             }
             if let NodeKind::Paint { slot, .. } = info.kind
                 && let Some(cell) = layout.slots.get_mut(usize::from(slot))
@@ -109,7 +164,7 @@ impl super::Tree {
             }
         }
         for (index, slot) in self.scrolls.iter().enumerate() {
-            if slot.id.is_none() || slot.node == super::node::NONE {
+            if slot.node == super::node::NONE {
                 continue;
             }
             layout.scrolls[index] = ScrollInfo {
@@ -121,5 +176,14 @@ impl super::Tree {
             };
         }
         layout
+    }
+
+    /// The scroll region whose box is `clip`, as a one-based slot number; zero when none.
+    fn clip_of(&self, clip: Rect) -> u8 {
+        self.scrolls
+            .iter()
+            .position(|slot| slot.node != super::node::NONE && self.rect(NodeId(slot.node)) == clip)
+            .and_then(|index| u8::try_from(index + 1).ok())
+            .unwrap_or(0)
     }
 }

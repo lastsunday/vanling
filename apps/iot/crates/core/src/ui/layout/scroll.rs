@@ -4,8 +4,8 @@ use crate::ui::Rect;
 
 /// The name a page gives a scroll box so it can drive and read it.
 ///
-/// `NONE` is the unnamed box: layout still clips it, but reports nothing. Names are unique
-/// within one declaration.
+/// `NONE` is the unnamed box: layout still clips it, but no page can read it back. Names are
+/// unique within one declaration.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct ScrollId(pub u16);
 

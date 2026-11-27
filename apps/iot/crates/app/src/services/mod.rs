@@ -374,10 +374,24 @@ pub(super) enum Repaint {
     Always,
     /// Only while the debug overlay is up, which is the page's only drawing.
     Overlay,
-    /// When the page's own snapshot fields moved.
+    /// When anything the page draws moved: a page switch, a shared field, or a page record.
+    Page,
+    /// That, or while the debug overlay is up.
+    PageOrOverlay,
+    /// Fields outside the page records that only this page draws.
     When(fn(&FrameSnapshot, &FrameSnapshot) -> bool),
-    /// When those fields moved, or while the debug overlay is up.
-    WhenOrOverlay(fn(&FrameSnapshot, &FrameSnapshot) -> bool),
+}
+
+/// Whether anything a page draws changed. Every page's record sits in `pages`, and only the
+/// shown page's record moves, so the same comparison serves all of them.
+fn page_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
+    prev.page != next.page
+        || prev.lang != next.lang
+        || prev.theme != next.theme
+        || prev.backed != next.backed
+        || prev.glow != next.glow
+        || prev.backlight != next.backlight
+        || prev.pages != next.pages
 }
 
 impl Repaint {
@@ -386,21 +400,16 @@ impl Repaint {
             Self::Never => false,
             Self::Always => true,
             Self::Overlay => overlay,
+            Self::Page => page_moved(prev, next),
+            Self::PageOrOverlay => overlay || page_moved(prev, next),
             Self::When(moved) => moved(prev, next),
-            Self::WhenOrOverlay(moved) => overlay || moved(prev, next),
         }
     }
 }
 
-/// How one page's frame moved since the last one, when that movement is a pure scroll.
-pub(super) type ScrollFn = fn(&FrameSnapshot, &FrameSnapshot) -> Option<ScrollShift>;
-
-fn no_scroll(_: &FrameSnapshot, _: &FrameSnapshot) -> Option<ScrollShift> {
-    None
-}
-
 /// How one page occupies the panel: its draw call, the fill under it, where its frames come
-/// from, how often a snapshot drift earns a repaint, and what a pure scroll of it looks like.
+/// from, how often a snapshot drift earns a repaint, and whether a pure scroll of it may be
+/// drawn incrementally.
 #[derive(Debug, Clone, Copy)]
 pub struct Descriptor {
     view: View,
@@ -409,7 +418,7 @@ pub struct Descriptor {
     camera_frames: bool,
     repaint_ms: u64,
     repaints: Repaint,
-    scroll: ScrollFn,
+    scroll: bool,
 }
 
 impl Descriptor {
@@ -421,7 +430,7 @@ impl Descriptor {
             camera_frames: false,
             repaint_ms: REPAINT_FLOOR_MS,
             repaints: Repaint::Never,
-            scroll: no_scroll,
+            scroll: false,
         }
     }
 
@@ -451,10 +460,9 @@ impl Descriptor {
         self
     }
 
-    /// What a frame that only scrolled this page looks like. Without one, every change is a
-    /// full repaint.
-    pub(super) fn with_scroll(mut self, scroll: ScrollFn) -> Self {
-        self.scroll = scroll;
+    /// The page scrolls: a frame that only moved its offsets may be drawn incrementally.
+    pub(super) fn with_scroll(mut self) -> Self {
+        self.scroll = true;
         self
     }
 
@@ -476,7 +484,11 @@ impl Descriptor {
 
     /// The shift when `next` is `prev` moved inside its scroll boxes and nothing else.
     pub fn scroll_shift(self, prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-        (self.scroll)(prev, next)
+        if self.scroll {
+            gallery::shift(prev, next)
+        } else {
+            None
+        }
     }
 
     /// The page's declaration.

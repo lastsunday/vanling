@@ -9,10 +9,7 @@ use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, InputIntent, ListIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::page;
-use crate::shared::route::PageId;
-use crate::shared::snapshot::{
-    FrameSnapshot, ListSnapshot, PageSnapshot, ScrollAreaView, ScrollShift,
-};
+use crate::shared::snapshot::{FrameSnapshot, ListSnapshot, PageSnapshot, ScrollAreaView};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::feed::{self, Edge, Feed, Row, Source};
 use crate::shared::ui::scroll::{BAR, Drag, STEP_LINES, ScrollConfig, fling_speed};
@@ -424,8 +421,8 @@ impl super::LocalPage for ListPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(list_moved))
-            .with_scroll(list_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -484,20 +481,6 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
         },
     };
     feed::draw(&view, canvas, rect, Theme::of(screen.theme));
-}
-
-fn list_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.list != next.pages.list
-}
-
-fn list_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::List,
-        prev,
-        next,
-        |pages| pages.list.area,
-        |pages| pages.list.moving,
-    )
 }
 
 #[cfg(test)]

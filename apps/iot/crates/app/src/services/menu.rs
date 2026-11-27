@@ -9,14 +9,13 @@ use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsInt
 use crate::shared::model::{Command, DeviceState, Effects};
 use crate::shared::page;
 use crate::shared::route::PageId;
-use crate::shared::snapshot::{
-    FrameSnapshot, MenuSnapshot, PageSnapshot, ScrollAreaView, ScrollShift,
-};
+use crate::shared::snapshot::{FrameSnapshot, MenuSnapshot, PageSnapshot, ScrollAreaView};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{
     BAR, DRAG_SLOP, Drag, Press, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
 };
 use crate::shared::ui::state::State;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{Button, Chip};
 
@@ -78,10 +77,31 @@ const COUNT: usize = {
 };
 
 /// The settings chips sit outside the grid, so their tags stay clear of the page codes.
-const TAG_LANG_EN: u16 = 100;
-const TAG_LANG_ZH: u16 = 101;
-const TAG_THEME_DARK: u16 = 102;
-const TAG_THEME_LIGHT: u16 = 103;
+/// The settings chips. A page button's tag is its wire code plus one, so zero stays "none".
+const PAGE_TAG: u16 = 1;
+
+/// The four chips in the header row.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+enum Action {
+    LangEn = 100,
+    LangZh,
+    ThemeDark,
+    ThemeLight,
+}
+
+impl Tag for Action {
+    const ALL: &'static [Self] = &[
+        Self::LangEn,
+        Self::LangZh,
+        Self::ThemeDark,
+        Self::ThemeLight,
+    ];
+
+    fn tag(self) -> u16 {
+        self as u16
+    }
+}
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -153,20 +173,6 @@ impl MenuPage {
             },
             moving: self.scroll.moving(),
         }
-    }
-
-    /// The tag of the button or chip a panel point lands on; zero on a gap.
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        for (tag, rect) in layout.tags().filter(|(tag, _)| *tag >= TAG_LANG_EN) {
-            if rect.contains(x, y) {
-                return tag;
-            }
-        }
-        let area = self.scroll.areas()[0];
-        if !area.rect.contains(x, y) {
-            return 0;
-        }
-        layout.at(x, y).unwrap_or(0)
     }
 }
 
@@ -258,29 +264,29 @@ impl super::LocalPage for MenuPage {
                         at_ms: Some(at_ms),
                     }));
                 }
-                let tag = self.tag_at(layout, i32::from(x), i32::from(y));
+                let tag = layout.at(i32::from(x), i32::from(y)).unwrap_or(0);
                 if let Some(lang) = match tag {
-                    TAG_LANG_EN => Some(Lang::En),
-                    TAG_LANG_ZH => Some(Lang::ZhHans),
+                    t if t == Action::LangEn.tag() => Some(Lang::En),
+                    t if t == Action::LangZh.tag() => Some(Lang::ZhHans),
                     _ => None,
                 } {
                     return Some(BusinessIntent::Settings(SettingsIntent::SetLang { lang }));
                 }
                 if let Some(theme) = match tag {
-                    TAG_THEME_DARK => Some(ThemeId::Dark),
-                    TAG_THEME_LIGHT => Some(ThemeId::Light),
+                    t if t == Action::ThemeDark.tag() => Some(ThemeId::Dark),
+                    t if t == Action::ThemeLight.tag() => Some(ThemeId::Light),
                     _ => None,
                 } {
                     return Some(BusinessIntent::Settings(SettingsIntent::SetTheme { theme }));
                 }
-                let page = PageId::from_code(u8::try_from(tag.checked_sub(1)?).ok()?)?;
+                let page = PageId::from_code(u8::try_from(tag.checked_sub(PAGE_TAG)?).ok()?)?;
                 page.is_backed(state.backed)
                     .then_some(BusinessIntent::Menu(MenuIntent::Choose {
                         page: page.code(),
                     }))
             }
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let tag = self.tag_at(layout, i32::from(x), i32::from(y));
+                let tag = layout.at(i32::from(x), i32::from(y)).unwrap_or(0);
                 if tag == 0 && area(x, y).is_none() {
                     return None;
                 }
@@ -345,8 +351,8 @@ impl super::LocalPage for MenuPage {
     fn descriptor() -> Descriptor {
         Descriptor::new(Self::view)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(menu_moved))
-            .with_scroll(menu_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -379,28 +385,28 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                     Chip::new(Msg::LangEn.bytes(lang))
                         .width(TOUCH_MIN as i16)
                         .height(TOUCH_MIN as i16)
-                        .tag(TAG_LANG_EN)
+                        .tag(Action::LangEn.tag())
                         .selected(lang == Lang::En),
                 );
                 ui.add(
                     Chip::new(Msg::LangZh.bytes(lang))
                         .width(TOUCH_MIN as i16)
                         .height(TOUCH_MIN as i16)
-                        .tag(TAG_LANG_ZH)
+                        .tag(Action::LangZh.tag())
                         .selected(lang == Lang::ZhHans),
                 );
                 ui.add(
                     Chip::new(Msg::ThemeDark.bytes(lang))
                         .width(TOUCH_MIN as i16)
                         .height(TOUCH_MIN as i16)
-                        .tag(TAG_THEME_DARK)
+                        .tag(Action::ThemeDark.tag())
                         .selected(snapshot.theme == ThemeId::Dark),
                 );
                 ui.add(
                     Chip::new(Msg::ThemeLight.bytes(lang))
                         .width(TOUCH_MIN as i16)
                         .height(TOUCH_MIN as i16)
-                        .tag(TAG_THEME_LIGHT)
+                        .tag(Action::ThemeLight.tag())
                         .selected(snapshot.theme == ThemeId::Light),
                 );
             },
@@ -429,38 +435,6 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             }
         });
     });
-}
-
-fn menu_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang
-        || prev.theme != next.theme
-        || prev.backed != next.backed
-        || prev.pages.menu != next.pages.menu
-}
-
-fn menu_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    if prev.page != PageId::Menu || next.page != PageId::Menu {
-        return None;
-    }
-    let areas = [next.pages.menu.area];
-    let mut before = prev.pages.menu;
-    let mut after = next.pages.menu;
-    let shift = after.area.offset.wrapping_sub(before.area.offset);
-    before.area.offset = 0;
-    after.area.offset = 0;
-    if before.area.rect.w <= 0 || before.area.rect.h <= 0 {
-        return None;
-    }
-    let moving_ended = before.moving && !after.moving;
-    before.moving = false;
-    after.moving = false;
-    if before != after {
-        return None;
-    }
-    if !moving_ended && shift == 0 {
-        return None;
-    }
-    Some(ScrollShift::new(&areas, &[shift]))
 }
 
 /// The page's own name, in the menu's words.
@@ -536,7 +510,8 @@ mod tests {
     }
 
     fn page_at(page: &MenuPage, x: i32, y: i32) -> Option<PageId> {
-        PageId::from_code(u8::try_from(page.tag_at(&layout(page), x, y).checked_sub(1)?).ok()?)
+        let tag = layout(page).at(x, y)?;
+        PageId::from_code(u8::try_from(tag.checked_sub(1)?).ok()?)
     }
 
     /// Brings `content_y` into the middle of the box, so a row below the fold can be touched.
@@ -589,7 +564,10 @@ mod tests {
     fn a_language_chip_asks_for_its_language() {
         let page = MenuPage::default();
         let layout = layout(&page);
-        for (tag, lang) in [(TAG_LANG_EN, Lang::En), (TAG_LANG_ZH, Lang::ZhHans)] {
+        for (tag, lang) in [
+            (Action::LangEn.tag(), Lang::En),
+            (Action::LangZh.tag(), Lang::ZhHans),
+        ] {
             let rect = layout.rect(tag).expect("the chip is laid out");
             assert_eq!(
                 page.bind(
@@ -607,8 +585,8 @@ mod tests {
         let page = MenuPage::default();
         let layout = layout(&page);
         for (tag, theme) in [
-            (TAG_THEME_DARK, ThemeId::Dark),
-            (TAG_THEME_LIGHT, ThemeId::Light),
+            (Action::ThemeDark.tag(), ThemeId::Dark),
+            (Action::ThemeLight.tag(), ThemeId::Light),
         ] {
             let rect = layout.rect(tag).expect("the chip is laid out");
             assert_eq!(
@@ -626,7 +604,7 @@ mod tests {
     fn the_settings_chips_are_touch_sized() {
         let page = MenuPage::default();
         let layout = layout(&page);
-        for tag in [TAG_LANG_EN, TAG_LANG_ZH, TAG_THEME_DARK, TAG_THEME_LIGHT] {
+        for tag in Action::ALL.iter().map(|action| action.tag()) {
             let rect = layout.rect(tag).expect("the chip is laid out");
             assert!(
                 rect.w >= TOUCH_MIN as i32 && rect.h >= TOUCH_MIN as i32,

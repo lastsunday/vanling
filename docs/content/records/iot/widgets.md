@@ -1,6 +1,6 @@
 +++
 title = "高级组件与 Feed"
-description = "25 个高级组件、一条 Feed 与四个画廊已落地：host 557 条测试、32 行黄金图，S3 主栈 82,264 B，镜像 2,064,128 / 1,861,584 B 并已烧进两块板。"
+description = "25 个高级组件、一条 Feed 与四个画廊已落地：host 676 条测试、32 行黄金图，S3 主栈 94,168 B（余 36,824 B），镜像 1,940,448 / 1,734,064 B 并已烧进两块板。"
 weight = 70
 sort_by = "weight"
 +++
@@ -174,3 +174,31 @@ custom 槽用量：`Extended` 6 个（键盘/键格、表格、图表、仪表�
 | 镜像 | S3 **2,065,824 / 6,291,456 B**（32.84%）；C6 **1,866,448 / 6,291,456 B**（29.67%） |
 | S3 主栈 | 串口 `[DISPLAY] … main stack 82296 B`；`[STACK] core 1 peak 2000 B of 24576 B` |
 | 烧录 | S3、C6 各烧一次，两边都印 `this boot is healthy` |
+
+## 手势与重绘的共同入口
+
+画廊各页原先各写一套样板：`TagTable` 加 `SubTag<FIRST, COUNT>` 家族常量、`tag_at` 闭包、`*_moved` 重绘判据和 `*_shift` 滚动平移。这一轮把这些搬到框架能回答的地方，页面只剩「哪个控件被碰了」和「本页变了」。
+
+- **Action**：每页一个 fieldless `#[repr(u16)] enum Action`，`tag()` 就是判别值，`ALL` 列出本页能报出的每个变体（盒子加上算术返回的族基础），默认 `from_tag` 线性扫 `ALL`，所以每个报出去的 tag 都能解回来。`SubTag` 与 `TAG_*` 全部删除；日历的一天、一颗星、弹窗月格、表格行、图表柱、热力图格、列表行的下标走 `GalleryIntent::Tap { tag, value }` / `Press { id, tag, value, x, y }` 的 `value`，页面一次 `match` 分完，`mark_at` 直接返回 `(tag, value)`，不再做 `tag - 基数` 反解。族基础变体不进 `ALL`，`every_control_is_drawn_once` 仍逐个对得上。
+- **命中**：`Layout` 存的从 `(tag, rect)` 换成 `Hit { tag, slide, rect }` 加一个私有的裁剪区号。`hit` 取最上层，后声明的盒子盖住先声明的；`slides` 回答 `Style::slide()` 推出的横向拖动能力，页面不再给 `Scroller` 传判断闭包；被滚动框裁掉的那段不参与命中，`rect` 仍报完整盒子（滑杆与菜单锚点要整块几何）。`Scroller::bind(op, wire, layout)` 只收 `&Layout`，两个闭包参数删掉。
+- **重绘与滚动**：一条 `Repaint::Page`（浮层页用 `PageOrOverlay`）判页戳、`lang`、`theme`、`backed`、`glow`、`backlight` 和本页快照，18 个 `*_moved` 删除；纯滚动只剩 `Pages::scroll` / `settled`、`Descriptor::with_scroll()` 与一个泛化的 `gallery::shift`，11 个 `*_shift` 删除（含 `lighting_moved`、`text_moved` 与文本页自己的 `scroll_shift`）。
+- `CONTENT_W` 原本七个页面各抄一份，收进 `shared::page`；日期、时间与两位补零收进新的 `shared/ui/fmt.rs`。
+
+`PageSnapshot` 仍是 12 个字面字段，没有改成枚举：每帧只发布一页，枚举化换个名字而已，等真有第二处消费者再说。
+
+### 暂缓
+
+- `Ui::env`（`lang` / `theme` 放进声明上下文，省掉 199 处 `Msg::X.bytes(lang)`）：纯机械替换，收益只是少传一个参数，而 `Ui` 已占 13,048 / 13,312 B。
+- `ROUTES` / `DESCRIPTORS` 表：`route()` 是 `const fn`，`path()` / `from_path()` 也靠它 const 求值，表化后两者都得挪到运行期；服务是拥有所有权的值，`get` / `service_mut` 也查不了表。
+
+### 实测
+
+| 项 | 结果 |
+| --- | --- |
+| host 测试 | `moon run iot:test`：core **594** + app **676**，0 failed |
+| 格式 / lint | `cargo fmt --all -- --check` 无输出；`cargo clippy -p iot-core --all-targets -- -D warnings`、`cargo clippy -p iot-app --lib --no-default-features --features host -- -D warnings` 均通过 |
+| 目标检查 | `moon run iot:check-host` / `check-c6` / `check-s3` 全部通过 |
+| 黄金图 | 未重录：本轮只动命中与重绘入口，32 行像素不变 |
+| 镜像 | S3 **1,940,448 / 6,291,456 B**（30.84%）；C6 **1,734,064 / 6,291,456 B**（27.56%） |
+| S3 主栈 | `_stack_start_cpu0 0x3fce9710 − _stack_end_cpu0 0x3fcd2738 = 94,168 B`，扣掉 57,344 B 底座余 **36,824 B**；串口 `main stack 94168 B`，峰值 15,144 B |
+| 烧录 | S3 与 C6 各烧一次，两边串口都印 `this boot is healthy` |

@@ -8,10 +8,9 @@
 //! control lost its first few pixels and a drag could not tell a tap from a slide.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
-use iot_core::ui::{Rect, ScrollId, ScrollInfo, Ui};
+use iot_core::ui::{MAX_SCROLL_AREAS, Rect, ScrollId, ScrollInfo, Ui};
 
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
-use crate::shared::route::PageId;
 use crate::shared::snapshot::{ScrollAreaView, ScrollShift};
 use crate::shared::ui::scroll::{
     BAR, DRAG_SLOP, Drag, Press, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
@@ -97,16 +96,6 @@ impl Scroller {
         }
     }
 
-    /// The tag a panel point lands on, zero when none: a tag past the region is not a control.
-    /// The rectangles come from the layout, which already applied the scroll offset.
-    pub fn tag_at(&self, tags: impl Fn(i32, i32) -> u16, x: i32, y: i32) -> u16 {
-        let area = self.area();
-        if !area.rect.contains(x, y) {
-            return 0;
-        }
-        tags(x, y)
-    }
-
     /// Takes the finger's claim on a region; the first one wins until it lifts.
     pub fn claim(&mut self, id: u8, area: u8, y: i16, at_ms: u32) -> bool {
         if self.drag.is_some() || self.slide.is_some() {
@@ -142,7 +131,7 @@ impl Scroller {
             }
             GalleryIntent::Point { .. } => self.press = None,
             GalleryIntent::Wheel { .. } | GalleryIntent::WheelEnd { .. } => {}
-            GalleryIntent::Press { id, tag, x, y } => {
+            GalleryIntent::Press { id, tag, x, y, .. } => {
                 let x = i16::try_from(x).unwrap_or(i16::MAX);
                 let y = i16::try_from(y).unwrap_or(i16::MAX);
                 self.press = Some(Press { id, tag, x, y });
@@ -202,18 +191,19 @@ impl Scroller {
         None
     }
 
-    /// What one gesture asks of the gallery. `tag_at` says which control was hit, if any;
-    /// `slide` says whether that control takes a horizontal drag of its own.
+    /// What one gesture asks of the gallery. `layout` says which control was hit and whether it
+    /// takes a horizontal drag of its own; the arena remembers the rest.
     pub fn bind(
         &self,
         op: &InputIntent,
         wire: u8,
-        tag_at: impl Fn(i32, i32) -> u16,
-        slide: impl Fn(u16) -> bool,
+        layout: &iot_core::ui::Layout,
     ) -> Option<BusinessIntent> {
         let gallery = |intent| Some(BusinessIntent::Gallery { wire, intent });
         let tracked = self.drag.as_ref().map(|drag| drag.area);
         let area = |x: u16, y: u16| self.area_at(i32::from(x), i32::from(y));
+        let hit = |x: i32, y: i32| layout.at(x, y).unwrap_or(0);
+        let slide = |x: i32, y: i32| layout.slides(x, y);
         match op.event {
             InputEvent::Gesture(GestureEvent::Tap {
                 id, x, y, at_ms, ..
@@ -236,18 +226,24 @@ impl Scroller {
                         y,
                     });
                 }
-                let tag = tag_at(i32::from(x), i32::from(y));
+                let tag = hit(i32::from(x), i32::from(y));
                 if tag == 0 {
                     return None;
                 }
-                gallery(GalleryIntent::Tap { tag })
+                gallery(GalleryIntent::Tap { tag, value: 0 })
             }
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let tag = tag_at(i32::from(x), i32::from(y));
+                let tag = hit(i32::from(x), i32::from(y));
                 if tag == 0 && area(x, y).is_none() {
                     return None;
                 }
-                gallery(GalleryIntent::Press { id, tag, x, y })
+                gallery(GalleryIntent::Press {
+                    id,
+                    tag,
+                    value: 0,
+                    x,
+                    y,
+                })
             }
             InputEvent::Gesture(GestureEvent::Drag { id, x, y, at_ms }) => {
                 if self.drag.as_ref().is_some_and(|drag| drag.id == id) {
@@ -267,7 +263,8 @@ impl Scroller {
                     if dx.abs() < i32::from(DRAG_SLOP) && dy.abs() < i32::from(DRAG_SLOP) {
                         return None;
                     }
-                    if press.tag != 0 && slide(press.tag) && dx.abs() > dy.abs() {
+                    let slides = slide(i32::from(press.x), i32::from(press.y));
+                    if press.tag != 0 && slides && dx.abs() > dy.abs() {
                         return gallery(GalleryIntent::Slide {
                             id,
                             tag: press.tag,
@@ -304,8 +301,8 @@ impl Scroller {
                     });
                 }
                 if matches!(direction, SwipeDirection::Left | SwipeDirection::Right) {
-                    let tag = tag_at(i32::from(x), i32::from(y));
-                    if tag != 0 && slide(tag) {
+                    let tag = hit(i32::from(x), i32::from(y));
+                    if tag != 0 && slide(i32::from(x), i32::from(y)) {
                         return gallery(GalleryIntent::SlideEnd {
                             id,
                             tag,
@@ -359,58 +356,57 @@ fn clamp(value: i32) -> i16 {
     value.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16
 }
 
-/// One page's pure scroll shift, when nothing but the offset moved.
+/// One page's pure scroll shift, when nothing but the offsets inside its boxes moved.
 pub fn shift(
-    page: PageId,
     prev: &crate::shared::snapshot::FrameSnapshot,
     next: &crate::shared::snapshot::FrameSnapshot,
-    area: fn(&crate::shared::snapshot::PageSnapshot) -> ScrollAreaView,
-    moving: fn(&crate::shared::snapshot::PageSnapshot) -> bool,
 ) -> Option<ScrollShift> {
-    if prev.page != page || next.page != page {
+    if prev.page != next.page || prev.pages.settled() != next.pages.settled() {
         return None;
     }
-    let before_area = area(&prev.pages);
-    let after_area = area(&next.pages);
-    if before_area.rect.w <= 0 || before_area.rect.h <= 0 {
+    let (before, was_moving) = prev.pages.scroll(prev.page);
+    let (after, is_moving) = next.pages.scroll(next.page);
+    if before.len() != after.len() || after.is_empty() {
         return None;
     }
-    let shift = after_area.offset.wrapping_sub(before_area.offset);
-    let moving_ended = moving(&prev.pages) && !moving(&next.pages);
-    let mut before = before_area;
-    let mut after = after_area;
-    before.offset = 0;
-    after.offset = 0;
-    if before != after {
+    let count = after.len().min(MAX_SCROLL_AREAS);
+    let mut shift = [0i16; MAX_SCROLL_AREAS];
+    for slot in 0..count {
+        if before[slot].rect.w <= 0 || before[slot].rect.h <= 0 {
+            return None;
+        }
+        shift[slot] = after[slot].offset.wrapping_sub(before[slot].offset);
+    }
+    if !(was_moving && !is_moving) && shift[..count].iter().all(|&delta| delta == 0) {
         return None;
     }
-    if !moving_ended && shift == 0 {
-        return None;
-    }
-    Some(ScrollShift::new(&[after_area], &[shift]))
+    Some(ScrollShift::new(&after[..count], &shift[..count]))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::shared::surface::{finish, headless};
-    use iot_core::ui::{Rect, Style};
+    use iot_core::ui::Style;
 
     const WIRE: u8 = 1;
     const AREA: ScrollId = ScrollId::new(1);
     const TAG: u16 = 7;
 
     /// A gallery 100 px tall over 400 px of run, with a control covering its whole box.
-    fn rig() -> (Scroller, Rect) {
+    fn rig(slide: bool) -> (Scroller, iot_core::ui::Layout) {
         let mut ui = headless();
-        ui.scroll(Style::new().height(100).scroll_area(AREA), |ui| {
-            ui.node(Style::new().height(400).tag(TAG));
-        });
+        ui.scroll(
+            Style::new().width(180).height(100).scroll_area(AREA),
+            |ui| {
+                let style = Style::new().width(180).height(400).tag(TAG);
+                ui.node(if slide { style.slide() } else { style });
+            },
+        );
         finish(&mut ui);
         let mut scroll = Scroller::default();
         scroll.measure(&ui, AREA, ScrollConfig::default());
-        let rect = scroll.area().rect;
-        (scroll, rect)
+        (scroll, ui.geometry())
     }
 
     fn at(x: u16, y: u16) -> InputIntent {
@@ -452,8 +448,12 @@ mod tests {
         }
     }
 
-    fn send(page: &mut Scroller, op: &InputIntent, slide: bool) -> Option<GalleryIntent> {
-        let bound = page.bind(op, WIRE, |_, _| TAG, |_| slide)?;
+    fn send(
+        page: &mut Scroller,
+        op: &InputIntent,
+        layout: &iot_core::ui::Layout,
+    ) -> Option<GalleryIntent> {
+        let bound = page.bind(op, WIRE, layout)?;
         let intent = intent(bound);
         page.apply(intent);
         Some(intent)
@@ -461,20 +461,22 @@ mod tests {
 
     #[test]
     fn a_drag_from_a_control_claims_the_region_and_replays_its_first_travel() {
-        let (mut page, rect) = rig();
+        let (mut page, layout) = rig(false);
+        let rect = page.area().rect;
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
         let from = u16::try_from(rect.bottom() - 10).unwrap();
         assert_eq!(
-            send(&mut page, &at(x, from), false),
+            send(&mut page, &at(x, from), &layout),
             Some(GalleryIntent::Press {
                 id: 0,
                 tag: TAG,
+                value: 0,
                 x,
                 y: from
             })
         );
         assert_eq!(
-            send(&mut page, &drag(x, from - 20), false),
+            send(&mut page, &drag(x, from - 20), &layout),
             Some(GalleryIntent::Drag {
                 id: 0,
                 x,
@@ -491,13 +493,14 @@ mod tests {
 
     #[test]
     fn a_tap_after_a_press_still_reaches_its_control() {
-        let (mut page, rect) = rig();
+        let (mut page, layout) = rig(false);
+        let rect = page.area().rect;
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
         let y = u16::try_from(rect.y + rect.h / 2).unwrap();
-        send(&mut page, &at(x, y), false);
+        send(&mut page, &at(x, y), &layout);
         assert_eq!(
-            send(&mut page, &tap(x, y), false),
-            Some(GalleryIntent::Tap { tag: TAG }),
+            send(&mut page, &tap(x, y), &layout),
+            Some(GalleryIntent::Tap { tag: TAG, value: 0 }),
             "the remembered press must not swallow the tap"
         );
         assert_eq!(page.area().offset, 0, "a tap does not move the gallery");
@@ -505,23 +508,25 @@ mod tests {
 
     #[test]
     fn travel_below_the_slop_waits_and_then_replays_from_the_press() {
-        let (mut page, rect) = rig();
+        let (mut page, layout) = rig(false);
+        let rect = page.area().rect;
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
         let y = u16::try_from(rect.y + rect.h / 2).unwrap();
-        send(&mut page, &at(x, y), false);
-        assert_eq!(send(&mut page, &drag(x, y - 3), false), None);
-        send(&mut page, &drag(x, y - 10), false);
+        send(&mut page, &at(x, y), &layout);
+        assert_eq!(send(&mut page, &drag(x, y - 3), &layout), None);
+        send(&mut page, &drag(x, y - 10), &layout);
         assert_eq!(page.area().offset, 10);
     }
 
     #[test]
     fn a_horizontal_drag_over_a_slide_control_is_not_a_scroll() {
-        let (mut page, rect) = rig();
+        let (mut page, layout) = rig(true);
+        let rect = page.area().rect;
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
         let y = u16::try_from(rect.y + rect.h / 2).unwrap();
-        send(&mut page, &at(x, y), true);
+        send(&mut page, &at(x, y), &layout);
         assert_eq!(
-            send(&mut page, &drag(x + 30, y + 2), true),
+            send(&mut page, &drag(x + 30, y + 2), &layout),
             Some(GalleryIntent::Slide {
                 id: 0,
                 tag: TAG,
@@ -530,7 +535,7 @@ mod tests {
         );
         assert_eq!(page.area().offset, 0, "a slide does not scroll the box");
         assert_eq!(
-            send(&mut page, &drag(x - 30, y + 2), true),
+            send(&mut page, &drag(x - 30, y + 2), &layout),
             Some(GalleryIntent::Slide {
                 id: 0,
                 tag: TAG,
@@ -538,7 +543,7 @@ mod tests {
             })
         );
         assert_eq!(
-            send(&mut page, &tap(x - 30, y + 2), true),
+            send(&mut page, &tap(x - 30, y + 2), &layout),
             Some(GalleryIntent::SlideEnd {
                 id: 0,
                 tag: TAG,
@@ -549,12 +554,13 @@ mod tests {
 
     #[test]
     fn a_vertical_drag_over_a_slide_control_still_scrolls() {
-        let (mut page, rect) = rig();
+        let (mut page, layout) = rig(true);
+        let rect = page.area().rect;
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
         let y = u16::try_from(rect.y + rect.h / 2).unwrap();
-        send(&mut page, &at(x, y), true);
+        send(&mut page, &at(x, y), &layout);
         assert!(matches!(
-            send(&mut page, &drag(x + 2, y - 20), true),
+            send(&mut page, &drag(x + 2, y - 20), &layout),
             Some(GalleryIntent::Drag { .. })
         ));
         assert_eq!(page.area().offset, 20);
@@ -562,7 +568,8 @@ mod tests {
 
     #[test]
     fn a_horizontal_swipe_on_a_slide_control_reports_its_travel_once() {
-        let (mut page, rect) = rig();
+        let (mut page, layout) = rig(true);
+        let rect = page.area().rect;
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
         let y = u16::try_from(rect.y + rect.h / 2).unwrap();
         let swipe = InputIntent {
@@ -580,7 +587,7 @@ mod tests {
             }),
         };
         assert_eq!(
-            send(&mut page, &swipe, true),
+            send(&mut page, &swipe, &layout),
             Some(GalleryIntent::SlideEnd {
                 id: 0,
                 tag: TAG,

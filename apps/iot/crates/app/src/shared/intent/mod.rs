@@ -345,16 +345,20 @@ pub enum LightingIntent {
 /// What a finger asks of a demo gallery: the control it touched, or the scroll under it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GalleryIntent {
-    /// A contact landed; `tag` is the control under it, zero for bare canvas.
+    /// A contact landed; `tag` is the control under it, zero for bare canvas, and `value` is
+    /// the cell inside a family, as on [`Self::Tap`].
     Press {
         id: u8,
         tag: u16,
+        value: u16,
         x: u16,
         y: u16,
     },
-    /// The lift landed on the same control.
+    /// The lift landed on the same control. `value` is the cell inside a family — a table row,
+    /// a chart column, a calendar day — and zero for a control that is only itself.
     Tap {
         tag: u16,
+        value: u16,
     },
     /// A key of the field's keyboard.
     Key {

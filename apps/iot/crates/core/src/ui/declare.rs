@@ -311,9 +311,10 @@ impl<'a, 's> Ui<'a, 's> {
         self.tree.info(id).clipped
     }
 
-    /// The topmost tagged box under a panel point.
+    /// The topmost tagged box under a panel point: the same answer `Layout::at` gives the next
+    /// input, clipping included.
     pub fn tag_at(&self, x: i32, y: i32) -> Option<u16> {
-        self.tree.tag_at(x, y)
+        self.geometry().at(x, y)
     }
 
     /// Lays the declaration out and draws it, when there is a canvas to draw into. `paint`

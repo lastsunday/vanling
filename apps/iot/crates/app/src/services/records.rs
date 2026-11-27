@@ -2,17 +2,17 @@
 //! their handle. Each mark is one canvas slot whose draw and hit test share one geometry.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
-use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
+use crate::shared::page::{self, CONTENT_W};
 use crate::shared::route::PageId;
-use crate::shared::snapshot::{FrameSnapshot, PageSnapshot, RecordsSnapshot, ScrollShift};
+use crate::shared::snapshot::{FrameSnapshot, PageSnapshot, RecordsSnapshot};
 use crate::shared::surface::{finish, headless};
-use crate::shared::ui::scroll::{BAR, ScrollConfig};
+use crate::shared::ui::scroll::ScrollConfig;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
     Heatmap, ReorderableList, Timeline, TimelineEntry, TreeRow, TreeView, heatmap,
@@ -23,19 +23,28 @@ use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
-
 const TREE_SLOT: u8 = 0;
 const TIMELINE_SLOT: u8 = 1;
 const HEATMAP_SLOT: u8 = 2;
 const LIST_SLOT: u8 = 3;
 
-/// Sub-cell tags the page computes for itself: a tree row, a timeline entry, a heatmap cell,
-/// and a reorder row.
-const TAG_TREE: u16 = 100;
-const TAG_TIMELINE: u16 = 110;
-const TAG_HEATMAP: u16 = 200;
-const TAG_LIST: u16 = 600;
+/// The page's four marks; the row or cell inside one travels in the intent's `value`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u16)]
+enum Action {
+    Tree = 100,
+    Timeline = 110,
+    Heatmap = 200,
+    List = 600,
+}
+
+impl Tag for Action {
+    const ALL: &'static [Self] = &[Self::Tree, Self::Timeline, Self::Heatmap, Self::List];
+
+    fn tag(self) -> u16 {
+        self as u16
+    }
+}
 
 const TREE_ROWS: usize = 6;
 const ENTRY_ROWS: usize = 4;
@@ -95,11 +104,6 @@ impl Default for RecordsPage {
 }
 
 impl RecordsPage {
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        self.scroll
-            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
-    }
-
     fn snapshot(&self) -> RecordsSnapshot {
         let mut view = self.values;
         view.area = self.scroll.view();
@@ -123,26 +127,16 @@ impl RecordsPage {
         row.clamp(0, LIST_ROWS as i32 - 1) as u8
     }
 
-    fn tap_tag(&mut self, tag: u16) {
-        if let Some(row) = tag
-            .checked_sub(TAG_TREE)
-            .filter(|row| *row < TREE_ROWS as u16)
-        {
-            self.values.tree = Some(row as u8);
-            return;
-        }
-        if let Some(row) = tag
-            .checked_sub(TAG_TIMELINE)
-            .filter(|row| *row < ENTRY_ROWS as u16)
-        {
-            self.values.entry = Some(row as u8);
-            return;
-        }
-        if let Some(cell) = tag
-            .checked_sub(TAG_HEATMAP)
-            .filter(|cell| *cell < heatmap::CELLS)
-        {
-            self.values.cell = Some(cell);
+    fn tap_tag(&mut self, tag: u16, value: u16) {
+        match Action::from_tag(tag) {
+            Some(Action::Tree) if usize::from(value) < TREE_ROWS => {
+                self.values.tree = Some(value as u8);
+            }
+            Some(Action::Timeline) if usize::from(value) < ENTRY_ROWS => {
+                self.values.entry = Some(value as u8);
+            }
+            Some(Action::Heatmap) if value < heatmap::CELLS => self.values.cell = Some(value),
+            _ => {}
         }
     }
 
@@ -177,18 +171,16 @@ impl super::Service for RecordsPage {
         }
         let mut handled = false;
         match *intent {
-            GalleryIntent::Tap { tag } => {
+            GalleryIntent::Tap { tag, value } => {
                 if self.drag.is_some() {
                     self.finish_reorder();
                     handled = true;
                 } else {
-                    self.tap_tag(tag);
+                    self.tap_tag(tag, value);
                 }
             }
-            GalleryIntent::Press { id, tag, .. } if tag >= TAG_LIST => {
-                let row = u8::try_from(tag - TAG_LIST)
-                    .unwrap_or(0)
-                    .min(LIST_ROWS as u8 - 1);
+            GalleryIntent::Press { id, tag, value, .. } if tag == Action::List.tag() => {
+                let row = u8::try_from(value).unwrap_or(0).min(LIST_ROWS as u8 - 1);
                 self.drag = Some(id);
                 self.values.lifted = Some(row);
                 self.values.target = Some(row);
@@ -225,7 +217,8 @@ impl super::LocalPage for RecordsPage {
                 if let Some(row) = self.list_at(layout, i32::from(x), i32::from(y)) {
                     return gallery(GalleryIntent::Press {
                         id,
-                        tag: TAG_LIST + u16::from(row),
+                        tag: Action::List.tag(),
+                        value: u16::from(row),
                         x,
                         y,
                     });
@@ -241,7 +234,10 @@ impl super::LocalPage for RecordsPage {
             | InputEvent::Gesture(GestureEvent::LongPress { id, .. })
                 if self.drag == Some(id) =>
             {
-                return gallery(GalleryIntent::Tap { tag: TAG_LIST });
+                return gallery(GalleryIntent::Tap {
+                    tag: Action::List.tag(),
+                    value: 0,
+                });
             }
             _ => {}
         }
@@ -255,31 +251,29 @@ impl super::LocalPage for RecordsPage {
                     && let Some(row) = tree_view::row_at(tree, TREE_ROWS, x, y)
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: TAG_TREE + u16::from(row),
+                        tag: Action::Tree.tag(),
+                        value: u16::from(row),
                     });
                 }
                 if let Some(timeline) = layout.slot(TIMELINE_SLOT)
                     && let Some(row) = timeline::row_at(timeline, ENTRY_ROWS, x, y)
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: TAG_TIMELINE + u16::from(row),
+                        tag: Action::Timeline.tag(),
+                        value: u16::from(row),
                     });
                 }
                 if let Some(heatmap) = layout.slot(HEATMAP_SLOT)
                     && let Some(cell) = heatmap::cell_at(heatmap, x, y)
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: TAG_HEATMAP + cell,
+                        tag: Action::Heatmap.tag(),
+                        value: cell,
                     });
                 }
             }
         }
-        self.scroll.bind(
-            op,
-            PageId::Records.code(),
-            |x, y| self.tag_at(layout, x, y),
-            |_| false,
-        )
+        self.scroll.bind(op, PageId::Records.code(), layout)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -294,8 +288,8 @@ impl super::LocalPage for RecordsPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(records_moved))
-            .with_scroll(records_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -322,7 +316,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(tree_view::height(TREE_ROWS))
-                    .tag(TAG_TREE),
+                    .tag(Action::Tree.tag()),
                 TREE_SLOT,
             );
             page::caption(ui, Msg::CapTimeline.bytes(lang), &theme);
@@ -330,7 +324,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(timeline::height(ENTRY_ROWS))
-                    .tag(TAG_TIMELINE),
+                    .tag(Action::Timeline.tag()),
                 TIMELINE_SLOT,
             );
             page::caption(ui, Msg::CapHeatmap.bytes(lang), &theme);
@@ -338,7 +332,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(heatmap::WIDTH)
                     .height(heatmap::HEIGHT)
-                    .tag(TAG_HEATMAP),
+                    .tag(Action::Heatmap.tag()),
                 HEATMAP_SLOT,
             );
             page::caption(ui, Msg::CapReorder.bytes(lang), &theme);
@@ -346,7 +340,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(reorderable_list::height(LIST_ROWS))
-                    .tag(TAG_LIST),
+                    .tag(Action::List.tag()),
                 LIST_SLOT,
             );
         });
@@ -410,40 +404,24 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
     }
 }
 
-fn records_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.records != next.pages.records
-}
-
-fn records_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::Records,
-        prev,
-        next,
-        |pages| pages.records.area,
-        |pages| pages.records.moving,
-    )
-}
-
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
     use alloc::vec::Vec;
-    use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
     use iot_core::ui::{Layout, PX};
 
     fn layout(page: &RecordsPage) -> Layout {
         crate::services::layout_of(page, PageId::Records)
     }
 
-    fn tap(page: &mut RecordsPage, tag: u16) {
+    fn tap(page: &mut RecordsPage, tag: u16, value: u16) {
         let mut state = DeviceState::default();
         let intent = BusinessIntent::Gallery {
             wire: PageId::Records.code(),
-            intent: GalleryIntent::Tap { tag },
+            intent: GalleryIntent::Tap { tag, value },
         };
         page.apply(&intent, &mut state, &layout(page));
     }
@@ -498,17 +476,25 @@ mod tests {
     fn every_mark_is_drawn_once() {
         let page = RecordsPage::default();
         let drawn: Vec<u16> = layout(&page).tags().map(|(tag, _)| tag).collect();
-        assert_eq!(drawn, [TAG_TREE, TAG_TIMELINE, TAG_HEATMAP, TAG_LIST]);
+        assert_eq!(
+            drawn,
+            [
+                Action::Tree.tag(),
+                Action::Timeline.tag(),
+                Action::Heatmap.tag(),
+                Action::List.tag(),
+            ]
+        );
     }
 
     #[test]
     fn a_tap_picks_the_tree_row_the_entry_and_the_cell() {
         let mut page = RecordsPage::default();
-        tap(&mut page, TAG_TREE + 3);
+        tap(&mut page, Action::Tree.tag(), 3);
         assert_eq!(page.values.tree, Some(3));
-        tap(&mut page, TAG_TIMELINE + 2);
+        tap(&mut page, Action::Timeline.tag(), 2);
         assert_eq!(page.values.entry, Some(2));
-        tap(&mut page, TAG_HEATMAP + 41);
+        tap(&mut page, Action::Heatmap.tag(), 41);
         assert_eq!(page.values.cell, Some(41));
     }
 
@@ -631,7 +617,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.records.area.offset > 0);
-        let shift = records_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.records.area.offset);
     }
 }

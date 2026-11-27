@@ -2,17 +2,16 @@
 //! pager whose index its dots share.
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
-use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
+use crate::shared::page::{self, CONTENT_W};
 use crate::shared::route::PageId;
-use crate::shared::snapshot::{AdvancedSnapshot, FrameSnapshot, PageSnapshot, ScrollShift};
+use crate::shared::snapshot::{AdvancedSnapshot, FrameSnapshot, PageSnapshot};
 use crate::shared::surface::{finish, headless};
-use crate::shared::ui::scroll::{BAR, ScrollConfig};
+use crate::shared::ui::scroll::ScrollConfig;
 use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
@@ -24,7 +23,6 @@ use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
 const PAGER_SLOT: u8 = 0;
 const DOT_SLOT: u8 = 1;
 const CAROUSEL_SLOT: u8 = 2;
@@ -35,11 +33,6 @@ const PAGER_H: i16 = 2 * page::TOUCH;
 const CAROUSEL_H: i16 = PAGER_H + carousel::PROGRESS_H;
 /// How long one card dwells before the carousel turns itself.
 const DWELL_MS: u16 = 2_000;
-
-/// The dots and the cards share one tag range: either picks a pager index.
-const TAG_INDEX: u16 = 60;
-/// The carousel's own cards, so a tap there never moves the pager above.
-const TAG_CAROUSEL: u16 = 70;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -66,6 +59,10 @@ enum Action {
     Step,
     Carousel,
     Auto,
+    /// The pager's cards and dots: the index travels in the intent's `value`.
+    PagerCard = 60,
+    /// The carousel's cards: the index travels in the intent's `value`.
+    CarouselCard = 70,
 }
 
 impl Tag for Action {
@@ -85,21 +82,14 @@ impl Tag for Action {
         Self::Seg1,
         Self::Seg2,
         Self::Step,
+        // Bases the slot arithmetic reports; they are never boxes of their own.
+        Self::PagerCard,
+        Self::CarouselCard,
     ];
 
     fn tag(self) -> u16 {
         self as u16
     }
-}
-
-fn index_tag(index: u8) -> u16 {
-    TAG_INDEX + u16::from(index)
-}
-
-fn tag_index(tag: u16) -> Option<u8> {
-    tag.checked_sub(TAG_INDEX)
-        .filter(|index| *index < u16::from(PAGER_COUNT))
-        .and_then(|index| u8::try_from(index).ok())
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -132,11 +122,6 @@ impl Default for AdvancedPage {
 }
 
 impl AdvancedPage {
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        self.scroll
-            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
-    }
-
     fn snapshot(&self) -> AdvancedSnapshot {
         let mut view = self.values;
         view.area = self.scroll.view();
@@ -160,6 +145,8 @@ impl AdvancedPage {
             Action::Step => self.values.step = (self.values.step + 1) % 3,
             Action::Pager => self.values.pager = (self.values.pager + 1) % PAGER_COUNT,
             Action::Carousel => {}
+            // Family bases are matched in `tap_tag`; they are never a drawn control.
+            Action::PagerCard | Action::CarouselCard => {}
             Action::Auto => {
                 self.values.autoplay = !self.values.autoplay;
                 self.dwell = 0;
@@ -168,18 +155,20 @@ impl AdvancedPage {
         }
     }
 
-    fn tap_tag(&mut self, tag: u16) {
-        if let Some(index) = tag
-            .checked_sub(TAG_CAROUSEL)
-            .filter(|index| *index < u16::from(PAGER_COUNT))
-        {
-            self.values.carousel = u8::try_from(index).unwrap_or(0);
-            self.dwell = 0;
-            self.values.progress = 0;
+    fn tap_tag(&mut self, tag: u16, value: u16) {
+        let card = u8::try_from(value).unwrap_or(u8::MAX);
+        if tag == Action::PagerCard.tag() {
+            if card < PAGER_COUNT {
+                self.values.pager = card;
+            }
             return;
         }
-        if let Some(index) = tag_index(tag) {
-            self.values.pager = index;
+        if tag == Action::CarouselCard.tag() {
+            if card < PAGER_COUNT {
+                self.values.carousel = card;
+                self.dwell = 0;
+                self.values.progress = 0;
+            }
             return;
         }
         if let Some(action) = Action::from_tag(tag) {
@@ -202,7 +191,7 @@ impl super::Service for AdvancedPage {
             return (None, Effects::default());
         }
         match *intent {
-            GalleryIntent::Tap { tag } => self.tap_tag(tag),
+            GalleryIntent::Tap { tag, value } => self.tap_tag(tag, value),
             GalleryIntent::Slide { tag, dx, .. } if tag == Action::Pager.tag() => {
                 self.values.drag = dx;
             }
@@ -259,7 +248,8 @@ impl super::LocalPage for AdvancedPage {
                     })
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: index_tag(index),
+                        tag: Action::PagerCard.tag(),
+                        value: u16::from(index),
                     });
                 }
                 if let Some(carousel) = layout.slot(CAROUSEL_SLOT)
@@ -272,17 +262,13 @@ impl super::LocalPage for AdvancedPage {
                     )
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: TAG_CAROUSEL + u16::from(index),
+                        tag: Action::CarouselCard.tag(),
+                        value: u16::from(index),
                     });
                 }
             }
         }
-        self.scroll.bind(
-            op,
-            PageId::Advanced.code(),
-            |x, y| self.tag_at(layout, x, y),
-            |tag| tag == Action::Pager.tag() || tag == Action::Carousel.tag(),
-        )
+        self.scroll.bind(op, PageId::Advanced.code(), layout)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -297,8 +283,8 @@ impl super::LocalPage for AdvancedPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(advanced_moved))
-            .with_scroll(advanced_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -363,7 +349,8 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(PAGER_H)
-                    .tag(Action::Pager.tag()),
+                    .tag(Action::Pager.tag())
+                    .slide(),
                 PAGER_SLOT,
             );
             ui.custom(Style::new().width(CONTENT_W).height(page::TOUCH), DOT_SLOT);
@@ -377,7 +364,8 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 Style::new()
                     .width(CONTENT_W)
                     .height(CAROUSEL_H)
-                    .tag(Action::Carousel.tag()),
+                    .tag(Action::Carousel.tag())
+                    .slide(),
                 CAROUSEL_SLOT,
             );
 
@@ -463,28 +451,12 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
     }
 }
 
-fn advanced_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.advanced != next.pages.advanced
-}
-
-fn advanced_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::Advanced,
-        prev,
-        next,
-        |pages| pages.advanced.area,
-        |pages| pages.advanced.moving,
-    )
-}
-
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use alloc::vec::Vec;
-    use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
     use iot_core::ui::{Layout, PX};
 
     fn layout(page: &AdvancedPage) -> Layout {
@@ -496,10 +468,14 @@ mod tests {
     }
 
     fn tap_tag(page: &mut AdvancedPage, tag: u16) {
+        tap_value(page, tag, 0);
+    }
+
+    fn tap_value(page: &mut AdvancedPage, tag: u16, value: u16) {
         let mut state = DeviceState::default();
         let intent = BusinessIntent::Gallery {
             wire: PageId::Advanced.code(),
-            intent: GalleryIntent::Tap { tag },
+            intent: GalleryIntent::Tap { tag, value },
         };
         page.apply(&intent, &mut state, &layout(page));
     }
@@ -542,7 +518,26 @@ mod tests {
     fn every_control_is_drawn_once() {
         let page = AdvancedPage::default();
         let drawn: Vec<u16> = layout(&page).tags().map(|(tag, _)| tag).collect();
-        let expected: Vec<u16> = Action::ALL.iter().map(|action| action.tag()).collect();
+        let expected: Vec<u16> = [
+            Action::App,
+            Action::Nav0,
+            Action::Nav1,
+            Action::Nav2,
+            Action::Tab0,
+            Action::Tab1,
+            Action::Tab2,
+            Action::Pager,
+            Action::Auto,
+            Action::Carousel,
+            Action::Accordion,
+            Action::Seg0,
+            Action::Seg1,
+            Action::Seg2,
+            Action::Step,
+        ]
+        .iter()
+        .map(|action| action.tag())
+        .collect();
         assert_eq!(drawn, expected);
     }
 
@@ -567,7 +562,7 @@ mod tests {
     fn the_dots_and_the_pager_share_one_index() {
         let mut page = AdvancedPage::default();
         assert_eq!(page.values.pager, 1);
-        tap_tag(&mut page, index_tag(2));
+        tap_value(&mut page, Action::PagerCard.tag(), 2);
         assert_eq!(page.values.pager, 2);
         tap(&mut page, Action::Pager);
         assert_eq!(page.values.pager, 0, "a card tap advances and wraps");
@@ -696,6 +691,7 @@ mod tests {
             GalleryIntent::Press {
                 id: 0,
                 tag: Action::Pager.tag(),
+                value: 0,
                 x: 100,
                 y: 100,
             },
@@ -788,6 +784,7 @@ mod tests {
             GalleryIntent::Press {
                 id: 0,
                 tag: Action::Carousel.tag(),
+                value: 0,
                 x: 100,
                 y: 100,
             },
@@ -910,7 +907,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.advanced.area.offset > 0);
-        let shift = advanced_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.advanced.area.offset);
     }
 }

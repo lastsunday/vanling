@@ -242,6 +242,31 @@ fn a_scroll_box_clips_and_shifts_its_content() {
 }
 
 #[test]
+fn a_control_scrolled_under_the_header_is_not_hit() {
+    let mut tree = Tree::new();
+    let root = tree.push(Style::new().stretch(), NodeKind::Box, NodeId::NONE);
+    tree.push(Style::new().height(20), NodeKind::Box, root);
+    let scroll = tree.push(
+        Style::new().scrolling().height(20).scroll_offset(10),
+        NodeKind::Box,
+        root,
+    );
+    tree.push(
+        Style::new().width(100).height(20).tag(7),
+        NodeKind::Box,
+        scroll,
+    );
+    tree.layout(BoxConstraints::tight(100 * PX, 40 * PX), b"");
+    let layout = tree.geometry();
+    assert_eq!(
+        layout.at(5, 15),
+        None,
+        "the clip keeps it out of the header"
+    );
+    assert_eq!(layout.at(5, 25), Some(7), "the visible part still answers");
+}
+
+#[test]
 fn a_named_scroll_box_reports_where_it_sits_and_how_far_it_goes() {
     let mut ui = page(100, 20);
     let mut child = NodeId::NONE;

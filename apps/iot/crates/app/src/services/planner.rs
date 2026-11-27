@@ -4,19 +4,19 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-use iot_core::ui::text::format_u16;
 use iot_core::ui::{Canvas, Layout, PAINTS, Rect, Screen, ScrollId, Style, Ui, hash_of};
 
 use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
+use crate::shared::page::{self, CONTENT_W};
 use crate::shared::route::PageId;
 use crate::shared::snapshot::{
-    FrameSnapshot, PageSnapshot, PickerOpen, PickerView, PlannerSnapshot, ScrollShift,
+    FrameSnapshot, PageSnapshot, PickerOpen, PickerView, PlannerSnapshot,
 };
 use crate::shared::surface::{finish, headless};
-use crate::shared::ui::scroll::{BAR, Drag, ScrollConfig};
+use crate::shared::ui::fmt;
+use crate::shared::ui::scroll::{Drag, ScrollConfig};
 use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
@@ -28,8 +28,6 @@ use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
-
 const DIALOG_SLOT: u8 = 4;
 /// One per dialog wheel column, or the month grid in the first.
 const DIALOG_COLUMN: u8 = 5;
@@ -44,49 +42,46 @@ const _: () = assert!(
 );
 const _: () = assert!(DIALOG_COLUMN as usize + 3 <= PAINTS);
 
-/// A family of sub-cell tags: a base plus an index, so decoding is one subtraction. Each
-/// family owns a contiguous range, and the assertions below keep them from growing into the
-/// single tags that sit between them.
+/// The page's own controls, plus the families whose index travels in the intent's `value`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct SubTag<const FIRST: u16, const COUNT: u16>(u16);
-
-impl<const FIRST: u16, const COUNT: u16> SubTag<FIRST, COUNT> {
-    const BEGIN: u16 = FIRST;
-    const END: u16 = FIRST + COUNT;
-
-    const fn at(index: u16) -> Self {
-        Self(FIRST + index)
-    }
-
-    const fn tag(self) -> u16 {
-        self.0
-    }
-
-    fn from_tag(tag: u16) -> Option<u16> {
-        tag.checked_sub(FIRST).filter(|index| *index < COUNT)
-    }
+#[repr(u16)]
+enum Action {
+    Prev = 1,
+    Next,
+    DateOpen,
+    TimeOpen,
+    Calendar = 100,
+    Wheel = 140,
+    Rating = 170,
+    Picker = 180,
+    DialogOk = 200,
+    DialogCancel,
+    DialogPrev,
+    DialogNext,
+    MonthDay = 210,
 }
 
-/// A day in the page's calendar, a star, and a day in the dialog's month grid.
-type CalendarDay = SubTag<100, 32>;
-type Star = SubTag<170, 5>;
-type MonthDay = SubTag<210, 32>;
+impl Tag for Action {
+    const ALL: &'static [Self] = &[
+        Self::Prev,
+        Self::Next,
+        Self::DateOpen,
+        Self::TimeOpen,
+        Self::Calendar,
+        Self::Wheel,
+        Self::Rating,
+        Self::Picker,
+        Self::DialogOk,
+        Self::DialogCancel,
+        Self::DialogPrev,
+        Self::DialogNext,
+        Self::MonthDay,
+    ];
 
-const TAG_CALENDAR: u16 = CalendarDay::BEGIN;
-const TAG_WHEEL: u16 = 140;
-const TAG_RATING: u16 = Star::BEGIN;
-const TAG_PICKER: u16 = 180;
-const TAG_DIALOG_OK: u16 = 200;
-const TAG_DIALOG_CANCEL: u16 = 201;
-const TAG_PREV: u16 = 202;
-const TAG_NEXT: u16 = 203;
-
-const _: () = assert!(CalendarDay::END <= TAG_WHEEL);
-const _: () = assert!(TAG_WHEEL < Star::BEGIN);
-const _: () = assert!(Star::END <= TAG_PICKER);
-const _: () = assert!(TAG_PICKER < TAG_DIALOG_OK);
-const _: () = assert!(TAG_NEXT < MonthDay::BEGIN);
-
+    fn tag(self) -> u16 {
+        self as u16
+    }
+}
 /// The three wheels this page can turn. The wire carries the discriminant; everything inside
 /// the page is this enum, so a fourth wheel does not compile until each arm says what it does.
 #[repr(u8)]
@@ -129,24 +124,6 @@ const SCROLL: ScrollConfig = ScrollConfig {
     bar: true,
     pull: 0,
 };
-
-/// The controls the declaration draws; the dialog's own targets are hit-tested inside its slot.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[repr(u16)]
-enum Action {
-    Prev = 1,
-    Next,
-    DateOpen,
-    TimeOpen,
-}
-
-impl Tag for Action {
-    const ALL: &'static [Self] = &[Self::Prev, Self::Next, Self::DateOpen, Self::TimeOpen];
-
-    fn tag(self) -> u16 {
-        self as u16
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WheelDrag {
@@ -203,11 +180,6 @@ impl PlannerPage {
         self.scroll.park(offset);
     }
 
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        self.scroll
-            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
-    }
-
     pub(crate) fn snapshot(&self) -> PlannerSnapshot {
         let mut view = self.values;
         view.area = self.scroll.view();
@@ -255,23 +227,20 @@ impl PlannerPage {
         }
     }
 
-    fn tap_tag(&mut self, tag: u16) {
-        if let Some(day) = CalendarDay::from_tag(tag).filter(|day| *day > 0) {
-            if calendar::days_in_month(self.values.year, self.values.month) >= day as u8 {
-                self.values.day = day as u8;
-            }
-            return;
-        }
-        if let Some(star) = Star::from_tag(tag) {
-            self.values.rating = star as u8 + 1;
-            return;
-        }
+    fn tap_tag(&mut self, tag: u16, value: u16) {
         match Action::from_tag(tag) {
+            Some(Action::Calendar) => {
+                let days = calendar::days_in_month(self.values.year, self.values.month);
+                if value > 0 && value <= u16::from(days) {
+                    self.values.day = value as u8;
+                }
+            }
+            Some(Action::Rating) => self.values.rating = value as u8 + 1,
             Some(Action::Prev) => self.shift_month(-1),
             Some(Action::Next) => self.shift_month(1),
             Some(Action::DateOpen) => self.open_date(),
             Some(Action::TimeOpen) => self.open_time(),
-            None => {}
+            _ => {}
         }
     }
 
@@ -339,39 +308,46 @@ impl PlannerPage {
         self.dialog = PickerOpen::None;
     }
 
-    fn tap_dialog(&mut self, tag: u16) {
-        match tag {
-            TAG_DIALOG_OK => self.commit(),
-            TAG_DIALOG_CANCEL => self.dialog = PickerOpen::None,
-            TAG_PREV if self.dialog == PickerOpen::Month => {
+    fn tap_dialog(&mut self, tag: u16, value: u16) {
+        match Action::from_tag(tag) {
+            Some(Action::DialogOk) => self.commit(),
+            Some(Action::DialogCancel) => self.dialog = PickerOpen::None,
+            Some(Action::DialogPrev) if self.dialog == PickerOpen::Month => {
                 date_picker::shift_month(&mut self.month, -1);
             }
-            TAG_NEXT if self.dialog == PickerOpen::Month => {
+            Some(Action::DialogNext) if self.dialog == PickerOpen::Month => {
                 date_picker::shift_month(&mut self.month, 1);
             }
-            _ if self.dialog == PickerOpen::Month => {
-                let days = calendar::days_in_month(self.month.year, self.month.month);
-                if let Some(day) = MonthDay::from_tag(tag).filter(|day| *day <= u16::from(days)) {
-                    self.month.day = day as u8;
+            Some(Action::MonthDay) if self.dialog == PickerOpen::Month => {
+                let days = u16::from(calendar::days_in_month(self.month.year, self.month.month));
+                if value <= days {
+                    self.month.day = value as u8;
                 }
             }
             _ => {}
         }
     }
 
-    fn dialog_tag(&self, x: i32, y: i32) -> Option<u16> {
+    fn dialog_tag(&self, x: i32, y: i32) -> Option<(u16, u16)> {
         let body = dialog_frame().body;
         if self.dialog == PickerOpen::Month {
             if let Some(day) = date_picker::day_at(body, self.month, x, y) {
-                return Some(MonthDay::at(u16::from(day)).tag());
+                return Some((Action::MonthDay.tag(), u16::from(day)));
             }
             if let Some(direction) = date_picker::nav_at(body, x, y) {
-                return Some(if direction < 0 { TAG_PREV } else { TAG_NEXT });
+                return Some((
+                    if direction < 0 {
+                        Action::DialogPrev.tag()
+                    } else {
+                        Action::DialogNext.tag()
+                    },
+                    0,
+                ));
             }
         }
         match picker::action_at(DIALOG_RECT, x, y) {
-            Some(true) => Some(TAG_DIALOG_OK),
-            Some(false) => Some(TAG_DIALOG_CANCEL),
+            Some(true) => Some((Action::DialogOk.tag(), 0)),
+            Some(false) => Some((Action::DialogCancel.tag(), 0)),
             None => None,
         }
     }
@@ -514,15 +490,15 @@ impl super::Service for PlannerPage {
             return (None, Effects::default());
         }
         match *intent {
-            GalleryIntent::Tap { tag } => {
+            GalleryIntent::Tap { tag, value } => {
                 self.picker_drag = None;
                 if self.dialog == PickerOpen::None {
-                    self.tap_tag(tag);
+                    self.tap_tag(tag, value);
                 } else {
-                    self.tap_dialog(tag);
+                    self.tap_dialog(tag, value);
                 }
             }
-            GalleryIntent::Point { id, tag, x, y } if tag == TAG_PICKER => {
+            GalleryIntent::Point { id, tag, x, y } if tag == Action::Picker.tag() => {
                 self.picker_drag = Some(id);
                 self.sample_picker(layout, x, y);
             }
@@ -592,7 +568,7 @@ impl super::LocalPage for PlannerPage {
                     }
                     return self
                         .dialog_tag(i32::from(x), i32::from(y))
-                        .and_then(|tag| gallery(GalleryIntent::Tap { tag }));
+                        .and_then(|(tag, value)| gallery(GalleryIntent::Tap { tag, value }));
                 }
                 InputEvent::Gesture(GestureEvent::Swipe {
                     id, end_y, at_ms, ..
@@ -641,7 +617,7 @@ impl super::LocalPage for PlannerPage {
                 if self.picker_at(layout, i32::from(x), i32::from(y)) {
                     return gallery(GalleryIntent::Point {
                         id,
-                        tag: TAG_PICKER,
+                        tag: Action::Picker.tag(),
                         x,
                         y,
                     });
@@ -651,7 +627,7 @@ impl super::LocalPage for PlannerPage {
                 if self.picker_drag == Some(id) {
                     return gallery(GalleryIntent::Point {
                         id,
-                        tag: TAG_PICKER,
+                        tag: Action::Picker.tag(),
                         x,
                         y,
                     });
@@ -662,7 +638,10 @@ impl super::LocalPage for PlannerPage {
             | InputEvent::Gesture(GestureEvent::LongPress { id, .. })
                 if self.picker_drag == Some(id) =>
             {
-                return gallery(GalleryIntent::Tap { tag: TAG_PICKER });
+                return gallery(GalleryIntent::Tap {
+                    tag: Action::Picker.tag(),
+                    value: 0,
+                });
             }
             _ => {}
         }
@@ -677,30 +656,30 @@ impl super::LocalPage for PlannerPage {
                         calendar::day_at(calendar, self.values.year, self.values.month, x, y)
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: CalendarDay::at(u16::from(day)).tag(),
+                        tag: Action::Calendar.tag(),
+                        value: u16::from(day),
                     });
                 }
                 if let Some(stars) = layout.slot(rating::PAINT_SLOT)
                     && let Some(star) = rating::star_at(stars, 5, x, y)
                 {
                     return gallery(GalleryIntent::Tap {
-                        tag: Star::at(u16::from(star)).tag(),
+                        tag: Action::Rating.tag(),
+                        value: u16::from(star),
                     });
                 }
                 if layout
                     .slot(color_picker::PAINT_SLOT)
                     .is_some_and(|picker| color_picker::point_at(picker, x, y).is_some())
                 {
-                    return gallery(GalleryIntent::Tap { tag: TAG_PICKER });
+                    return gallery(GalleryIntent::Tap {
+                        tag: Action::Picker.tag(),
+                        value: 0,
+                    });
                 }
             }
         }
-        self.scroll.bind(
-            op,
-            PageId::Planner.code(),
-            |x, y| self.tag_at(layout, x, y),
-            |_| false,
-        )
+        self.scroll.bind(op, PageId::Planner.code(), layout)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -715,8 +694,8 @@ impl super::LocalPage for PlannerPage {
         Descriptor::new(Self::view)
             .with_custom(custom)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(planner_moved))
-            .with_scroll(planner_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -758,7 +737,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             });
             ui.add(
                 calendar::Calendar::new(
-                    TAG_CALENDAR,
+                    Action::Calendar.tag(),
                     hash_of(&date_picker::MonthView {
                         year: w.year,
                         month: w.month,
@@ -768,7 +747,7 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 .width(CONTENT_W),
             );
             page::caption(ui, Msg::CapTimePicker.bytes(lang), &theme);
-            ui.add(wheel::HourWheel::new(TAG_WHEEL, w.inline.state()));
+            ui.add(wheel::HourWheel::new(Action::Wheel.tag(), w.inline.state()));
             page::caption(ui, Msg::CapDatetime.bytes(lang), &theme);
             ui.row(Style::new().gap(theme.gap), |ui| {
                 ui.add(
@@ -785,18 +764,22 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             page::reading(
                 ui,
                 Msg::Date.bytes(lang),
-                date_text(w.year, w.month, w.day, &mut date),
+                fmt::date(w.year, w.month, w.day, &mut date),
             );
             page::reading(
                 ui,
                 Msg::Time.bytes(lang),
-                time_text(w.hour, w.minute, w.second, &mut time),
+                fmt::time(w.hour, w.minute, w.second, &mut time),
             );
             page::caption(ui, Msg::CapRating.bytes(lang), &theme);
-            ui.add(rating::Stars::new(TAG_RATING, 5, u32::from(w.rating)));
+            ui.add(rating::Stars::new(
+                Action::Rating.tag(),
+                5,
+                u32::from(w.rating),
+            ));
             page::caption(ui, Msg::CapColorPicker.bytes(lang), &theme);
             ui.add(color_picker::Swatch::new(
-                TAG_PICKER,
+                Action::Picker.tag(),
                 (u32::from(w.hue) << 16) | (u32::from(w.sat) << 8) | u32::from(w.val),
             ));
         });
@@ -860,44 +843,6 @@ fn dialog_style(rect: Rect) -> Style {
         .top(rect.y as i16)
         .width(rect.w as i16)
         .height(rect.h as i16)
-}
-
-fn date_text(year: u16, month: u8, day: u8, buf: &mut [u8; 12]) -> &[u8] {
-    let mut digits = [0u8; 6];
-    let text = format_u16(year, &mut digits);
-    let mut at = text.len().min(buf.len());
-    buf[..at].copy_from_slice(&text[..at]);
-    for part in [month, day] {
-        if at >= buf.len() {
-            break;
-        }
-        buf[at] = b'-';
-        at += 1;
-        at = push_two(buf, at, part);
-    }
-    &buf[..at]
-}
-
-fn time_text(hour: u8, minute: u8, second: u8, buf: &mut [u8; 10]) -> &[u8] {
-    let mut at = push_two(buf, 0, hour);
-    for part in [minute, second] {
-        if at >= buf.len() {
-            break;
-        }
-        buf[at] = b':';
-        at += 1;
-        at = push_two(buf, at, part);
-    }
-    &buf[..at]
-}
-
-fn push_two(buf: &mut [u8], at: usize, value: u8) -> usize {
-    if at + 2 > buf.len() {
-        return at;
-    }
-    buf[at] = b'0' + value / 10;
-    buf[at + 1] = b'0' + value % 10;
-    at + 2
 }
 
 fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canvas<'_>, rect: Rect) {
@@ -964,22 +909,6 @@ fn draw_dialog_body(
     canvas.pop_clip();
 }
 
-fn planner_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.planner != next.pages.planner
-}
-
-fn planner_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::Planner,
-        prev,
-        next,
-        |pages| pages.planner.area,
-        |pages| pages.planner.moving,
-    )
-}
-
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -995,10 +924,14 @@ mod tests {
     }
 
     fn tap(page: &mut PlannerPage, tag: u16) {
+        tap_at(page, tag, 0);
+    }
+
+    fn tap_at(page: &mut PlannerPage, tag: u16, value: u16) {
         let mut state = DeviceState::default();
         let intent = BusinessIntent::Gallery {
             wire: PageId::Planner.code(),
-            intent: GalleryIntent::Tap { tag },
+            intent: GalleryIntent::Tap { tag, value },
         };
         page.apply(&intent, &mut state, &layout(page));
     }
@@ -1117,12 +1050,12 @@ mod tests {
         let expected: Vec<u16> = [
             Action::Prev.tag(),
             Action::Next.tag(),
-            TAG_CALENDAR,
-            TAG_WHEEL,
+            Action::Calendar.tag(),
+            Action::Wheel.tag(),
             Action::DateOpen.tag(),
             Action::TimeOpen.tag(),
-            TAG_RATING,
-            TAG_PICKER,
+            Action::Rating.tag(),
+            Action::Picker.tag(),
         ]
         .to_vec();
         assert_eq!(drawn, expected);
@@ -1350,7 +1283,7 @@ mod tests {
         let end = u16::try_from(m.centre).unwrap();
         press_drag_swipe(&mut page, x, start, end);
         assert_eq!(page.date.date().1, 12, "one row up from November");
-        tap(&mut page, TAG_DIALOG_OK);
+        tap(&mut page, Action::DialogOk.tag());
         assert_eq!(page.values.month, 12, "OK commits the date");
     }
 
@@ -1367,16 +1300,16 @@ mod tests {
         press_drag_swipe(&mut page, x, start, end);
         assert_eq!(page.time.value().1, 6, "one row up from five");
         assert_eq!(page.snapshot().dialog.time.wheels[1].index(), 6);
-        tap(&mut page, TAG_DIALOG_OK);
+        tap(&mut page, Action::DialogOk.tag());
         assert_eq!(page.values.minute, 6, "OK commits the wheel");
     }
 
     #[test]
     fn the_stars_and_the_month_buttons_change_their_values() {
         let mut page = PlannerPage::default();
-        tap(&mut page, Star::at(2).tag());
+        tap_at(&mut page, Action::Rating.tag(), 2);
         assert_eq!(page.values.rating, 3);
-        tap(&mut page, Star::at(4).tag());
+        tap_at(&mut page, Action::Rating.tag(), 4);
         assert_eq!(page.values.rating, 5);
     }
 
@@ -1396,7 +1329,7 @@ mod tests {
         let y = u16::try_from(m.centre + i32::from(m.row_h)).unwrap();
         press_and_tap(&mut page, x, y);
         assert_eq!(page.date.date().1, 12, "the month wheel turned once");
-        tap(&mut page, TAG_DIALOG_OK);
+        tap(&mut page, Action::DialogOk.tag());
         assert_eq!(page.dialog, PickerOpen::None);
         assert_eq!(page.values.month, 12);
     }
@@ -1414,7 +1347,7 @@ mod tests {
         let y = u16::try_from(m.centre + i32::from(m.row_h)).unwrap();
         press_and_tap(&mut page, x, y);
         assert_eq!(page.time.value().1, 6);
-        tap(&mut page, TAG_DIALOG_CANCEL);
+        tap(&mut page, Action::DialogCancel.tag());
         assert_eq!(page.dialog, PickerOpen::None);
         assert_eq!((page.values.minute, page.values.second), before);
     }
@@ -1482,7 +1415,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.planner.area.offset > 0);
-        let shift = planner_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.planner.area.offset);
     }
 }

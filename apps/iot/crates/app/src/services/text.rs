@@ -4,10 +4,9 @@
 
 use crate::shared::intent::{BusinessIntent, InputIntent, TextIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::route::PageId;
 use crate::shared::snapshot::{
-    FrameSnapshot, PageSnapshot, ScrollAreaView, ScrollShift, TEXT_AREAS, TEXT_LINES, TEXT_ROWS,
-    TextLine, TextSnapshot,
+    FrameSnapshot, PageSnapshot, ScrollAreaView, TEXT_AREAS, TEXT_LINES, TEXT_ROWS, TextLine,
+    TextSnapshot,
 };
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{
@@ -260,8 +259,8 @@ impl super::LocalPage for TextPage {
     fn descriptor() -> Descriptor {
         Descriptor::new(Self::view)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(text_moved))
-            .with_scroll(scroll_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -307,45 +306,6 @@ fn text_layout(width: i32) -> TextSnapshot {
     text.missing = missing(&face);
     text.ascii = ascii_complete(&face);
     text
-}
-
-fn text_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.pages.text != next.pages.text
-}
-
-/// The frame that only moved this page's two boxes. A page switch, a changed reading or a
-/// thumb is a full repaint.
-fn scroll_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    if prev.page != PageId::Text || next.page != PageId::Text {
-        return None;
-    }
-    let areas = next.pages.text.areas;
-    let mut before = prev.pages.text;
-    let mut after = next.pages.text;
-    let mut shift = [0i16; TEXT_AREAS];
-    for (slot, (before, after)) in before
-        .areas
-        .iter_mut()
-        .zip(after.areas.iter_mut())
-        .enumerate()
-    {
-        shift[slot] = after.offset.wrapping_sub(before.offset);
-        before.offset = 0;
-        after.offset = 0;
-        if before.rect.w <= 0 || before.rect.h <= 0 {
-            return None;
-        }
-    }
-    let moving_ended = before.moving && !after.moving;
-    before.moving = false;
-    after.moving = false;
-    if before != after {
-        return None;
-    }
-    if !moving_ended && shift.iter().all(|&delta| delta == 0) {
-        return None;
-    }
-    Some(ScrollShift::new(&areas, &shift))
 }
 
 fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
@@ -514,6 +474,7 @@ fn missing(face: &Face) -> u16 {
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
+    use crate::shared::route::PageId;
     use crate::shared::ui::scroll::LINE_PX;
     use iot_core::ui::{Layout, MAX_NODES, TEXT_BYTES};
 
@@ -1309,7 +1270,8 @@ mod tests {
 
     #[test]
     fn a_pure_scroll_shifts_by_the_offset_delta() {
-        let shift = scroll_shift(&scroll_frame(10), &scroll_frame(16)).expect("a scroll");
+        let shift = crate::services::gallery::shift(&scroll_frame(10), &scroll_frame(16))
+            .expect("a scroll");
         assert_eq!(shift.shifts(), [6, 6]);
     }
 
@@ -1318,10 +1280,10 @@ mod tests {
         let before = scroll_frame(10);
         let mut after = scroll_frame(16);
         after.pages.text.line_count = 3;
-        assert_eq!(scroll_shift(&before, &after), None);
+        assert_eq!(crate::services::gallery::shift(&before, &after), None);
         let mut after = scroll_frame(16);
         after.page = PageId::Network;
-        assert_eq!(scroll_shift(&before, &after), None);
+        assert_eq!(crate::services::gallery::shift(&before, &after), None);
     }
 
     #[test]
@@ -1329,7 +1291,8 @@ mod tests {
         let before = scroll_frame(10);
         let mut after = scroll_frame(10);
         after.pages.text.moving = false;
-        let shift = scroll_shift(&before, &after).expect("the frame that ends a fling");
+        let shift =
+            crate::services::gallery::shift(&before, &after).expect("the frame that ends a fling");
         assert_eq!(shift.shifts(), [0, 0]);
     }
 

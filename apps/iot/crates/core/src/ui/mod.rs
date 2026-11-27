@@ -21,7 +21,7 @@ pub use color::{Color, ColorId};
 pub use declare::{TEXT_BYTES, Ui};
 pub use geometry::Rect;
 pub use layout::{
-    Align, BoxConstraints, Decoration, DecorationStyle, Flow, FontWeight, FramePrint, Justify,
+    Align, BoxConstraints, Decoration, DecorationStyle, Flow, FontWeight, FramePrint, Hit, Justify,
     Layout, Length, MAX_NODES, MAX_SCROLL_AREAS, MAX_TAGS, NodeId, Overflow, PAINTS, PX, RunStyle,
     ScrollId, ScrollInfo, Source, Style, TextAlign, hash_of,
 };

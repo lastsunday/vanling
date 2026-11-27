@@ -305,7 +305,7 @@ pub enum Slot<'a> {
 | `Sheet` | C | 不透明遮罩 + 贴边抽屉（`Edge::Bottom` / `Edge::Left`），`row_at` 分行，演示用底部 |
 | `Picker`（弹窗框） | C | scrim + 居中卡片 + 标题 + body + Cancel/OK；卡片 `min(rect − 2×8, 360×480)`，动作带 32~44，`action_at` 分确定 / 取消 / 点遮罩；scrim 只铺卡片四周的条带与四个角，卡片 body 重绘不产生混合 |
 
-所有可点控件都报 tag：Widget 用 `Style::tag`，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag；画廊的 `bind` 只回 `Gallery { wire, intent }`，`wire` 是路由码，`shared::intent` 不因此引用 `shared::route`。Canvas 槽的命中用 `Layout::slot` 给出的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格再按绘制时的同一套等分算子格。浮层项（菜单三行、抽屉两行）不是声明节点，`bind` 用 `item_at` / `row_at` 直接分。
+所有可点控件都报 tag：Widget 用 `Style::tag`，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag；画廊的 `bind` 只回 `Gallery { wire, intent }`，`wire` 是路由码，`shared::intent` 不因此引用 `shared::route`。Canvas 槽的命中用 `Layout::slot` 给出的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格在 `mark_at` 里用同一套等分算出 `(tag, value)`，tag 是槽的变体、value 是行/柱/格号，页面不再做 `tag - 基数` 的反解。浮层项（菜单三行、抽屉两行）不是声明节点，`bind` 用 `item_at` / `row_at` 取出对应的 `Action`。
 
 `Data` 的 Dialog、PopupMenu、Sheet 都是声明在 `page::body` 之后的根节点：`absolute`、`320 × 228`，各占一个槽、常驻声明、按开合绘制，盖住标题与整页内容，所以既不随列表滚走，也不靠半透明遮罩透出底下的控件。菜单锚在触发按钮下边缘（快照里发布 `menu_anchor`，绘制时夹在内容区内），抽屉从内容区底边升起；浮层打开时 `bind` 先收 Tap，点项选中并关闭，点遮罩或外部关闭。
 
@@ -322,7 +322,7 @@ pub enum Slot<'a> {
 | `Extended` | 搜索框、三枚 chip、表单、数值加减、12 个键格 | — |
 | `Data` | 四行表格、六根柱、表盘、滑动行、空态、对话框两项、菜单/抽屉的触发按钮与打开后的项 | 图表底轴 |
 
-判据是“有没有动作”：装饰组件不带 tag，点了不动；带 tag 的控件根节点本身就是热区，页面不需要再猜内部布局。按下与拖动由 `services/gallery.rs` 的 `Scroller` 仲裁：先记按下点与 tag，位移不超过 `DRAG_SLOP` 就是 Tap，超过就由纵向拖动认领滚动区，横向拖动在滑动控件上转成 `Slide`；首个认领者独占本次手势。Canvas 槽（表格、图表、表盘、键格）也必须带 tag——不带时按下点的 tag 为 0，滚动区直接把这次手势认领成拖动，抬手的 Tap 被当成 `Release` 吃掉，槽里的行、柱、盘、格就全点不动。拖动后的抬手在线上仍是一枚 `Tap`，所以页面的 Tap 分支要先问 `Scroller::dragging()`：`Advanced` 的卡片、`Extended` 的键格、`Data` 的行与柱都在拖动抬手时什么都不选，下一次拖动照常滚。
+判据是“有没有动作”：装饰组件不带 tag，点了不动；带 tag 的控件根节点本身就是热区，页面不需要再猜内部布局。按下与拖动由 `services/gallery.rs` 的 `Scroller` 仲裁：先记按下点与 tag，位移不超过 `DRAG_SLOP` 就是 Tap，超过就由纵向拖动认领滚动区，横向拖动在 `Style::slide()` 标过的控件上转成 `Slide`。这个能力随 tag 一起由 `Layout` 发布（`layout.slides(x, y)`），页面不再给 `Scroller` 传判断闭包；首个认领者独占本次手势。Canvas 槽（表格、图表、表盘、键格）也必须带 tag——不带时按下点的 tag 为 0，滚动区直接把这次手势认领成拖动，抬手的 Tap 被当成 `Release` 吃掉，槽里的行、柱、盘、格就全点不动。拖动后的抬手在线上仍是一枚 `Tap`，所以页面的 Tap 分支要先问 `Scroller::dragging()`：`Advanced` 的卡片、`Extended` 的键格、`Data` 的行与柱都在拖动抬手时什么都不选，下一次拖动照常滚。
 
 ### 尺寸自适应
 
@@ -391,7 +391,7 @@ impl Msg {
 | 快照 | `FrameSnapshot.lang` | 页面只读快照 |
 | 组件 | 只收 `&[u8]` | 翻译在页面完成 |
 
-`lang` 变化在 `render::screen::repaint_due` 里单独触发重绘，所有说话页一起换字；不逐页补条件，新页不会漏。
+所有页面共用一条重绘判据 `Repaint::Page`：页戳、`lang`、`theme`、`backed`、`glow`、`backlight` 或本页快照任一变化就重绘，页面只声明 `Repaint::Page`（浮层页用 `PageOrOverlay`），不再各写一枚 `*_moved`。纯滚动也只剩一个入口：`Pages` 的 `scroll` / `settled` 把每个页面的滚动框与 `moving` 位挑出来，`Descriptor::with_scroll()` 只是开关，`*_shift` 不再逐页复制。
 
 默认 `en`，与现有面板文案一致；`IOT_LANG=zh` 构建中文面板。
 
@@ -428,13 +428,13 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 
 ## 几何发布
 
-页面不缓存几何：`Ui` 布局完一帧后，框架把每个带 tag 的节点和每个 custom 槽的矩形收进 `ui::layout::Layout`，随输入一起交给页面。`bind(op, state, layout)` 用 `layout.at(x, y)` 取 tag、`layout.slot(slot)` 取自己画的那块、`layout.scroll(area)` 取滚动框；矩形里的滚动偏移已经应用，命中不再自己加 offset。`Layout` 带页戳：与 `state.page()` 不符时框架给 `Layout::EMPTY`，上一页的矩形不会落到这一页的点击上。`PAINTS = 8` 是每页槽数，`MAX_TAGS = 24` 是每帧能报的 tag 数（菜单的 21 个按钮与 chip 最宽），`every_page_reports_all_its_tags` 钉住不静默截断。
+页面不缓存几何：`Ui` 布局完一帧后，框架把每个带 tag 的节点收进 `ui::layout::Layout`，一条 `Hit { tag, slide, rect }` 就是一次命中，每个 custom 槽的矩形也一并收进去，随输入一起交给页面。`bind(op, state, layout)` 用 `layout.hit(x, y)` 取整条命中（`at` 只要 tag、`slides` 只要横向拖动能力）、`layout.slot(slot)` 取自己画的那块、`layout.scroll(area)` 取滚动框；矩形里的滚动偏移已经应用，命中不再自己加 offset。命中取**最上层**：同一坐标上后声明的盒子盖住先声明的，`hit` / `at` / `rect` 都从后往前找，和绘制顺序一致。被滚动框裁掉的那部分不参与命中：`hit` 不只问盒子的矩形，还问它落在所属滚动框里的那一段，滚到标题底下或屏外的控件不会接住手指；`rect` 仍报完整盒子，滑杆与菜单锚点要的是整块几何。`Layout` 带页戳：与 `state.page()` 不符时框架给 `Layout::EMPTY`，上一页的矩形不会落到这一页的点击上。`PAINTS = 8` 是每页槽数，`MAX_TAGS = 24` 是每帧能报的 tag 数（菜单的 21 个按钮与 chip 最宽），`every_page_reports_all_its_tags` 钉住不静默截断。
 
-tag 编号由 `shared::ui::tag::Tag` 统一：`ALL` 列出全部变体，`tag()` 给线号，默认 `from_tag` 线性扫 `ALL`。子格 tag（日历的一天、五颗星、弹窗月格的日）用 `SubTag<FIRST, COUNT>` 家族，编译期断言各段不重叠。组件自己声明尺寸、tag 与指纹：`ui.add(calendar::Calendar::new(tag, state).width(w))`、`wheel::HourWheel`、`rating::Stars`、`color_picker::Swatch` 各自持有 `PAINT_SLOT`，页面只给数据和 tag。
+tag 编号由 `shared::ui::tag::Tag` 统一：每页一个 fieldless `#[repr(u16)] enum Action`，`tag()` 是判别值，`ALL` 列出本页能报出的每个变体——画出来的盒子，加上画布与浮层算术返回的族基础——默认 `from_tag` 线性扫 `ALL`，所以报出去的 tag 都能解回来。子格（日历的一天、一颗星、弹窗月格的日、表格的行、图表的柱、热力图的格、列表行）不再合成 tag：它们共用族基础变体，下标走 `GalleryIntent::Tap { tag, value }` 的 `value`，页面一次 `match` 就分完。绘制测试各留一份显式清单，族基础不算盒子，所以 `every_control_is_drawn_once` 仍逐个对得上。组件自己声明尺寸、tag 与指纹：`ui.add(calendar::Calendar::new(tag, state).width(w))`、`wheel::HourWheel`、`rating::Stars`、`color_picker::Swatch` 各自持有 `PAINT_SLOT`，页面只给数据和 tag。
 
 ## 命中与事件
 
-- Widget：可点的组件带 `Style::tag`，几何由框架的 `Layout` 发布，`layout.at(x, y)` 得意图编号。
+- Widget：可点的组件带 `Style::tag`（横向拖动能力再加 `Style::slide()`），几何由框架的 `Layout` 发布，`layout.hit(x, y)` 得意图编号与能力、`layout.at(x, y)` 只要编号。
 - 画廊：`GalleryIntent` 带上路由码而不是 `PageId`，`shared::intent` 保持不依赖 `shared::route`；`Services::apply` 用 `PageId::from_code` 把它换回页面。
 - Cell：页面 `shape` 常量算矩形，和绘制共用。
 - `NodeId` 只在一次声明内有效，不跨帧保存；要稳定标识用 `tag`。

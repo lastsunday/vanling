@@ -171,7 +171,7 @@ impl super::LocalPage for LightingPage {
     }
 
     fn descriptor() -> Descriptor {
-        Descriptor::new(Self::view).with_repaints(Repaint::When(lighting_moved))
+        Descriptor::new(Self::view).with_repaints(Repaint::Page)
     }
 }
 
@@ -405,13 +405,6 @@ fn hue_pct(hue: u8) -> u8 {
 fn peak_pct(peak: u8) -> u8 {
     (u16::from(peak).saturating_sub(u16::from(PEAK_FLOOR)) * 100 / (255 - u16::from(PEAK_FLOOR)))
         as u8
-}
-
-fn lighting_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang
-        || prev.glow != next.glow
-        || prev.backlight != next.backlight
-        || prev.pages.lighting != next.pages.lighting
 }
 
 #[cfg(test)]

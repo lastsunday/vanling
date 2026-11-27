@@ -1,18 +1,16 @@
 //! The feedback-widget page: a standing notice, a toast it raises, placeholder bars, and a busy
 //! overlay the finger can take down.
 
-use iot_core::drivers::input::{GestureEvent, InputEvent};
-use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::{Layout, ScrollId, Style, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
 use crate::shared::model::{Command, DeviceState, Effects};
-use crate::shared::page;
+use crate::shared::page::{self, CONTENT_W};
 use crate::shared::route::PageId;
-use crate::shared::snapshot::{FeedbackSnapshot, FrameSnapshot, PageSnapshot, ScrollShift};
+use crate::shared::snapshot::{FeedbackSnapshot, FrameSnapshot, PageSnapshot};
 use crate::shared::surface::{finish, headless};
-use crate::shared::ui::scroll::{BAR, ScrollConfig};
+use crate::shared::ui::scroll::ScrollConfig;
 use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{Banner, Button, LoadingOverlay, Skeleton, Toast};
@@ -21,8 +19,6 @@ use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
-const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
-
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
     bar: true,
@@ -71,11 +67,6 @@ impl Default for FeedbackPage {
 }
 
 impl FeedbackPage {
-    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
-        self.scroll
-            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
-    }
-
     fn snapshot(&self) -> FeedbackSnapshot {
         let mut view = self.values;
         view.area = self.scroll.view();
@@ -109,7 +100,7 @@ impl super::Service for FeedbackPage {
         if *wire != PageId::Feedback.code() {
             return (None, Effects::default());
         }
-        if let GalleryIntent::Tap { tag } = *intent
+        if let GalleryIntent::Tap { tag, .. } = *intent
             && let Some(action) = Action::from_tag(tag)
         {
             self.tap(action);
@@ -126,20 +117,7 @@ impl super::LocalPage for FeedbackPage {
         _state: &DeviceState,
         layout: &Layout,
     ) -> Option<BusinessIntent> {
-        if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event
-            && let Some(action) = Action::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)))
-        {
-            return Some(BusinessIntent::Gallery {
-                wire: PageId::Feedback.code(),
-                intent: GalleryIntent::Tap { tag: action.tag() },
-            });
-        }
-        self.scroll.bind(
-            op,
-            PageId::Feedback.code(),
-            |x, y| self.tag_at(layout, x, y),
-            |_| false,
-        )
+        self.scroll.bind(op, PageId::Feedback.code(), layout)
     }
 
     fn publish(&self, out: &mut PageSnapshot) {
@@ -153,8 +131,8 @@ impl super::LocalPage for FeedbackPage {
     fn descriptor() -> Descriptor {
         Descriptor::new(Self::view)
             .with_repaint_ms(REPAINT_MS)
-            .with_repaints(Repaint::WhenOrOverlay(feedback_moved))
-            .with_scroll(feedback_shift)
+            .with_repaints(Repaint::PageOrOverlay)
+            .with_scroll()
     }
 
     fn tick(&mut self, step_ms: u16) {
@@ -237,29 +215,14 @@ fn word(lang: Lang, msg: Msg) -> &'static [u8] {
     msg.bytes(lang)
 }
 
-fn feedback_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
-    prev.lang != next.lang || prev.pages.feedback != next.pages.feedback
-}
-
-fn feedback_shift(prev: &FrameSnapshot, next: &FrameSnapshot) -> Option<ScrollShift> {
-    super::gallery::shift(
-        PageId::Feedback,
-        prev,
-        next,
-        |pages| pages.feedback.area,
-        |pages| pages.feedback.moving,
-    )
-}
-
-const _: () = assert!(CONTENT_W + 2 * BAR + page::MARGIN == PANEL_COLUMNS as i16);
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
     use alloc::vec::Vec;
-    use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::drivers::input::{GestureEvent, InputEvent};
+    use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
     use iot_core::ui::{Layout, PX};
 
     fn layout(page: &FeedbackPage) -> Layout {
@@ -270,7 +233,10 @@ mod tests {
         let mut state = DeviceState::default();
         let intent = BusinessIntent::Gallery {
             wire: PageId::Feedback.code(),
-            intent: GalleryIntent::Tap { tag: action.tag() },
+            intent: GalleryIntent::Tap {
+                tag: action.tag(),
+                value: 0,
+            },
         };
         page.apply(&intent, &mut state, &layout(page));
     }
@@ -403,7 +369,7 @@ mod tests {
             ..FrameSnapshot::default()
         };
         assert!(after.pages.feedback.area.offset > 0);
-        let shift = feedback_shift(&before, &after).expect("a pure scroll");
+        let shift = crate::services::gallery::shift(&before, &after).expect("a pure scroll");
         assert_eq!(shift.shifts()[0], after.pages.feedback.area.offset);
     }
 }

@@ -231,12 +231,13 @@ pub enum DecorationStyle {
     Wavy,
 }
 
-/// Bits of [`Style::flags`], the box's three on/off answers.
+/// Bits of [`Style::flags`], the box's on/off answers and the one gesture it owns.
 mod bits {
     pub const ABSOLUTE: u8 = 1;
     pub const FILL: u8 = 1 << 1;
     pub const BORDER: u8 = 1 << 2;
     pub const COVER: u8 = 1 << 3;
+    pub const SLIDE: u8 = 1 << 4;
 }
 
 /// Bits of [`Style::text_flags`]. Four bits of weight, three of decoration, three of
@@ -645,6 +646,17 @@ impl Style {
     pub const fn tag(mut self, value: u16) -> Self {
         self.tag = value;
         self
+    }
+
+    /// Marks the box as one a sideways drag belongs to, so the gallery hands the drag to the
+    /// page instead of scrolling the box under the finger.
+    pub const fn slide(mut self) -> Self {
+        self.flags |= bits::SLIDE;
+        self
+    }
+
+    pub const fn slides(self) -> bool {
+        self.flags & bits::SLIDE != 0
     }
 
     /// Paints the box's own paper: the ground turned over, under everything inside it.
