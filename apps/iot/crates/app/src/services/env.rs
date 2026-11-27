@@ -13,7 +13,12 @@ pub struct EnvPage;
 impl super::Service for EnvPage {}
 
 impl super::LocalPage for EnvPage {
-    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        _op: &InputIntent,
+        _state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         None
     }
 

@@ -99,6 +99,7 @@ impl super::Service for TextPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Text(intent) = intent else {
             return (None, Effects::default());
@@ -145,7 +146,12 @@ impl super::Service for TextPage {
 }
 
 impl super::LocalPage for TextPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         let area = |x: u16, y: u16| self.scroll.area_at(i32::from(x), i32::from(y));
         // A lift belongs to the finger that claimed a region, not to where it landed: a press
         // outside both boxes can claim one on a later drag, and only the tracked area frees it.
@@ -509,7 +515,7 @@ mod tests {
     use super::*;
     use crate::services::{LocalPage, Service};
     use crate::shared::ui::scroll::LINE_PX;
-    use iot_core::ui::{MAX_NODES, TEXT_BYTES};
+    use iot_core::ui::{Layout, MAX_NODES, TEXT_BYTES};
 
     fn sample(points: &[(iot_core::drivers::input::TouchStatus, u8, u16, u16)]) -> InputEvent {
         use iot_core::drivers::input::{MAX_TOUCH_POINTS, TouchEvent, TouchPoint, TouchStatus};
@@ -539,9 +545,7 @@ mod tests {
         use iot_core::drivers::input::EventAggregator;
         let mut next = agg.feed(event, now_ms);
         while let Some(event) = next {
-            if let Some(intent) =
-                page.bind(&InputIntent { source: 0, event }, &DeviceState::default())
-            {
+            if let Some(intent) = hit(&page, &InputIntent { source: 0, event }) {
                 apply(page, expect_text(intent));
             }
             next = agg.tick(now_ms);
@@ -608,9 +612,13 @@ mod tests {
         )
     }
 
+    fn hit(page: &TextPage, intent: &InputIntent) -> Option<BusinessIntent> {
+        page.bind(intent, &DeviceState::default(), &Layout::EMPTY)
+    }
+
     fn apply(page: &mut TextPage, intent: TextIntent) {
         let mut state = DeviceState::default();
-        page.apply(&BusinessIntent::Text(intent), &mut state);
+        page.apply(&BusinessIntent::Text(intent), &mut state, &Layout::EMPTY);
     }
 
     #[test]
@@ -707,7 +715,7 @@ mod tests {
         let page = TextPage::default();
         let (x, y) = center(&page.scroll.areas()[1]);
         assert_eq!(
-            page.bind(&swipe(SwipeDirection::Up, x, y), &DeviceState::default()),
+            hit(&page, &swipe(SwipeDirection::Up, x, y)),
             Some(BusinessIntent::Text(TextIntent::Release {
                 id: 0,
                 area: 1,
@@ -723,7 +731,7 @@ mod tests {
         let page = TextPage::default();
         let (x, y) = center(&page.scroll.areas()[0]);
         assert_eq!(
-            page.bind(&swipe(SwipeDirection::Left, x, y), &DeviceState::default()),
+            hit(&page, &swipe(SwipeDirection::Left, x, y)),
             Some(BusinessIntent::Text(TextIntent::Release {
                 id: 0,
                 area: 0,
@@ -732,34 +740,26 @@ mod tests {
                 at_ms: Some(500),
             }))
         );
-        assert_eq!(
-            page.bind(&swipe(SwipeDirection::Up, 0, 0), &DeviceState::default()),
-            None
-        );
+        assert_eq!(hit(&page, &swipe(SwipeDirection::Up, 0, 0)), None);
     }
 
     #[test]
     fn a_drag_moves_the_region_with_the_finger() {
         let mut page = TextPage::default();
         let (x, y) = center(&page.scroll.areas()[1]);
-        let press = page
-            .bind(
-                &gesture(GestureEvent::Press { id: 0, x, y }),
-                &DeviceState::default(),
-            )
+        let press = hit(&page, &gesture(GestureEvent::Press { id: 0, x, y }))
             .expect("a press inside the region");
         apply(&mut page, expect_text(press));
-        let drag = page
-            .bind(
-                &gesture(GestureEvent::Drag {
-                    id: 0,
-                    x,
-                    y: y - 24,
-                    at_ms: 100,
-                }),
-                &DeviceState::default(),
-            )
-            .expect("a drag");
+        let drag = hit(
+            &page,
+            &gesture(GestureEvent::Drag {
+                id: 0,
+                x,
+                y: y - 24,
+                at_ms: 100,
+            }),
+        )
+        .expect("a drag");
         apply(&mut page, expect_text(drag));
         assert_eq!(page.scroll.areas()[1].offset, 24, "the content follows up");
     }
@@ -1096,17 +1096,16 @@ mod tests {
     fn a_drag_without_a_press_claims_its_region_where_it_lands() {
         let mut page = TextPage::default();
         let (x, y) = center(&page.scroll.areas()[1]);
-        let first = page
-            .bind(
-                &gesture(GestureEvent::Drag {
-                    id: 7,
-                    x,
-                    y,
-                    at_ms: 100,
-                }),
-                &DeviceState::default(),
-            )
-            .expect("a drag inside the region");
+        let first = hit(
+            &page,
+            &gesture(GestureEvent::Drag {
+                id: 7,
+                x,
+                y,
+                at_ms: 100,
+            }),
+        )
+        .expect("a drag inside the region");
         let intent = expect_text(first);
         assert!(
             matches!(intent, TextIntent::Drag { id: 7, .. }),
@@ -1118,17 +1117,16 @@ mod tests {
             0,
             "claiming sets the baseline at the current point, not the lost press"
         );
-        let second = page
-            .bind(
-                &gesture(GestureEvent::Drag {
-                    id: 7,
-                    x,
-                    y: y - 18,
-                    at_ms: 120,
-                }),
-                &DeviceState::default(),
-            )
-            .expect("a second drag");
+        let second = hit(
+            &page,
+            &gesture(GestureEvent::Drag {
+                id: 7,
+                x,
+                y: y - 18,
+                at_ms: 120,
+            }),
+        )
+        .expect("a second drag");
         apply(&mut page, expect_text(second));
         assert_eq!(
             page.scroll.areas()[1].offset,

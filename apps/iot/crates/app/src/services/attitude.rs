@@ -22,7 +22,12 @@ pub struct AttitudePage;
 impl super::Service for AttitudePage {}
 
 impl super::LocalPage for AttitudePage {
-    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        _op: &InputIntent,
+        _state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         None
     }
 

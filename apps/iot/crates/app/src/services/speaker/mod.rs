@@ -21,6 +21,7 @@ impl super::Service for SpeakerPage {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         if let BusinessIntent::Playback(action) = intent {
             state.playback.apply(*action, state.backed.playback);
@@ -30,7 +31,12 @@ impl super::Service for SpeakerPage {
 }
 
 impl super::LocalPage for SpeakerPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         match op.event {
             InputEvent::Gesture(GestureEvent::Tap { .. }) => {
                 Some(BusinessIntent::Playback(PlaybackAction::Next))

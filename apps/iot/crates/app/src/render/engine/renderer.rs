@@ -5,6 +5,7 @@ use core::future::Future;
 use core::pin::Pin;
 
 use super::appearance::{Appearance, Topic};
+use iot_core::ui::Layout;
 
 /// How a renderer wants to be driven after an appearance sync.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -34,6 +35,12 @@ pub trait Renderer {
     fn on_appearance(&mut self, appearance: Appearance<'_>, now_ms: u32) -> Drive;
 
     fn step(&mut self, now_ms: u32) -> Drive;
+
+    /// The panel's geometry as of the frame this renderer last painted, for the hit test that
+    /// runs before the next one. Only the panel answers.
+    fn layout(&self) -> Option<Layout> {
+        None
+    }
 
     /// Ships whatever the last appearance or step left buffered, if anything. A renderer that
     /// owns no bus, or has nothing pending, answers `None`; the screen's transfer is awaited

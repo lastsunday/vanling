@@ -3,7 +3,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::PANEL_COLUMNS;
-use iot_core::ui::{Canvas, NodeId, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{Canvas, Layout, NodeId, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, Key, WidgetsAction, WidgetsIntent};
@@ -21,7 +21,7 @@ use crate::shared::ui::scroll::{
 };
 use crate::shared::ui::slot::Slot;
 use crate::shared::ui::state::State;
-use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::{ButtonKind, Theme};
 use crate::shared::ui::widgets::{
     Avatar, Badge, Button, Checkbox, Chip, Divider, IconButton, Indicator, ListTile, ProgressBar,
@@ -65,8 +65,6 @@ pub struct WidgetsPage {
     scroll: ScrollState<1>,
     drag: Option<Drag>,
     press: Option<Press>,
-    tags: TagTable<{ WidgetsAction::ALL.len() }>,
-    keyboard: Rect,
     values: WidgetsSnapshot,
     spin_ms: u16,
 }
@@ -78,18 +76,10 @@ impl Default for WidgetsPage {
         finish(&mut ui);
         let mut scroll = ScrollState::default();
         scroll.measure(&ui, [AREA], SCROLL);
-        let tags = TagTable::measure(&ui);
-        let mut focused = FrameSnapshot::default();
-        focused.pages.widgets.focus = true;
-        let mut ui = headless();
-        let id = declare(&focused, &mut ui).expect("a focused field raises the keyboard");
-        finish(&mut ui);
         Self {
             scroll,
             drag: None,
             press: None,
-            tags,
-            keyboard: ui.rect(id),
             values: WidgetsSnapshot {
                 slider: 60,
                 ..WidgetsSnapshot::default()
@@ -131,12 +121,12 @@ impl WidgetsPage {
     }
 
     /// The control a panel point lands on, by tag; zero when none.
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         let area = self.scroll.areas()[0];
         if !area.rect.contains(x, y) {
             return 0;
         }
-        self.tags.at(x, y, area.offset)
+        layout.at(x, y).unwrap_or(0)
     }
 
     fn toggle(&mut self, action: WidgetsAction) {
@@ -160,8 +150,8 @@ impl WidgetsPage {
         }
     }
 
-    fn slide(&mut self, x: u16) {
-        let Some(rect) = self.tags.rect(WidgetsAction::Slider.tag()) else {
+    fn slide(&mut self, layout: &Layout, x: u16) {
+        let Some(rect) = layout.rect(WidgetsAction::Slider.tag()) else {
             return;
         };
         let width = rect.w.max(1);
@@ -175,6 +165,7 @@ impl super::Service for WidgetsPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Widgets(intent) = intent else {
             return (None, Effects::default());
@@ -198,7 +189,7 @@ impl super::Service for WidgetsPage {
             WidgetsIntent::Slide { action, x } => {
                 if action == WidgetsAction::Slider {
                     self.press = None;
-                    self.slide(x);
+                    self.slide(layout, x);
                 }
             }
             WidgetsIntent::Key { key, at_ms } => {
@@ -258,7 +249,12 @@ impl super::Service for WidgetsPage {
 }
 
 impl super::LocalPage for WidgetsPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         // Focused, the keyboard owns the panel: the gallery behind it is not drawn, so a swipe
         // must not scroll it and a drag must not start.
         if self.values.focus {
@@ -266,7 +262,7 @@ impl super::LocalPage for WidgetsPage {
                 return None;
             };
             let key = keyboard::key_at(
-                self.keyboard,
+                layout.slot(KEY_SLOT)?,
                 i32::from(x),
                 i32::from(y),
                 self.values.text.layer(),
@@ -288,11 +284,13 @@ impl super::LocalPage for WidgetsPage {
                         at_ms: Some(at_ms),
                     }));
                 }
-                let action = WidgetsAction::from_tag(self.tag_at(i32::from(x), i32::from(y)))?;
+                let action =
+                    WidgetsAction::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)))?;
                 Some(BusinessIntent::Widgets(WidgetsIntent::Tap { action }))
             }
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let action = WidgetsAction::from_tag(self.tag_at(i32::from(x), i32::from(y)));
+                let action =
+                    WidgetsAction::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)));
                 if let Some(action) = action {
                     return Some(BusinessIntent::Widgets(WidgetsIntent::Press {
                         action,
@@ -629,8 +627,8 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use alloc::vec::Vec;
     use iot_core::drivers::input::{RawPoint, TouchContinuity, TouchGestures};
-    use iot_core::ui::PX;
     use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::{Layout, PX};
 
     fn op(event: GestureEvent) -> InputIntent {
         InputIntent {
@@ -649,33 +647,40 @@ mod tests {
         })
     }
 
+    fn layout(page: &WidgetsPage) -> Layout {
+        crate::services::layout_of(page, PageId::Widgets)
+    }
+
+    fn hit(page: &WidgetsPage, intent: &InputIntent) -> Option<BusinessIntent> {
+        page.bind(intent, &DeviceState::default(), &layout(page))
+    }
+
     fn apply(page: &mut WidgetsPage, intent: BusinessIntent) {
         let mut state = DeviceState::default();
-        page.apply(&intent, &mut state);
+        let layout = layout(page);
+        page.apply(&intent, &mut state, &layout);
     }
 
     fn key_intent(page: &WidgetsPage, cell: usize) -> BusinessIntent {
-        let (x, y) = keyboard::key_centre(page.keyboard, cell);
-        page.bind(&tap(x, y), &DeviceState::default())
-            .expect("the key is inside the keyboard")
+        let keys = layout(page).slot(KEY_SLOT).expect("a keyboard");
+        let (x, y) = keyboard::key_centre(keys, cell);
+        hit(&page, &tap(x, y)).expect("the key is inside the keyboard")
     }
 
     /// Brings a control into the viewport, then taps it where the gallery now draws it.
     fn tap_tag(page: &mut WidgetsPage, tag: u16) {
-        let rect = page.tags.rect(tag).expect("the control was laid out");
         let area = page.scroll.areas()[0];
-        let middle = rect.y + rect.h / 2;
+        let rect = layout(&page).rect(tag).expect("the control was laid out");
+        let middle = rect.y + rect.h / 2 + i32::from(area.offset);
         let target = middle - (area.rect.y + area.rect.bottom()) / 2;
         let delta = target - i32::from(area.offset);
         if delta != 0 {
             page.scroll.scroll(0, (delta / 12) as i8, 0);
         }
-        let offset = page.scroll.areas()[0].offset;
+        let rect = layout(&page).rect(tag).expect("the control was laid out");
         let x = (rect.x + rect.w / 2) as u16;
-        let y = (middle - i32::from(offset)) as u16;
-        let intent = page
-            .bind(&tap(x, y), &DeviceState::default())
-            .expect("the tap lands");
+        let y = (rect.y + rect.h / 2) as u16;
+        let intent = hit(&page, &tap(x, y)).expect("the tap lands");
         apply(page, intent);
     }
 
@@ -694,9 +699,7 @@ mod tests {
         };
         let mut next = gestures.feed(InputEvent::Touch(sample), now_ms);
         while let Some(event) = next {
-            if let Some(intent) =
-                page.bind(&InputIntent { source: 0, event }, &DeviceState::default())
-            {
+            if let Some(intent) = hit(&page, &InputIntent { source: 0, event }) {
                 apply(page, intent);
             }
             next = gestures.tick(now_ms);
@@ -711,8 +714,8 @@ mod tests {
         let mut page = WidgetsPage::default();
         let mut continuity = TouchContinuity::new();
         let mut gestures = TouchGestures::new();
-        let slider = page.tags.rect(WidgetsAction::Slider.tag()).unwrap();
-        let chip = page.tags.rect(WidgetsAction::ChipB.tag()).unwrap();
+        let slider = layout(&page).rect(WidgetsAction::Slider.tag()).unwrap();
+        let chip = layout(&page).rect(WidgetsAction::ChipB.tag()).unwrap();
         let point = |x: u16, y: u16| RawPoint::new(x, y, RawPoint::NO_ID);
         let y = (slider.y + slider.h / 2) as u16;
         let start = (slider.x + 20) as u16;
@@ -799,7 +802,7 @@ mod tests {
     #[test]
     fn every_action_is_drawn_once() {
         let page = WidgetsPage::default();
-        let drawn: Vec<u16> = page.tags.iter().map(|(tag, _)| tag).collect();
+        let drawn: Vec<u16> = layout(&page).tags().map(|(tag, _)| tag).collect();
         let expected: Vec<u16> = WidgetsAction::ALL
             .iter()
             .map(|action| action.tag())
@@ -854,7 +857,7 @@ mod tests {
     #[test]
     fn the_tags_stay_put_across_languages_and_values() {
         let page = WidgetsPage::default();
-        let expected: Vec<_> = page.tags.iter().collect();
+        let expected: Vec<_> = layout(&page).tags().collect();
         let states = [
             WidgetsSnapshot::default(),
             WidgetsSnapshot {
@@ -922,17 +925,16 @@ mod tests {
     #[test]
     fn a_slider_follows_the_finger() {
         let mut page = WidgetsPage::default();
-        let rect = page.tags.rect(WidgetsAction::Slider.tag()).unwrap();
-        let press = page
-            .bind(
-                &op(GestureEvent::Press {
-                    id: 0,
-                    x: rect.x as u16,
-                    y: (rect.y + rect.h / 2) as u16,
-                }),
-                &DeviceState::default(),
-            )
-            .expect("the slider takes the press");
+        let rect = layout(&page).rect(WidgetsAction::Slider.tag()).unwrap();
+        let press = hit(
+            &page,
+            &op(GestureEvent::Press {
+                id: 0,
+                x: rect.x as u16,
+                y: (rect.y + rect.h / 2) as u16,
+            }),
+        )
+        .expect("the slider takes the press");
         apply(&mut page, press);
         let drag = |x: i32| {
             op(GestureEvent::Drag {
@@ -942,12 +944,10 @@ mod tests {
                 at_ms: 0,
             })
         };
-        let left = page.bind(&drag(rect.x), &DeviceState::default()).unwrap();
+        let left = hit(&page, &drag(rect.x)).unwrap();
         apply(&mut page, left);
         assert_eq!(page.values.slider, 0);
-        let right = page
-            .bind(&drag(rect.right() - 1), &DeviceState::default())
-            .unwrap();
+        let right = hit(&page, &drag(rect.right() - 1)).unwrap();
         apply(&mut page, right);
         assert_eq!(page.values.slider, 99);
     }
@@ -955,49 +955,46 @@ mod tests {
     #[test]
     fn a_slider_lets_go_of_the_finger_when_it_lifts() {
         let mut page = WidgetsPage::default();
-        let rect = page.tags.rect(WidgetsAction::Slider.tag()).unwrap();
+        let rect = layout(&page).rect(WidgetsAction::Slider.tag()).unwrap();
         let y = (rect.y + rect.h / 2) as u16;
-        let press = page
-            .bind(
-                &op(GestureEvent::Press {
-                    id: 0,
-                    x: (rect.x + 20) as u16,
-                    y,
-                }),
-                &DeviceState::default(),
-            )
-            .unwrap();
+        let press = hit(
+            &page,
+            &op(GestureEvent::Press {
+                id: 0,
+                x: (rect.x + 20) as u16,
+                y,
+            }),
+        )
+        .unwrap();
         apply(&mut page, press);
-        let drag = page
-            .bind(
-                &op(GestureEvent::Drag {
-                    id: 0,
-                    x: (rect.x + 120) as u16,
-                    y,
-                    at_ms: 40,
-                }),
-                &DeviceState::default(),
-            )
-            .unwrap();
+        let drag = hit(
+            &page,
+            &op(GestureEvent::Drag {
+                id: 0,
+                x: (rect.x + 120) as u16,
+                y,
+                at_ms: 40,
+            }),
+        )
+        .unwrap();
         apply(&mut page, drag);
         assert_eq!(page.values.pressed, WidgetsAction::Slider.tag());
 
-        let lift = page
-            .bind(
-                &op(GestureEvent::Swipe {
-                    id: 0,
-                    direction: SwipeDirection::Right,
-                    x: (rect.x + 20) as u16,
-                    y,
-                    end_x: (rect.x + 150) as u16,
-                    end_y: y,
-                    held_ms: 100,
-                    distance_px: 130,
-                    at_ms: 100,
-                }),
-                &DeviceState::default(),
-            )
-            .unwrap();
+        let lift = hit(
+            &page,
+            &op(GestureEvent::Swipe {
+                id: 0,
+                direction: SwipeDirection::Right,
+                x: (rect.x + 20) as u16,
+                y,
+                end_x: (rect.x + 150) as u16,
+                end_y: y,
+                held_ms: 100,
+                distance_px: 130,
+                at_ms: 100,
+            }),
+        )
+        .unwrap();
         apply(&mut page, lift);
         assert_eq!(
             page.values.pressed, 0,
@@ -1007,28 +1004,26 @@ mod tests {
         // The next drag across the gallery is a scroll, not another slide.
         let slid = page.values.slider;
         let area = page.scroll.areas()[0].rect;
-        let grab = page
-            .bind(
-                &op(GestureEvent::Press {
-                    id: 1,
-                    x: area.x as u16 + 40,
-                    y: (area.y + 4) as u16,
-                }),
-                &DeviceState::default(),
-            )
-            .unwrap();
+        let grab = hit(
+            &page,
+            &op(GestureEvent::Press {
+                id: 1,
+                x: area.x as u16 + 40,
+                y: (area.y + 4) as u16,
+            }),
+        )
+        .unwrap();
         apply(&mut page, grab);
-        let scroll = page
-            .bind(
-                &op(GestureEvent::Drag {
-                    id: 1,
-                    x: area.x as u16 + 40,
-                    y: (area.y - 16) as u16,
-                    at_ms: 300,
-                }),
-                &DeviceState::default(),
-            )
-            .unwrap();
+        let scroll = hit(
+            &page,
+            &op(GestureEvent::Drag {
+                id: 1,
+                x: area.x as u16 + 40,
+                y: (area.y - 16) as u16,
+                at_ms: 300,
+            }),
+        )
+        .unwrap();
         apply(&mut page, scroll);
         assert_eq!(page.values.slider, slid, "the slider stayed where it was");
         assert!(
@@ -1040,27 +1035,21 @@ mod tests {
     #[test]
     fn a_hold_that_never_became_a_swipe_also_lets_go() {
         let mut page = WidgetsPage::default();
-        let rect = page.tags.rect(WidgetsAction::Switch.tag()).unwrap();
+        let rect = layout(&page).rect(WidgetsAction::Switch.tag()).unwrap();
         let (x, y) = ((rect.x + rect.w / 2) as u16, (rect.y + rect.h / 2) as u16);
-        let press = page
-            .bind(
-                &op(GestureEvent::Press { id: 0, x, y }),
-                &DeviceState::default(),
-            )
-            .unwrap();
+        let press = hit(&page, &op(GestureEvent::Press { id: 0, x, y })).unwrap();
         apply(&mut page, press);
         assert_eq!(page.values.pressed, WidgetsAction::Switch.tag());
-        let hold = page
-            .bind(
-                &op(GestureEvent::LongPress {
-                    id: 0,
-                    x,
-                    y,
-                    held_ms: 600,
-                }),
-                &DeviceState::default(),
-            )
-            .expect("a hold ends the press it started");
+        let hold = hit(
+            &page,
+            &op(GestureEvent::LongPress {
+                id: 0,
+                x,
+                y,
+                held_ms: 600,
+            }),
+        )
+        .expect("a hold ends the press it started");
         apply(&mut page, hold);
         assert_eq!(page.values.pressed, 0);
     }
@@ -1068,12 +1057,9 @@ mod tests {
     #[test]
     fn a_tap_on_empty_space_binds_nothing() {
         let page = WidgetsPage::default();
-        assert_eq!(page.bind(&tap(0, 0), &DeviceState::default()), None);
+        assert_eq!(hit(&page, &tap(0, 0)), None);
         let area = page.scroll.areas()[0].rect;
-        assert_eq!(
-            page.bind(&tap(area.x as u16, area.y as u16), &DeviceState::default()),
-            None
-        );
+        assert_eq!(hit(&page, &tap(area.x as u16, area.y as u16)), None);
     }
 
     #[test]

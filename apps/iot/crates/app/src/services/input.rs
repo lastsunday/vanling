@@ -17,7 +17,12 @@ pub struct InputPage;
 impl super::Service for InputPage {}
 
 impl super::LocalPage for InputPage {
-    fn bind(&self, _op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        _op: &InputIntent,
+        _state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         None
     }
 

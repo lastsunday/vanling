@@ -80,6 +80,14 @@ impl RenderSet {
         any
     }
 
+    /// The panel's last geometry, so input can name what it touched.
+    pub fn layout(&self) -> iot_core::ui::Layout {
+        self.slots
+            .iter()
+            .find_map(|slot| slot.renderer.layout())
+            .unwrap_or_default()
+    }
+
     /// Ships what the last [`RenderSet::tick`] buffered. Awaited rather than folded into the
     /// tick because the screen's transfer yields between DMA chunks, and the tick must stay a
     /// plain state diff for the callers that only want to know whether frames are still due.

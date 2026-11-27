@@ -3,7 +3,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::PANEL_COLUMNS;
-use iot_core::ui::{Canvas, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
@@ -13,7 +13,6 @@ use crate::shared::route::PageId;
 use crate::shared::snapshot::{FrameSnapshot, PageSnapshot, RecordsSnapshot, ScrollShift};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{BAR, ScrollConfig};
-use crate::shared::ui::tag::TagTable;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
     Heatmap, ReorderableList, Timeline, TimelineEntry, TreeRow, TreeView, heatmap,
@@ -75,11 +74,6 @@ const SCROLL: ScrollConfig = ScrollConfig {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RecordsPage {
     scroll: Scroller,
-    tags: TagTable<4>,
-    tree: Rect,
-    timeline: Rect,
-    heatmap: Rect,
-    list: Rect,
     /// The finger holding a reorder handle.
     drag: Option<u8>,
     values: RecordsSnapshot,
@@ -94,11 +88,6 @@ impl Default for RecordsPage {
         scroll.measure(&ui, AREA, SCROLL);
         Self {
             scroll,
-            tags: TagTable::measure(&ui),
-            tree: ui.paint_rect(TREE_SLOT).unwrap_or_default(),
-            timeline: ui.paint_rect(TIMELINE_SLOT).unwrap_or_default(),
-            heatmap: ui.paint_rect(HEATMAP_SLOT).unwrap_or_default(),
-            list: ui.paint_rect(LIST_SLOT).unwrap_or_default(),
             drag: None,
             values: RecordsSnapshot::default(),
         }
@@ -106,9 +95,9 @@ impl Default for RecordsPage {
 }
 
 impl RecordsPage {
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         self.scroll
-            .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
+            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
     }
 
     fn snapshot(&self) -> RecordsSnapshot {
@@ -118,17 +107,19 @@ impl RecordsPage {
         view
     }
 
-    fn list_at(&self, x: i32, y: i32) -> Option<u8> {
+    fn list_at(&self, layout: &Layout, x: i32, y: i32) -> Option<u8> {
         let area = self.scroll.area();
         if !area.rect.contains(x, y) {
             return None;
         }
-        reorderable_list::handle_at(self.list, LIST_ROWS, x, y + i32::from(area.offset))
+        reorderable_list::handle_at(layout.slot(LIST_SLOT)?, LIST_ROWS, x, y)
     }
 
-    fn target_at(&self, y: u16) -> u8 {
-        let content = i32::from(y) + i32::from(self.scroll.area().offset);
-        let row = (content - self.list.y) / i32::from(reorderable_list::ROW_H);
+    fn target_at(&self, y: u16, layout: &Layout) -> u8 {
+        let Some(list) = layout.slot(LIST_SLOT) else {
+            return 0;
+        };
+        let row = (i32::from(y) - list.y) / i32::from(reorderable_list::ROW_H);
         row.clamp(0, LIST_ROWS as i32 - 1) as u8
     }
 
@@ -176,6 +167,7 @@ impl super::Service for RecordsPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Gallery { wire, intent } = intent else {
             return (None, Effects::default());
@@ -203,7 +195,7 @@ impl super::Service for RecordsPage {
                 handled = true;
             }
             GalleryIntent::Drag { id, y, .. } if self.drag == Some(id) => {
-                self.values.target = Some(self.target_at(y));
+                self.values.target = Some(self.target_at(y, layout));
                 handled = true;
             }
             _ => {}
@@ -216,7 +208,12 @@ impl super::Service for RecordsPage {
 }
 
 impl super::LocalPage for RecordsPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         let gallery = |intent| {
             Some(BusinessIntent::Gallery {
                 wire: PageId::Records.code(),
@@ -225,7 +222,7 @@ impl super::LocalPage for RecordsPage {
         };
         match op.event {
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                if let Some(row) = self.list_at(i32::from(x), i32::from(y)) {
+                if let Some(row) = self.list_at(layout, i32::from(x), i32::from(y)) {
                     return gallery(GalleryIntent::Press {
                         id,
                         tag: TAG_LIST + u16::from(row),
@@ -254,18 +251,23 @@ impl super::LocalPage for RecordsPage {
             let area = self.scroll.area();
             let (x, y) = (i32::from(x), i32::from(y));
             if area.rect.contains(x, y) {
-                let content = y + i32::from(area.offset);
-                if let Some(row) = tree_view::row_at(self.tree, TREE_ROWS, x, content) {
+                if let Some(tree) = layout.slot(TREE_SLOT)
+                    && let Some(row) = tree_view::row_at(tree, TREE_ROWS, x, y)
+                {
                     return gallery(GalleryIntent::Tap {
                         tag: TAG_TREE + u16::from(row),
                     });
                 }
-                if let Some(row) = timeline::row_at(self.timeline, ENTRY_ROWS, x, content) {
+                if let Some(timeline) = layout.slot(TIMELINE_SLOT)
+                    && let Some(row) = timeline::row_at(timeline, ENTRY_ROWS, x, y)
+                {
                     return gallery(GalleryIntent::Tap {
                         tag: TAG_TIMELINE + u16::from(row),
                     });
                 }
-                if let Some(cell) = heatmap::cell_at(self.heatmap, x, content) {
+                if let Some(heatmap) = layout.slot(HEATMAP_SLOT)
+                    && let Some(cell) = heatmap::cell_at(heatmap, x, y)
+                {
                     return gallery(GalleryIntent::Tap {
                         tag: TAG_HEATMAP + cell,
                     });
@@ -275,7 +277,7 @@ impl super::LocalPage for RecordsPage {
         self.scroll.bind(
             op,
             PageId::Records.code(),
-            |x, y| self.tag_at(x, y),
+            |x, y| self.tag_at(layout, x, y),
             |_| false,
         )
     }
@@ -430,18 +432,20 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
     use alloc::vec::Vec;
-    use iot_core::ui::PX;
     use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::{Layout, PX};
+
+    fn layout(page: &RecordsPage) -> Layout {
+        crate::services::layout_of(page, PageId::Records)
+    }
 
     fn tap(page: &mut RecordsPage, tag: u16) {
         let mut state = DeviceState::default();
-        page.apply(
-            &BusinessIntent::Gallery {
-                wire: PageId::Records.code(),
-                intent: GalleryIntent::Tap { tag },
-            },
-            &mut state,
-        );
+        let intent = BusinessIntent::Gallery {
+            wire: PageId::Records.code(),
+            intent: GalleryIntent::Tap { tag },
+        };
+        page.apply(&intent, &mut state, &layout(page));
     }
 
     fn send(page: &mut RecordsPage, event: GestureEvent) {
@@ -450,8 +454,9 @@ mod tests {
             event: InputEvent::Gesture(event),
         };
         let mut state = DeviceState::default();
-        if let Some(bound) = page.bind(&op, &state) {
-            page.apply(&bound, &mut state);
+        let layout = layout(page);
+        if let Some(bound) = page.bind(&op, &state, &layout) {
+            page.apply(&bound, &mut state, &layout);
         }
     }
 
@@ -492,7 +497,7 @@ mod tests {
     #[test]
     fn every_mark_is_drawn_once() {
         let page = RecordsPage::default();
-        let drawn: Vec<u16> = page.tags.iter().map(|(tag, _)| tag).collect();
+        let drawn: Vec<u16> = layout(&page).tags().map(|(tag, _)| tag).collect();
         assert_eq!(drawn, [TAG_TREE, TAG_TIMELINE, TAG_HEATMAP, TAG_LIST]);
     }
 
@@ -511,14 +516,13 @@ mod tests {
     fn a_handle_drag_moves_a_row_both_ways() {
         let mut page = RecordsPage::default();
         let area = page.scroll.area();
-        let target = page.list.y + page.list.h / 2 - (area.rect.y + area.rect.h / 2);
+        let list = layout(&page).slot(LIST_SLOT).expect("a list");
+        let target = list.y + list.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
-        let handle_x = u16::try_from(page.list.right() - 4).unwrap();
-        let list_y = page.list.y;
+        let list = layout(&page).slot(LIST_SLOT).expect("a list");
+        let handle_x = u16::try_from(list.right() - 4).unwrap();
         let row_y = |row: i32| {
-            u16::try_from(list_y + row * i32::from(reorderable_list::ROW_H) + 4 - i32::from(offset))
-                .unwrap()
+            u16::try_from(list.y + row * i32::from(reorderable_list::ROW_H) + 4).unwrap()
         };
         send(
             &mut page,
@@ -586,7 +590,7 @@ mod tests {
     fn a_drag_off_the_handle_still_scrolls() {
         let mut page = RecordsPage::default();
         let area = page.scroll.area();
-        let x = u16::try_from(page.list.x + 8).unwrap();
+        let x = u16::try_from(layout(&page).slot(LIST_SLOT).expect("a list").x + 8).unwrap();
         let from = u16::try_from(area.rect.y + area.rect.h - 6).unwrap();
         send(&mut page, GestureEvent::Press { id: 0, x, y: from });
         send(

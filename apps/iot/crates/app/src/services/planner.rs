@@ -5,7 +5,7 @@
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{Canvas, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{Canvas, Layout, PAINTS, Rect, Screen, ScrollId, Style, Ui, hash_of};
 
 use crate::shared::i18n::Msg;
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
@@ -17,7 +17,7 @@ use crate::shared::snapshot::{
 };
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{BAR, Drag, ScrollConfig};
-use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{
     Button, Picker, WheelState, calendar, color_picker, date_picker, picker, rating, time_picker,
@@ -30,34 +30,99 @@ use super::{Descriptor, Repaint};
 const AREA: ScrollId = ScrollId::new(1);
 const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
 
-const CALENDAR_SLOT: u8 = 0;
-const WHEEL_SLOT: u8 = 1;
-const RATING_SLOT: u8 = 2;
-const PICKER_SLOT: u8 = 3;
 const DIALOG_SLOT: u8 = 4;
 /// One per dialog wheel column, or the month grid in the first.
 const DIALOG_COLUMN: u8 = 5;
 
-/// Sub-cell tags the page computes for itself: a day, an hour, a star.
-const TAG_CALENDAR: u16 = 100;
+/// The components own their slots; the dialog takes the rest. Every leaf has to fit the
+/// painter's set, and no two leaves may share a slot.
+const _: () = assert!(
+    calendar::PAINT_SLOT < wheel::PAINT_SLOT
+        && wheel::PAINT_SLOT < rating::PAINT_SLOT
+        && rating::PAINT_SLOT < color_picker::PAINT_SLOT
+        && color_picker::PAINT_SLOT < DIALOG_SLOT
+);
+const _: () = assert!(DIALOG_COLUMN as usize + 3 <= PAINTS);
+
+/// A family of sub-cell tags: a base plus an index, so decoding is one subtraction. Each
+/// family owns a contiguous range, and the assertions below keep them from growing into the
+/// single tags that sit between them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct SubTag<const FIRST: u16, const COUNT: u16>(u16);
+
+impl<const FIRST: u16, const COUNT: u16> SubTag<FIRST, COUNT> {
+    const BEGIN: u16 = FIRST;
+    const END: u16 = FIRST + COUNT;
+
+    const fn at(index: u16) -> Self {
+        Self(FIRST + index)
+    }
+
+    const fn tag(self) -> u16 {
+        self.0
+    }
+
+    fn from_tag(tag: u16) -> Option<u16> {
+        tag.checked_sub(FIRST).filter(|index| *index < COUNT)
+    }
+}
+
+/// A day in the page's calendar, a star, and a day in the dialog's month grid.
+type CalendarDay = SubTag<100, 32>;
+type Star = SubTag<170, 5>;
+type MonthDay = SubTag<210, 32>;
+
+const TAG_CALENDAR: u16 = CalendarDay::BEGIN;
 const TAG_WHEEL: u16 = 140;
-const TAG_RATING: u16 = 170;
+const TAG_RATING: u16 = Star::BEGIN;
 const TAG_PICKER: u16 = 180;
 const TAG_DIALOG_OK: u16 = 200;
 const TAG_DIALOG_CANCEL: u16 = 201;
 const TAG_PREV: u16 = 202;
 const TAG_NEXT: u16 = 203;
-const TAG_DAY: u16 = 210;
 
-const AREA_INLINE: u8 = 0;
-const AREA_DATE: u8 = 1;
-const AREA_TIME: u8 = 2;
+const _: () = assert!(CalendarDay::END <= TAG_WHEEL);
+const _: () = assert!(TAG_WHEEL < Star::BEGIN);
+const _: () = assert!(Star::END <= TAG_PICKER);
+const _: () = assert!(TAG_PICKER < TAG_DIALOG_OK);
+const _: () = assert!(TAG_NEXT < MonthDay::BEGIN);
+
+/// The three wheels this page can turn. The wire carries the discriminant; everything inside
+/// the page is this enum, so a fourth wheel does not compile until each arm says what it does.
+#[repr(u8)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Wheels {
+    Inline = 0,
+    Date = 1,
+    Time = 2,
+}
+
+impl Wheels {
+    const fn code(self) -> u8 {
+        self as u8
+    }
+
+    const fn from_code(code: u8) -> Option<Self> {
+        match code {
+            0 => Some(Self::Inline),
+            1 => Some(Self::Date),
+            2 => Some(Self::Time),
+            _ => None,
+        }
+    }
+
+    /// How many columns the wheel shows; `time_columns` is the time dialog's own count.
+    fn columns(self, time_columns: u8) -> u8 {
+        match self {
+            Self::Inline => 1,
+            Self::Date => date_picker::COLUMNS,
+            Self::Time => time_columns,
+        }
+    }
+}
 
 /// The full-panel rect the dialog slot covers, and the rect the dialog's card is drawn in.
 const DIALOG_RECT: Rect = Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32);
-
-const WHEEL_W: i16 = 56;
-const WHEEL_H: i16 = 132;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -75,22 +140,18 @@ enum Action {
     TimeOpen,
 }
 
-impl Action {
-    const ALL: [Self; 4] = [Self::Prev, Self::Next, Self::DateOpen, Self::TimeOpen];
+impl Tag for Action {
+    const ALL: &'static [Self] = &[Self::Prev, Self::Next, Self::DateOpen, Self::TimeOpen];
 
-    const fn tag(self) -> u16 {
+    fn tag(self) -> u16 {
         self as u16
-    }
-
-    fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.into_iter().find(|action| action.tag() == tag)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct WheelDrag {
     id: u8,
-    area: u8,
+    wheels: Wheels,
     column: u8,
     drag: Drag,
 }
@@ -98,13 +159,6 @@ struct WheelDrag {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PlannerPage {
     scroll: Scroller,
-    tags: TagTable<{ Action::ALL.len() + 4 }>,
-    calendar: Rect,
-    wheel: Rect,
-    stars: Rect,
-    picker: Rect,
-    /// The full-panel rect the dialog slot shares.
-    overlay: Rect,
     /// The finger that is painting the picker, so its drags do not scroll the page.
     picker_drag: Option<u8>,
     wheel_drag: Option<WheelDrag>,
@@ -126,12 +180,6 @@ impl Default for PlannerPage {
         let values = PlannerSnapshot::default();
         Self {
             scroll,
-            tags: TagTable::measure(&ui),
-            calendar: ui.paint_rect(CALENDAR_SLOT).unwrap_or_default(),
-            wheel: ui.paint_rect(WHEEL_SLOT).unwrap_or_default(),
-            stars: ui.paint_rect(RATING_SLOT).unwrap_or_default(),
-            picker: ui.paint_rect(PICKER_SLOT).unwrap_or_default(),
-            overlay: ui.paint_rect(DIALOG_SLOT).unwrap_or_default(),
             picker_drag: None,
             wheel_drag: None,
             inline: WheelState::new(u16::from(values.hour), 24, true),
@@ -155,9 +203,9 @@ impl PlannerPage {
         self.scroll.park(offset);
     }
 
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         self.scroll
-            .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
+            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
     }
 
     pub(crate) fn snapshot(&self) -> PlannerSnapshot {
@@ -176,15 +224,28 @@ impl PlannerPage {
         view
     }
 
-    fn picker_at(&self, x: i32, y: i32) -> bool {
-        let area = self.scroll.area();
-        area.rect.contains(x, y) && self.picker.contains(x, y + i32::from(area.offset))
+    /// The wheel the dialog is showing, when it shows one.
+    fn dialog_wheels(&self) -> Option<Wheels> {
+        match self.dialog {
+            PickerOpen::Date => Some(Wheels::Date),
+            PickerOpen::Time => Some(Wheels::Time),
+            PickerOpen::None | PickerOpen::Month => None,
+        }
     }
 
-    fn sample_picker(&mut self, x: u16, y: u16) {
-        let offset = self.scroll.area().offset;
-        let content = i32::from(y) + i32::from(offset);
-        match color_picker::point_at(self.picker, i32::from(x), content) {
+    fn picker_at(&self, layout: &Layout, x: i32, y: i32) -> bool {
+        let area = self.scroll.area();
+        area.rect.contains(x, y)
+            && layout
+                .slot(color_picker::PAINT_SLOT)
+                .is_some_and(|picker| picker.contains(x, y))
+    }
+
+    fn sample_picker(&mut self, layout: &Layout, x: u16, y: u16) {
+        let Some(picker) = layout.slot(color_picker::PAINT_SLOT) else {
+            return;
+        };
+        match color_picker::point_at(picker, i32::from(x), i32::from(y)) {
             Some(color_picker::Sample::Square { sat, val }) => {
                 self.values.sat = sat;
                 self.values.val = val;
@@ -195,16 +256,13 @@ impl PlannerPage {
     }
 
     fn tap_tag(&mut self, tag: u16) {
-        if let Some(day) = tag
-            .checked_sub(TAG_CALENDAR)
-            .filter(|day| (1..=31).contains(day))
-        {
+        if let Some(day) = CalendarDay::from_tag(tag).filter(|day| *day > 0) {
             if calendar::days_in_month(self.values.year, self.values.month) >= day as u8 {
                 self.values.day = day as u8;
             }
             return;
         }
-        if let Some(star) = tag.checked_sub(TAG_RATING).filter(|star| *star < 5) {
+        if let Some(star) = Star::from_tag(tag) {
             self.values.rating = star as u8 + 1;
             return;
         }
@@ -239,7 +297,7 @@ impl PlannerPage {
             month: self.values.month,
             day: self.values.day,
         };
-        self.dialog = match date_picker::kind(self.overlay) {
+        self.dialog = match date_picker::kind(DIALOG_RECT) {
             date_picker::Kind::Month => PickerOpen::Month,
             date_picker::Kind::Wheels => PickerOpen::Date,
         };
@@ -293,10 +351,7 @@ impl PlannerPage {
             }
             _ if self.dialog == PickerOpen::Month => {
                 let days = calendar::days_in_month(self.month.year, self.month.month);
-                if let Some(day) = tag
-                    .checked_sub(TAG_DAY)
-                    .filter(|day| *day <= u16::from(days))
-                {
+                if let Some(day) = MonthDay::from_tag(tag).filter(|day| *day <= u16::from(days)) {
                     self.month.day = day as u8;
                 }
             }
@@ -305,150 +360,139 @@ impl PlannerPage {
     }
 
     fn dialog_tag(&self, x: i32, y: i32) -> Option<u16> {
-        let body = picker::frame(self.overlay).body;
+        let body = dialog_frame().body;
         if self.dialog == PickerOpen::Month {
             if let Some(day) = date_picker::day_at(body, self.month, x, y) {
-                return Some(TAG_DAY + u16::from(day));
+                return Some(MonthDay::at(u16::from(day)).tag());
             }
             if let Some(direction) = date_picker::nav_at(body, x, y) {
                 return Some(if direction < 0 { TAG_PREV } else { TAG_NEXT });
             }
         }
-        match picker::action_at(self.overlay, x, y) {
+        match picker::action_at(DIALOG_RECT, x, y) {
             Some(true) => Some(TAG_DIALOG_OK),
             Some(false) => Some(TAG_DIALOG_CANCEL),
             None => None,
         }
     }
 
-    fn inline_point(&self, x: u16, y: u16) -> Option<(u8, i16)> {
+    fn inline_point(&self, layout: &Layout, x: u16, y: u16) -> Option<(u8, i16)> {
         let area = self.scroll.area();
         let (x, y) = (i32::from(x), i32::from(y));
         if !area.rect.contains(x, y) {
             return None;
         }
-        let content = y + i32::from(area.offset);
-        let column = wheel::column_at(self.wheel, 1, x, content)?;
+        let column = wheel::column_at(layout.slot(wheel::PAINT_SLOT)?, 1, x, y)?;
         Some((
             column,
-            content.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
+            y.clamp(i32::from(i16::MIN), i32::from(i16::MAX)) as i16,
         ))
     }
 
-    fn wheel_rect(&self, area: u8, column: u8) -> Rect {
-        match area {
-            AREA_INLINE => self.wheel,
-            AREA_DATE => date_picker::column_rect(picker::frame(self.overlay).body, column),
-            AREA_TIME => {
-                let body = picker::frame(self.overlay).body;
-                time_picker::column_rect(body, self.time.columns(), column)
+    fn wheel_rect(&self, wheels: Wheels, column: u8, layout: &Layout) -> Rect {
+        match wheels {
+            Wheels::Inline => layout.slot(wheel::PAINT_SLOT).unwrap_or_default(),
+            Wheels::Date => date_picker::column_rect(dialog_frame().body, column),
+            Wheels::Time => {
+                time_picker::column_rect(dialog_frame().body, self.time.columns(), column)
             }
-            _ => Rect::default(),
         }
     }
 
-    fn wheel_row_h(&self, area: u8, column: u8) -> i16 {
-        wheel::metrics(self.wheel_rect(area, column)).row_h
-    }
-
-    fn wheel_view(&self, area: u8, column: u8) -> Option<wheel::WheelView> {
-        match area {
-            AREA_INLINE => Some(self.inline.view()),
-            AREA_DATE => self.date.views().get(usize::from(column)).copied(),
-            AREA_TIME => self.time.view().wheels.get(usize::from(column)).copied(),
-            _ => None,
+    fn wheel_view(&self, wheels: Wheels, column: u8) -> Option<wheel::WheelView> {
+        match wheels {
+            Wheels::Inline => Some(self.inline.view()),
+            Wheels::Date => self.date.views().get(usize::from(column)).copied(),
+            Wheels::Time => self.time.view().wheels.get(usize::from(column)).copied(),
         }
     }
 
-    fn wheel_press(&mut self, area: u8, column: u8) {
-        match area {
-            AREA_INLINE => self.inline.press(),
-            AREA_DATE => self.date.press(column),
-            AREA_TIME => self.time.press(column),
-            _ => {}
+    fn wheel_press(&mut self, wheels: Wheels, column: u8) {
+        match wheels {
+            Wheels::Inline => self.inline.press(),
+            Wheels::Date => self.date.press(column),
+            Wheels::Time => self.time.press(column),
         }
     }
 
-    fn wheel_drag_by(&mut self, area: u8, column: u8, dy: i16) {
-        let row_h = self.wheel_row_h(area, column);
-        match area {
-            AREA_INLINE => self.inline.drag(dy, row_h),
-            AREA_DATE => self.date.drag(column, dy, row_h),
-            AREA_TIME => self.time.drag(column, dy, row_h),
-            _ => {}
+    fn wheel_drag_by(&mut self, wheels: Wheels, column: u8, dy: i16, layout: &Layout) {
+        let row_h = wheel::metrics(self.wheel_rect(wheels, column, layout)).row_h;
+        match wheels {
+            Wheels::Inline => self.inline.drag(dy, row_h),
+            Wheels::Date => self.date.drag(column, dy, row_h),
+            Wheels::Time => self.time.drag(column, dy, row_h),
         }
     }
 
-    fn wheel_release(&mut self, area: u8, column: u8, speed: i16) {
-        let row_h = self.wheel_row_h(area, column);
-        match area {
-            AREA_INLINE => self.inline.release(speed, row_h),
-            AREA_DATE => self.date.release(column, speed, row_h),
-            AREA_TIME => self.time.release(column, speed, row_h),
-            _ => {}
+    fn wheel_release(&mut self, wheels: Wheels, column: u8, speed: i16, layout: &Layout) {
+        let row_h = wheel::metrics(self.wheel_rect(wheels, column, layout)).row_h;
+        match wheels {
+            Wheels::Inline => self.inline.release(speed, row_h),
+            Wheels::Date => self.date.release(column, speed, row_h),
+            Wheels::Time => self.time.release(column, speed, row_h),
         }
     }
 
-    fn wheel_tap(&mut self, area: u8, column: u8, y: i16) {
-        let rect = self.wheel_rect(area, column);
-        let Some(view) = self.wheel_view(area, column) else {
+    fn wheel_tap(&mut self, wheels: Wheels, column: u8, y: i16, layout: &Layout) {
+        let rect = self.wheel_rect(wheels, column, layout);
+        let Some(view) = self.wheel_view(wheels, column) else {
             return;
         };
         let Some(offset) = wheel::row_at(rect, view, rect.x + rect.w / 2, i32::from(y)) else {
             return;
         };
-        match area {
-            AREA_INLINE => self.inline.tap_row(offset),
-            AREA_DATE => self.date.tap_row(column, offset),
-            AREA_TIME => self.time.tap_row(column, offset),
-            _ => {}
+        match wheels {
+            Wheels::Inline => self.inline.tap_row(offset),
+            Wheels::Date => self.date.tap_row(column, offset),
+            Wheels::Time => self.time.tap_row(column, offset),
         }
     }
 
-    fn wheel_step(&mut self, id: u8, area: u8, column: u8, y: i16, at_ms: u32) {
+    fn wheel_step(
+        &mut self,
+        id: u8,
+        wheels: Wheels,
+        column: u8,
+        y: i16,
+        at_ms: u32,
+        layout: &Layout,
+    ) {
         if let Some(drag) = self.wheel_drag.as_mut().filter(|drag| drag.id == id) {
             let dy = drag.drag.step(y, at_ms);
-            let (area, column) = (drag.area, drag.column);
-            self.wheel_drag_by(area, column, dy);
+            let (wheels, column) = (drag.wheels, drag.column);
+            self.wheel_drag_by(wheels, column, dy, layout);
         } else {
             self.wheel_drag = Some(WheelDrag {
                 id,
-                area,
+                wheels,
                 column,
                 drag: Drag::new(id, 0, y, at_ms),
             });
-            self.wheel_press(area, column);
+            self.wheel_press(wheels, column);
         }
     }
 
-    fn wheel_end(&mut self, id: u8, y: i16, at_ms: u32) {
+    fn wheel_end(&mut self, id: u8, y: i16, at_ms: u32, layout: &Layout) {
         let Some(mut drag) = self.wheel_drag.take_if(|drag| drag.id == id) else {
             return;
         };
-        let (area, column) = (drag.area, drag.column);
+        let (wheels, column) = (drag.wheels, drag.column);
         if drag.drag.moved {
             let dy = drag.drag.step(y, at_ms);
-            self.wheel_drag_by(area, column, dy);
+            self.wheel_drag_by(wheels, column, dy, layout);
             let speed = drag.drag.release(Some(at_ms));
-            self.wheel_release(area, column, speed);
+            self.wheel_release(wheels, column, speed, layout);
         } else {
-            self.wheel_tap(area, column, y);
+            self.wheel_tap(wheels, column, y, layout);
         }
     }
 
     fn wheel_end_tag(&self, id: u8, y: u16, at_ms: u32) -> Option<GalleryIntent> {
         let drag = self.wheel_drag.filter(|drag| drag.id == id)?;
-        let y = match drag.area {
-            AREA_INLINE => {
-                let offset = self.scroll.area().offset;
-                (i32::from(y) + i32::from(offset)).clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-                    as i16
-            }
-            _ => i16::try_from(y).unwrap_or(i16::MAX),
-        };
+        let y = i16::try_from(y).unwrap_or(i16::MAX);
         Some(GalleryIntent::WheelEnd {
             id,
-            area: drag.area,
+            area: drag.wheels.code(),
             column: drag.column,
             y,
             at_ms,
@@ -461,6 +505,7 @@ impl super::Service for PlannerPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Gallery { wire, intent } = intent else {
             return (None, Effects::default());
@@ -479,7 +524,7 @@ impl super::Service for PlannerPage {
             }
             GalleryIntent::Point { id, tag, x, y } if tag == TAG_PICKER => {
                 self.picker_drag = Some(id);
-                self.sample_picker(x, y);
+                self.sample_picker(layout, x, y);
             }
             GalleryIntent::Wheel {
                 id,
@@ -487,8 +532,14 @@ impl super::Service for PlannerPage {
                 column,
                 y,
                 at_ms,
-            } => self.wheel_step(id, area, column, y, at_ms),
-            GalleryIntent::WheelEnd { id, y, at_ms, .. } => self.wheel_end(id, y, at_ms),
+            } => {
+                if let Some(wheels) = Wheels::from_code(area) {
+                    self.wheel_step(id, wheels, column, y, at_ms, layout);
+                }
+            }
+            GalleryIntent::WheelEnd { id, y, at_ms, .. } => {
+                self.wheel_end(id, y, at_ms, layout);
+            }
             _ => self.picker_drag = None,
         }
         self.scroll.apply(*intent);
@@ -497,36 +548,37 @@ impl super::Service for PlannerPage {
 }
 
 impl super::LocalPage for PlannerPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         let gallery = |intent| {
             Some(BusinessIntent::Gallery {
                 wire: PageId::Planner.code(),
                 intent,
             })
         };
-        if self.dialog != PickerOpen::None {
-            let (area, columns) = match self.dialog {
-                PickerOpen::Date => (AREA_DATE, date_picker::COLUMNS),
-                PickerOpen::Time => (AREA_TIME, self.time.columns()),
-                _ => (0, 0),
-            };
-            let body = picker::frame(self.overlay).body;
+        if let Some(wheels) = self.dialog_wheels() {
+            let body = dialog_frame().body;
+            let columns = wheels.columns(self.time.columns());
             match op.event {
-                InputEvent::Gesture(GestureEvent::Press { id, x, y }) if columns > 0 => {
+                InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
                     let column = wheel::column_at(body, columns, i32::from(x), i32::from(y))?;
                     return gallery(GalleryIntent::Wheel {
                         id,
-                        area,
+                        area: wheels.code(),
                         column,
                         y: i16::try_from(y).unwrap_or(i16::MAX),
                         at_ms: 0,
                     });
                 }
-                InputEvent::Gesture(GestureEvent::Drag { id, y, at_ms, .. }) if columns > 0 => {
+                InputEvent::Gesture(GestureEvent::Drag { id, y, at_ms, .. }) => {
                     let drag = self.wheel_drag.filter(|drag| drag.id == id)?;
                     return gallery(GalleryIntent::Wheel {
                         id,
-                        area: drag.area,
+                        area: drag.wheels.code(),
                         column: drag.column,
                         y: i16::try_from(y).unwrap_or(i16::MAX),
                         at_ms,
@@ -556,15 +608,11 @@ impl super::LocalPage for PlannerPage {
         if let Some(drag) = self.wheel_drag {
             match op.event {
                 InputEvent::Gesture(GestureEvent::Drag { id, y, at_ms, .. }) if drag.id == id => {
-                    let offset = self.scroll.area().offset;
-                    let y = (i32::from(y) + i32::from(offset))
-                        .clamp(i32::from(i16::MIN), i32::from(i16::MAX))
-                        as i16;
                     return gallery(GalleryIntent::Wheel {
                         id,
-                        area: drag.area,
+                        area: drag.wheels.code(),
                         column: drag.column,
-                        y,
+                        y: i16::try_from(y).unwrap_or(i16::MAX),
                         at_ms,
                     });
                 }
@@ -581,16 +629,16 @@ impl super::LocalPage for PlannerPage {
         }
         match op.event {
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                if let Some((column, content)) = self.inline_point(x, y) {
+                if let Some((column, content)) = self.inline_point(layout, x, y) {
                     return gallery(GalleryIntent::Wheel {
                         id,
-                        area: AREA_INLINE,
+                        area: Wheels::Inline.code(),
                         column,
                         y: content,
                         at_ms: 0,
                     });
                 }
-                if self.picker_at(i32::from(x), i32::from(y)) {
+                if self.picker_at(layout, i32::from(x), i32::from(y)) {
                     return gallery(GalleryIntent::Point {
                         id,
                         tag: TAG_PICKER,
@@ -624,24 +672,25 @@ impl super::LocalPage for PlannerPage {
             let area = self.scroll.area();
             let (x, y) = (i32::from(x), i32::from(y));
             if area.rect.contains(x, y) {
-                let content = y + i32::from(area.offset);
-                if let Some(day) = calendar::day_at(
-                    self.calendar,
-                    self.values.year,
-                    self.values.month,
-                    x,
-                    content,
-                ) {
+                if let Some(calendar) = layout.slot(calendar::PAINT_SLOT)
+                    && let Some(day) =
+                        calendar::day_at(calendar, self.values.year, self.values.month, x, y)
+                {
                     return gallery(GalleryIntent::Tap {
-                        tag: TAG_CALENDAR + u16::from(day),
+                        tag: CalendarDay::at(u16::from(day)).tag(),
                     });
                 }
-                if let Some(star) = rating::star_at(self.stars, 5, x, content) {
+                if let Some(stars) = layout.slot(rating::PAINT_SLOT)
+                    && let Some(star) = rating::star_at(stars, 5, x, y)
+                {
                     return gallery(GalleryIntent::Tap {
-                        tag: TAG_RATING + u16::from(star),
+                        tag: Star::at(u16::from(star)).tag(),
                     });
                 }
-                if color_picker::point_at(self.picker, x, content).is_some() {
+                if layout
+                    .slot(color_picker::PAINT_SLOT)
+                    .is_some_and(|picker| color_picker::point_at(picker, x, y).is_some())
+                {
                     return gallery(GalleryIntent::Tap { tag: TAG_PICKER });
                 }
             }
@@ -649,7 +698,7 @@ impl super::LocalPage for PlannerPage {
         self.scroll.bind(
             op,
             PageId::Planner.code(),
-            |x, y| self.tag_at(x, y),
+            |x, y| self.tag_at(layout, x, y),
             |_| false,
         )
     }
@@ -707,20 +756,19 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                         .tag(Action::Next.tag()),
                 );
             });
-            ui.custom_state(
-                Style::new()
-                    .width(CONTENT_W)
-                    .height(calendar::HEIGHT)
-                    .tag(TAG_CALENDAR),
-                CALENDAR_SLOT,
-                month_state(w.year, w.month, w.day),
+            ui.add(
+                calendar::Calendar::new(
+                    TAG_CALENDAR,
+                    hash_of(&date_picker::MonthView {
+                        year: w.year,
+                        month: w.month,
+                        day: w.day,
+                    }),
+                )
+                .width(CONTENT_W),
             );
             page::caption(ui, Msg::CapTimePicker.bytes(lang), &theme);
-            ui.custom_state(
-                Style::new().width(WHEEL_W).height(WHEEL_H).tag(TAG_WHEEL),
-                WHEEL_SLOT,
-                w.inline.state(),
-            );
+            ui.add(wheel::HourWheel::new(TAG_WHEEL, w.inline.state()));
             page::caption(ui, Msg::CapDatetime.bytes(lang), &theme);
             ui.row(Style::new().gap(theme.gap), |ui| {
                 ui.add(
@@ -745,23 +793,12 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
                 time_text(w.hour, w.minute, w.second, &mut time),
             );
             page::caption(ui, Msg::CapRating.bytes(lang), &theme);
-            ui.custom_state(
-                Style::new()
-                    .width(rating::width(5))
-                    .height(rating::HEIGHT)
-                    .tag(TAG_RATING),
-                RATING_SLOT,
-                u32::from(w.rating),
-            );
+            ui.add(rating::Stars::new(TAG_RATING, 5, u32::from(w.rating)));
             page::caption(ui, Msg::CapColorPicker.bytes(lang), &theme);
-            ui.custom_state(
-                Style::new()
-                    .width(color_picker::WIDTH)
-                    .height(color_picker::HEIGHT)
-                    .tag(TAG_PICKER),
-                PICKER_SLOT,
+            ui.add(color_picker::Swatch::new(
+                TAG_PICKER,
                 (u32::from(w.hue) << 16) | (u32::from(w.sat) << 8) | u32::from(w.val),
-            );
+            ));
         });
     });
     declare_dialog(snapshot, ui);
@@ -804,15 +841,16 @@ fn declare_dialog(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
             ui.custom_state(
                 dialog_style(body).cover(),
                 DIALOG_COLUMN,
-                month_state(
-                    w.dialog.month.year,
-                    w.dialog.month.month,
-                    w.dialog.month.day,
-                ),
+                hash_of(&w.dialog.month),
             );
         }
         PickerOpen::None => {}
     }
+}
+
+/// The card every picker dialog is laid out in: the panel, less its margin.
+fn dialog_frame() -> picker::Frame {
+    picker::frame(DIALOG_RECT)
 }
 
 fn dialog_style(rect: Rect) -> Style {
@@ -822,10 +860,6 @@ fn dialog_style(rect: Rect) -> Style {
         .top(rect.y as i16)
         .width(rect.w as i16)
         .height(rect.h as i16)
-}
-
-fn month_state(year: u16, month: u8, day: u8) -> u32 {
-    (u32::from(year) << 16) | (u32::from(month) << 8) | u32::from(day)
 }
 
 fn date_text(year: u16, month: u8, day: u8, buf: &mut [u8; 12]) -> &[u8] {
@@ -870,10 +904,10 @@ fn custom(snapshot: &FrameSnapshot, screen: Screen, slot: u8, canvas: &mut Canva
     let theme = *Theme::of(screen.theme);
     let w = snapshot.pages.planner;
     match slot {
-        CALENDAR_SLOT => calendar::draw(canvas, rect, w.year, w.month, Some(w.day), &theme),
-        WHEEL_SLOT => wheel::draw(canvas, rect, w.inline, time_picker::HOUR_LABELS, &theme),
-        RATING_SLOT => rating::draw(canvas, rect, 5, w.rating, 0, &theme),
-        PICKER_SLOT => color_picker::draw(
+        calendar::PAINT_SLOT => calendar::draw(canvas, rect, w.year, w.month, Some(w.day), &theme),
+        wheel::PAINT_SLOT => wheel::draw(canvas, rect, w.inline, time_picker::HOUR_LABELS, &theme),
+        rating::PAINT_SLOT => rating::draw(canvas, rect, 5, w.rating, 0, &theme),
+        color_picker::PAINT_SLOT => color_picker::draw(
             canvas,
             rect,
             Picker {
@@ -954,17 +988,19 @@ mod tests {
     use crate::shared::ui::widgets::WheelView;
     use alloc::vec::Vec;
     use iot_core::drivers::surface::{DamageRect, FrameDamage};
-    use iot_core::ui::{BoxConstraints, FramePrint, PX, Source};
+    use iot_core::ui::{BoxConstraints, FramePrint, Layout, PX, Source};
+
+    fn layout(page: &PlannerPage) -> Layout {
+        crate::services::layout_of(page, PageId::Planner)
+    }
 
     fn tap(page: &mut PlannerPage, tag: u16) {
         let mut state = DeviceState::default();
-        page.apply(
-            &BusinessIntent::Gallery {
-                wire: PageId::Planner.code(),
-                intent: GalleryIntent::Tap { tag },
-            },
-            &mut state,
-        );
+        let intent = BusinessIntent::Gallery {
+            wire: PageId::Planner.code(),
+            intent: GalleryIntent::Tap { tag },
+        };
+        page.apply(&intent, &mut state, &layout(page));
     }
 
     fn send(page: &mut PlannerPage, event: GestureEvent) {
@@ -973,9 +1009,30 @@ mod tests {
             event: InputEvent::Gesture(event),
         };
         let mut state = DeviceState::default();
-        if let Some(bound) = page.bind(&op, &state) {
-            page.apply(&bound, &mut state);
+        let layout = layout(page);
+        if let Some(bound) = page.bind(&op, &state, &layout) {
+            page.apply(&bound, &mut state, &layout);
         }
+    }
+
+    /// A wheel code no `Wheels` variant names moves nothing: the wire is not trusted.
+    #[test]
+    fn an_unknown_wheel_code_is_ignored() {
+        let mut page = PlannerPage::default();
+        let before = page.snapshot();
+        let mut state = DeviceState::default();
+        let intent = BusinessIntent::Gallery {
+            wire: PageId::Planner.code(),
+            intent: GalleryIntent::Wheel {
+                id: 0,
+                area: 9,
+                column: 0,
+                y: 100,
+                at_ms: 0,
+            },
+        };
+        page.apply(&intent, &mut state, &layout(&page));
+        assert_eq!(page.snapshot().inline, before.inline);
     }
 
     fn press_and_tap(page: &mut PlannerPage, x: u16, y: u16) {
@@ -1056,7 +1113,7 @@ mod tests {
     #[test]
     fn every_control_is_drawn_once() {
         let page = PlannerPage::default();
-        let drawn: Vec<u16> = page.tags.iter().map(|(tag, _)| tag).collect();
+        let drawn: Vec<u16> = layout(&page).tags().map(|(tag, _)| tag).collect();
         let expected: Vec<u16> = [
             Action::Prev.tag(),
             Action::Next.tag(),
@@ -1089,17 +1146,18 @@ mod tests {
     fn a_tap_on_the_grid_picks_the_day_it_covers() {
         let mut page = PlannerPage::default();
         let area = page.scroll.area();
-        let target = page.calendar.y + page.calendar.h / 2 - (area.rect.y + area.rect.h / 2);
+        let calendar = layout(&page).slot(calendar::PAINT_SLOT).expect("a grid");
+        let target = calendar.y + calendar.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
+        let calendar = layout(&page).slot(calendar::PAINT_SLOT).expect("a grid");
         let index = u8::try_from(
             i32::from(calendar::first_weekday(page.values.year, page.values.month)) + 14,
         )
         .unwrap();
-        let cell = calendar::cell_rect(page.calendar, index);
+        let cell = calendar::cell_rect(calendar, index);
         let (x, y) = (
             u16::try_from(cell.x + 4).unwrap(),
-            u16::try_from(cell.y + 4 - i32::from(offset)).unwrap(),
+            u16::try_from(cell.y + 4).unwrap(),
         );
         press_and_tap(&mut page, x, y);
         assert_eq!(page.values.day, 15);
@@ -1109,12 +1167,13 @@ mod tests {
     fn a_tap_on_the_inline_wheel_picks_its_row() {
         let mut page = PlannerPage::default();
         let area = page.scroll.area();
-        let target = page.wheel.y + page.wheel.h / 2 - (area.rect.y + area.rect.h / 2);
+        let wheel = layout(&page).slot(wheel::PAINT_SLOT).expect("a wheel");
+        let target = wheel.y + wheel.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
-        let m = wheel::metrics(page.wheel);
-        let x = u16::try_from(page.wheel.x + page.wheel.w / 2).unwrap();
-        let y = u16::try_from(m.centre + i32::from(m.row_h) - i32::from(offset)).unwrap();
+        let wheel = layout(&page).slot(wheel::PAINT_SLOT).expect("a wheel");
+        let m = wheel::metrics(wheel);
+        let x = u16::try_from(wheel.x + wheel.w / 2).unwrap();
+        let y = u16::try_from(m.centre + i32::from(m.row_h)).unwrap();
         press_and_tap(&mut page, x, y);
         assert_eq!(page.inline.index(), 10, "one row below nine");
     }
@@ -1123,13 +1182,14 @@ mod tests {
     fn a_swipe_on_the_inline_wheel_keeps_the_rows_it_crossed() {
         let mut page = PlannerPage::default();
         let area = page.scroll.area();
-        let target = page.wheel.y + page.wheel.h / 2 - (area.rect.y + area.rect.h / 2);
+        let wheel = layout(&page).slot(wheel::PAINT_SLOT).expect("a wheel");
+        let target = wheel.y + wheel.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
-        let m = wheel::metrics(page.wheel);
-        let x = u16::try_from(page.wheel.x + page.wheel.w / 2).unwrap();
-        let start = u16::try_from(m.centre - i32::from(offset)).unwrap();
-        let end = u16::try_from(m.centre - i32::from(offset) - i32::from(m.row_h)).unwrap();
+        let wheel = layout(&page).slot(wheel::PAINT_SLOT).expect("a wheel");
+        let m = wheel::metrics(wheel);
+        let x = u16::try_from(wheel.x + wheel.w / 2).unwrap();
+        let start = u16::try_from(m.centre).unwrap();
+        let end = u16::try_from(m.centre - i32::from(m.row_h)).unwrap();
         press_drag_swipe(&mut page, x, start, end);
         assert_eq!(page.inline.index(), 10, "the lift keeps the crossed row");
         assert_eq!(page.snapshot().hour, 10, "the reading follows the wheel");
@@ -1282,7 +1342,7 @@ mod tests {
     fn a_swipe_on_a_date_wheel_moves_that_column() {
         let mut page = PlannerPage::default();
         tap(&mut page, Action::DateOpen.tag());
-        let body = picker::frame(page.overlay).body;
+        let body = dialog_frame().body;
         let month = date_picker::column_rect(body, 1);
         let m = wheel::metrics(month);
         let x = u16::try_from(month.x + month.w / 2).unwrap();
@@ -1298,7 +1358,7 @@ mod tests {
     fn a_swipe_on_a_dialog_wheel_moves_that_column() {
         let mut page = PlannerPage::default();
         tap(&mut page, Action::TimeOpen.tag());
-        let body = picker::frame(page.overlay).body;
+        let body = dialog_frame().body;
         let minute = time_picker::column_rect(body, 3, 1);
         let m = wheel::metrics(minute);
         let x = u16::try_from(minute.x + minute.w / 2).unwrap();
@@ -1314,9 +1374,9 @@ mod tests {
     #[test]
     fn the_stars_and_the_month_buttons_change_their_values() {
         let mut page = PlannerPage::default();
-        tap(&mut page, TAG_RATING + 2);
+        tap(&mut page, Star::at(2).tag());
         assert_eq!(page.values.rating, 3);
-        tap(&mut page, TAG_RATING + 4);
+        tap(&mut page, Star::at(4).tag());
         assert_eq!(page.values.rating, 5);
     }
 
@@ -1329,7 +1389,7 @@ mod tests {
             PickerOpen::Date,
             "the panel body is too short for a grid"
         );
-        let body = picker::frame(page.overlay).body;
+        let body = dialog_frame().body;
         let month = date_picker::column_rect(body, 1);
         let m = wheel::metrics(month);
         let x = u16::try_from(month.x + month.w / 2).unwrap();
@@ -1347,7 +1407,7 @@ mod tests {
         let before = (page.values.minute, page.values.second);
         tap(&mut page, Action::TimeOpen.tag());
         assert_eq!(page.dialog, PickerOpen::Time);
-        let body = picker::frame(page.overlay).body;
+        let body = dialog_frame().body;
         let minute = time_picker::column_rect(body, 3, 1);
         let m = wheel::metrics(minute);
         let x = u16::try_from(minute.x + minute.w / 2).unwrap();
@@ -1363,13 +1423,19 @@ mod tests {
     fn a_picker_press_paints_and_its_drag_does_not_scroll() {
         let mut page = PlannerPage::default();
         let area = page.scroll.area();
-        let target = page.picker.y + page.picker.h / 2 - (area.rect.y + area.rect.h / 2);
+        let picker = layout(&page)
+            .slot(color_picker::PAINT_SLOT)
+            .expect("a picker");
+        let target = picker.y + picker.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
-        let square = color_picker::square(page.picker);
+        let square = color_picker::square(
+            layout(&page)
+                .slot(color_picker::PAINT_SLOT)
+                .expect("a picker"),
+        );
         let (x, y) = (
             u16::try_from(square.right() - 1).unwrap(),
-            u16::try_from(square.bottom() - 1 - i32::from(offset)).unwrap(),
+            u16::try_from(square.bottom() - 1).unwrap(),
         );
         send(&mut page, GestureEvent::Press { id: 0, x, y });
         assert_eq!((page.values.sat, page.values.val), (255, 0));

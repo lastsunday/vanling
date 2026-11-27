@@ -104,7 +104,7 @@ mod tests {
     }
 
     fn apply(manager: &mut DeviceManager, operation: InputIntent) {
-        manager.apply_intent(Intent::Input(operation));
+        manager.apply_intent(Intent::Input(operation), &iot_core::ui::Layout::EMPTY);
     }
 
     fn on_audio_page() -> DeviceManager {

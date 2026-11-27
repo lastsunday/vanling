@@ -64,10 +64,13 @@ use self::widgets::WidgetsPage;
 /// One intent's owner: its own record settles first, then the answer says what the rest of the
 /// device owes.
 pub trait Service {
+    /// Settles one business intent. `layout` is the geometry of the frame the finger touched,
+    /// the same one `bind` read.
     fn apply(
         &mut self,
         _intent: &BusinessIntent,
         _state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         (None, Effects::default())
     }
@@ -75,8 +78,14 @@ pub trait Service {
 
 /// The page as the local panel and buttons see it.
 pub trait LocalPage: Service {
-    /// What one gesture means on this page. `None` when it means nothing.
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent>;
+    /// What one gesture means on this page. `None` when it means nothing. `layout` is the
+    /// geometry of the frame the finger touched, in panel pixels.
+    fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent>;
 
     /// Hands the page's private UI state to the frame snapshot the local painter draws from.
     fn publish(&self, _out: &mut PageSnapshot) {}
@@ -132,6 +141,23 @@ pub struct Services {
     headless: HeadlessPage,
 }
 
+/// The geometry a page's declaration produces for its own published state, as the painter
+/// would hand it to the next input. Test-only: production reads it from the renderer.
+#[cfg(test)]
+pub(crate) fn layout_of(page: &dyn LocalPage, id: PageId) -> iot_core::ui::Layout {
+    let mut snapshot = FrameSnapshot {
+        page: id,
+        ..FrameSnapshot::default()
+    };
+    page.publish(&mut snapshot.pages);
+    let mut ui = crate::shared::surface::headless();
+    descriptor(id).view()(&snapshot, &mut ui);
+    crate::shared::surface::finish(&mut ui);
+    let mut layout = ui.geometry();
+    layout.set_page(id.code());
+    layout
+}
+
 /// The dispatch key: a page the panel can stop on, or one of the device's own services.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ServiceId {
@@ -171,19 +197,30 @@ impl Services {
     /// The input boundary. A transient owns the panel; otherwise the button is the device's: a
     /// click turns the page and a hold goes home, and no page may claim either. A board with no
     /// panel has no page to turn, so its click stays with the page.
-    pub fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+    pub fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         let here = state.page();
         let page = self.get(here);
+        // A layout from another page is as good as none: the finger touched the old picture.
+        let layout = if layout.page() == here.code() {
+            layout
+        } else {
+            &iot_core::ui::Layout::EMPTY
+        };
         if here.is_transient() {
-            return page.bind(op, state);
+            return page.bind(op, state, layout);
         }
         if matches!(
             op.event,
             InputEvent::Button(ButtonEvent::Click | ButtonEvent::LongPress)
         ) {
-            return NavService::from_anywhere(op, state).or_else(|| page.bind(op, state));
+            return NavService::from_anywhere(op, state).or_else(|| page.bind(op, state, layout));
         }
-        page.bind(op, state)
+        page.bind(op, state, layout)
     }
 
     /// Who answers which group. One arm per owner, exhaustive like [`descriptor`]: a new group
@@ -194,49 +231,55 @@ impl Services {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         match intent {
-            BusinessIntent::Navigation(_) => {
-                self.service_mut(ServiceId::Navigation).apply(intent, state)
-            }
-            BusinessIntent::Light { .. } => self.service_mut(ServiceId::Light).apply(intent, state),
+            BusinessIntent::Navigation(_) => self
+                .service_mut(ServiceId::Navigation)
+                .apply(intent, state, layout),
+            BusinessIntent::Light { .. } => self
+                .service_mut(ServiceId::Light)
+                .apply(intent, state, layout),
             BusinessIntent::Link(_) | BusinessIntent::Network(_) => self
                 .service_mut(ServiceId::Page(PageId::Network))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Audio(_) => self
                 .service_mut(ServiceId::Page(PageId::Audio))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Playback(_) => self
                 .service_mut(ServiceId::Page(PageId::Speaker))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Text(_) => self
                 .service_mut(ServiceId::Page(PageId::Text))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Menu(MenuIntent::Choose { page }) => {
                 self.service_mut(ServiceId::Navigation).apply(
                     &BusinessIntent::Navigation(NavigationIntent::Go(*page)),
                     state,
+                    layout,
                 )
             }
             BusinessIntent::Menu(_) => self
                 .service_mut(ServiceId::Page(PageId::Menu))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Widgets(_) => self
                 .service_mut(ServiceId::Page(PageId::Widgets))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Gallery { wire, .. } => match PageId::from_code(*wire) {
-                Some(page) => self.service_mut(ServiceId::Page(page)).apply(intent, state),
+                Some(page) => self
+                    .service_mut(ServiceId::Page(page))
+                    .apply(intent, state, layout),
                 None => (None, Effects::default()),
             },
             BusinessIntent::List(_) => self
                 .service_mut(ServiceId::Page(PageId::List))
-                .apply(intent, state),
+                .apply(intent, state, layout),
             BusinessIntent::Lighting(_) => self
                 .service_mut(ServiceId::Page(PageId::Lighting))
-                .apply(intent, state),
-            BusinessIntent::Settings(_) => {
-                self.service_mut(ServiceId::Settings).apply(intent, state)
-            }
+                .apply(intent, state, layout),
+            BusinessIntent::Settings(_) => self
+                .service_mut(ServiceId::Settings)
+                .apply(intent, state, layout),
         }
     }
 

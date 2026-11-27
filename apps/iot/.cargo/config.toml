@@ -16,8 +16,10 @@ rustflags = [
 
 [env]
 # The main stack gets whatever DRAM static data leaves over, so a `.bss` that grows eats
-# it silently. esp-hal turns this into a link-time assertion.
-ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM = "65536"
+# it silently. esp-hal turns this into a link-time assertion. 56 KiB is 13 KB above the
+# deepest reading (`[DISPLAY] stack peak 43224 B`, Camera page); the whole frame's paint
+# runs on this stack.
+ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM = "57344"
 
 # esp-hal/esp-rtos hardware store watchpoints trip on legitimate stores and panic the boot
 # (seen at render `on_appearance` on S3). Use the software canary instead: it checks the

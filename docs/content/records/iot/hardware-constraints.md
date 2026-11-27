@@ -365,6 +365,24 @@ Validation error for crate esp-hal, option data-cache-size: Expected one of ["32
 
 `[实测]` **第二个核不是白拿的**：`Stack<N>` 是 DRAM 里的静态量（探针用 8 KiB / 16 KiB），也就是直接从主栈墙里切同样大的一块；而且 `esp_rtos::start_second_core` 的签名固定要 `FROM_CPU_INTR1`，产品里那个 `Priority2` 的喇叭 feed executor 原本占着它（`start_feed_executor(feed_intr)`）。用第二个核得先把 feed 挪到 `FROM_CPU_INTR2`，再算上跨核同步的代码量 —— 这是一次架构改动，不是一次调参；面板传输这一次的代价与收益见上文「Audio 重绘步长翻倍 + 面板传输搬到第二个核」（`.text` +7,016 B、`.bss` +16,760 B、主栈 −16,792 B）。
 
+### 第二核栈 24 → 12 KiB、护栏 64 → 56 KiB：余量 16,312 → 37,048 B（`[实测]`，2026-11-27）
+
+`[实测]` 两个数一起改，量法仍是 `nm` 读 ELF：
+
+| 量 | 改前 | 改后 |
+| --- | --- | --- |
+| `PANEL_CORE_STACK`（`.bss`，`nm -S`） | 24,592 B (`0x6010`) | 12,304 B (`0x3010`) |
+| `_stack_end_cpu0` | `0x3fcd5758` | `0x3fcd2658` |
+| `_stack_start_cpu0 − _stack_end_cpu0` | 81,848 B | **94,392 B** |
+| `ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM` | 65,536 | **57,344** |
+| 余量（区间 − 下限） | 16,312 B | **37,048 B** |
+
+`[实测]` 收栈有实测依据：第二核峰值 `[STACK] core 1 peak 4780 B of 24576 B`（Audio 页，采集 + 面板 + 播放全开），12 KiB 仍是 2.5 倍；`Ui` 早已走 `Ui::boxed_with_height` 在堆上，不占这个栈。
+
+`[实测]` 降护栏是**把线挪低，不是变出内存**：区间还是那块 DRAM，只是新增静态量允许把栈压到 56 KiB 才报错。依据是主栈实测峰值 42,392 B（Ambient）/ 43,224 B（Camera），56 KiB 仍比最深读数高 14,120 B。代价写明：若将来某条路径再涨 13 KB，断言不会再拦。
+
+`[实测]` 这一轮同时把 `.cargo/config.toml` 的注释从「64 KiB」改成与读数绑定的说法，并把 `Ui` 尺寸测试的注释改正（它原先写「声明住在主栈」，与 `boxed_with_height` 矛盾）。
+
 ---
 
 ## `IOT_BOOT_PAGE` 必须在构建期解析（`[实测]`，2026-10-29）

@@ -3,7 +3,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::PANEL_COLUMNS;
-use iot_core::ui::{Canvas, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 
 use super::gallery::{REPAINT_MS, Scroller};
 use super::{Descriptor, Repaint};
@@ -17,7 +17,7 @@ use crate::shared::surface::{finish, headless};
 use crate::shared::ui::keyboard;
 use crate::shared::ui::scroll::{BAR, ScrollConfig};
 use crate::shared::ui::state::State;
-use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::keypad;
 use crate::shared::ui::widgets::{FilterChips, FormField, Keypad, NumberField, SearchField};
@@ -49,8 +49,8 @@ enum Action {
     Inc,
 }
 
-impl Action {
-    const ALL: [Self; 7] = [
+impl Tag for Action {
+    const ALL: &'static [Self] = &[
         Self::Search,
         Self::Chip0,
         Self::Chip1,
@@ -60,21 +60,14 @@ impl Action {
         Self::Inc,
     ];
 
-    const fn tag(self) -> u16 {
+    fn tag(self) -> u16 {
         self as u16
-    }
-
-    fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.into_iter().find(|action| action.tag() == tag)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ExtendedPage {
     scroll: Scroller,
-    tags: TagTable<{ Action::ALL.len() + 1 }>,
-    keypad: Rect,
-    keyboard: Rect,
     values: ExtendedSnapshot,
 }
 
@@ -85,18 +78,8 @@ impl Default for ExtendedPage {
         finish(&mut ui);
         let mut scroll = Scroller::default();
         scroll.measure(&ui, AREA, SCROLL);
-        let tags = TagTable::measure(&ui);
-        let keypad = ui.paint_rect(KEY_SLOT).unwrap_or_default();
-        let mut focused = FrameSnapshot::default();
-        focused.pages.extended.focus = true;
-        let mut ui = headless();
-        declare(&focused, &mut ui);
-        finish(&mut ui);
         Self {
             scroll,
-            tags,
-            keypad,
-            keyboard: ui.paint_rect(KEY_SLOT).unwrap_or_default(),
             values: ExtendedSnapshot {
                 chips: 1,
                 number: 3,
@@ -107,9 +90,9 @@ impl Default for ExtendedPage {
 }
 
 impl ExtendedPage {
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         self.scroll
-            .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
+            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
     }
 
     fn snapshot(&self) -> ExtendedSnapshot {
@@ -137,6 +120,7 @@ impl super::Service for ExtendedPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Gallery { wire, intent } = intent else {
             return (None, Effects::default());
@@ -166,7 +150,12 @@ impl super::Service for ExtendedPage {
 }
 
 impl super::LocalPage for ExtendedPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         let tap = |intent| {
             Some(BusinessIntent::Gallery {
                 wire: PageId::Extended.code(),
@@ -178,7 +167,7 @@ impl super::LocalPage for ExtendedPage {
                 return None;
             };
             let key = keyboard::key_at(
-                self.keyboard,
+                layout.slot(KEY_SLOT)?,
                 i32::from(x),
                 i32::from(y),
                 self.values.text.layer(),
@@ -189,9 +178,9 @@ impl super::LocalPage for ExtendedPage {
             && !self.scroll.dragging()
         {
             let area = self.scroll.area();
-            let content_y = i32::from(y) + i32::from(area.offset);
             if area.rect.contains(i32::from(x), i32::from(y))
-                && let Some(cell) = Keypad::key_at(self.keypad, i32::from(x), content_y)
+                && let Some(keypad) = layout.slot(KEY_SLOT)
+                && let Some(cell) = Keypad::key_at(keypad, i32::from(x), i32::from(y))
             {
                 return tap(GalleryIntent::Pad { cell });
             }
@@ -199,7 +188,7 @@ impl super::LocalPage for ExtendedPage {
         self.scroll.bind(
             op,
             PageId::Extended.code(),
-            |x, y| self.tag_at(x, y),
+            |x, y| self.tag_at(layout, x, y),
             |_| false,
         )
     }
@@ -339,18 +328,20 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
     use alloc::vec::Vec;
-    use iot_core::ui::PX;
     use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::{Layout, PX};
+
+    fn layout(page: &ExtendedPage) -> Layout {
+        crate::services::layout_of(page, PageId::Extended)
+    }
 
     fn tap(page: &mut ExtendedPage, tag: u16) {
         let mut state = DeviceState::default();
-        page.apply(
-            &BusinessIntent::Gallery {
-                wire: PageId::Extended.code(),
-                intent: GalleryIntent::Tap { tag },
-            },
-            &mut state,
-        );
+        let intent = BusinessIntent::Gallery {
+            wire: PageId::Extended.code(),
+            intent: GalleryIntent::Tap { tag },
+        };
+        page.apply(&intent, &mut state, &layout(page));
     }
 
     #[test]
@@ -401,9 +392,8 @@ mod tests {
     #[test]
     fn every_control_is_drawn_once() {
         let page = ExtendedPage::default();
-        let drawn: Vec<u16> = page
-            .tags
-            .iter()
+        let drawn: Vec<u16> = layout(&page)
+            .tags()
             .map(|(tag, _)| tag)
             .filter(|tag| Action::from_tag(*tag).is_some())
             .collect();
@@ -430,18 +420,18 @@ mod tests {
     #[test]
     fn a_press_then_a_tap_reports_the_cell_under_the_finger() {
         let mut page = ExtendedPage::default();
-        let rect = page.keypad;
         let area = page.scroll.area();
+        let rect = layout(&page).slot(KEY_SLOT).expect("a pad");
         let target = rect.y + rect.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
+        let rect = layout(&page).slot(KEY_SLOT).expect("a pad");
         let x = u16::try_from(rect.x + rect.w / 2).unwrap_or(0);
-        let y = u16::try_from(rect.y + rect.h / 2 - i32::from(offset)).unwrap_or(0);
+        let y = u16::try_from(rect.y + rect.h / 2).unwrap_or(0);
         assert!(
             page.scroll.area().rect.contains(i32::from(x), i32::from(y)),
             "the cell has to be on screen to be touched"
         );
-        let cell = Keypad::key_at(rect, i32::from(x), rect.y + rect.h / 2).expect("a cell");
+        let cell = Keypad::key_at(rect, i32::from(x), i32::from(y)).expect("a cell");
         send(&mut page, GestureEvent::Press { id: 0, x, y });
         send(
             &mut page,
@@ -459,9 +449,11 @@ mod tests {
     #[test]
     fn the_keypad_carries_its_own_tag() {
         let page = ExtendedPage::default();
+        let layout = layout(&page);
+        let keypad = layout.slot(KEY_SLOT).expect("a pad");
         assert_eq!(
-            page.tags.at(page.keypad.x + 2, page.keypad.y + 2, 0),
-            TAG_KEYPAD,
+            layout.at(keypad.x + 2, keypad.y + 2),
+            Some(TAG_KEYPAD),
             "the arena claims the scroll unless the pad is tagged"
         );
     }
@@ -472,7 +464,8 @@ mod tests {
             event: InputEvent::Gesture(event),
         };
         let mut state = DeviceState::default();
-        if let Some(bound) = page.bind(&op, &state) {
+        let layout = layout(page);
+        if let Some(bound) = page.bind(&op, &state, &layout) {
             let BusinessIntent::Gallery { intent, .. } = bound else {
                 panic!("not a gallery intent")
             };
@@ -482,6 +475,7 @@ mod tests {
                     intent,
                 },
                 &mut state,
+                &layout,
             );
         }
     }
@@ -491,11 +485,12 @@ mod tests {
     fn a_dragged_lift_presses_no_key_and_the_next_drag_still_scrolls() {
         let mut page = ExtendedPage::default();
         let area = page.scroll.area();
-        let target = page.keypad.y + page.keypad.h / 2 - (area.rect.y + area.rect.h / 2);
+        let keypad = layout(&page).slot(KEY_SLOT).expect("a pad");
+        let target = keypad.y + keypad.h / 2 - (area.rect.y + area.rect.h / 2);
         page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-        let offset = page.scroll.area().offset;
-        let x = page.keypad.x + page.keypad.w / 2;
-        let y = page.keypad.y + page.keypad.h / 8 - i32::from(offset);
+        let keypad = layout(&page).slot(KEY_SLOT).expect("a pad");
+        let x = keypad.x + keypad.w / 2;
+        let y = keypad.y + keypad.h / 8;
         let (x, y) = (u16::try_from(x).unwrap(), u16::try_from(y).unwrap());
         send(&mut page, GestureEvent::Press { id: 0, x, y });
         send(
@@ -543,14 +538,15 @@ mod tests {
     #[test]
     fn the_pad_is_four_rows_of_full_touch_targets() {
         let page = ExtendedPage::default();
-        assert_eq!(page.keypad.h % 4, 0);
-        assert!(page.keypad.h / 4 >= i32::from(page::TOUCH));
+        let keypad = layout(&page).slot(KEY_SLOT).expect("a pad");
+        assert_eq!(keypad.h % 4, 0);
+        assert!(keypad.h / 4 >= i32::from(page::TOUCH));
         for cell in 0..12u8 {
             let column = i32::from(cell % 3);
             let row = i32::from(cell / 3);
-            let x = page.keypad.x + (column * 2 + 1) * page.keypad.w / 6;
-            let y = page.keypad.y + (row * 2 + 1) * page.keypad.h / 8;
-            assert_eq!(Keypad::key_at(page.keypad, x, y), Some(cell));
+            let x = keypad.x + (column * 2 + 1) * keypad.w / 6;
+            let y = keypad.y + (row * 2 + 1) * keypad.h / 8;
+            assert_eq!(Keypad::key_at(keypad, x, y), Some(cell));
         }
     }
 

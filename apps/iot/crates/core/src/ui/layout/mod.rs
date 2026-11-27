@@ -3,12 +3,16 @@
 //! the same pixel, and a hit test runs the same declaration without a canvas.
 
 mod constraints;
+mod hash;
+mod measure;
 mod node;
 mod print;
 mod scroll;
 mod style;
 
 pub use self::constraints::{BoxConstraints, PX};
+pub use self::hash::{Fnv, hash_of};
+pub use self::measure::{Layout, MAX_TAGS, PAINTS};
 pub use self::node::MAX_NODES;
 pub use self::node::NodeId;
 pub(crate) use self::node::{NodeInfo, NodeKind, Span, UNKNOWN_PAINT};

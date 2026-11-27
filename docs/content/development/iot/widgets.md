@@ -28,7 +28,8 @@ Flutter 的组件树每行一个 Widget，这里不行：`Ui` 在栈上，一帧
 | 节点 | `MAX_NODES = 64` | `ui::layout` |
 | 文本 | `TEXT_BYTES = 2048` | `ui::declare` |
 | 颜色 | `MAX_COLORS = 16` / 声明 | `ui::color` |
-| custom 槽 | `PAINTS = 8` | `ui::declare` |
+| custom 槽 | `PAINTS = 8` | `ui::layout` |
+| 每帧 tag | `MAX_TAGS = 24` | `ui::layout` |
 | 滚动区 | `MAX_SCROLL_AREAS = 4` | `ui::layout` |
 | 触控下限 | `TOUCH_MIN = 44` | `ui::panel` |
 | 行高 / 行距 | `LINE = 12` / `ROW_PITCH = 13` | `ui::panel` |
@@ -217,9 +218,9 @@ pub enum Slot<'a> {
 
 六个画廊的每个样例都带一行说明（`page::caption`）：名字加这个样例怎么动，例如 `TABLE / TAP A ROW`，中英各一份 `Msg`。`Advanced` / `Extended` 原先的分区词因此删掉——说明行已经报了名字；`Data` 的浮层一带仍用 `page::section`（一条线加名字）隔开。说明行是 muted 的 `nowrap`，不带 tag，点了不动。
 
-`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag，构造期用 `TagTable::measure` 量一次；点击按滚动 offset 反查 tag，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不再重算网格常量。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动落在 `Headless`；有屏时请求 `Headless` 退回 `Input`，`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。17 个入口按 设备 / 界面 / 灯光 分三组，每组一条分隔线加 muted 标题；组内仍是三列，合计七行，最后一组要滚动才见得到，命中仍按 offset 反查。
+`Menu` 的按钮区放进 `page::scroller`：按钮 98×44、间距 6，三列正好占满内容宽。每个按钮带 `PageId::code() + 1` 的 tag；tag 与矩形由框架发布的 `Layout` 给出，点击按 `layout.at` 反查，再上报 `MenuIntent::Choose { page }`，由 `Services::apply` 转成导航。命中不重算网格常量，也不自己加滚动偏移。一次点击在线上是 `Press` 后跟 `Tap`：按钮区只在 `Drag` 才认领拖动，`Press` 只停住滑行，否则点击会被当成拖动、导航丢掉。板子不支持的页仍列出，只是 `State::DISABLED`，点击不导航。无屏的板子启动落在 `Headless`；有屏时请求 `Headless` 退回 `Input`，`DeviceState::landed_on` 用 `surface_roles` 里的 `Screen` 判。标题行高 `TOUCH_MIN`、下面留一个 `GAP` 的空白，右侧是 `EN` / `中文` / `DARK` / `LIGHT` 四个 44×44 chip（`the_settings_chips_are_touch_sized` 钉住），前两个改 `DeviceState.lang`，后两个改 `DeviceState.theme`；按钮区因此下移一整行。17 个入口按 设备 / 界面 / 灯光 分三组，每组一条分隔线加 muted 标题；组内仍是三列，合计七行，最后一组要滚动才见得到，命中仍按 `layout.at` 反查。
 
-`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。构造期用 `TagTable::measure` 量一次，点击按滚动 offset 反查；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 64 节点 / 2048 字节预算约束。
+`Widgets` 页的交互值存在页面自己（`WidgetsSnapshot`）：按钮与 chip 锁定选中、switch / checkbox / radio 切换、slider 点击与拖动、select 循环、icon button 开关 spinner、list tile 选中；`Badge` 显示 switch 状态，`ProgressBar` 跟随 slider，`Divider` 分隔五个分区。分区标题写的是动作而不是名词（`TAP TO LATCH`、`PICK OR TOGGLE`、`DRAG AND TYPE`、`LIVE STATE`、`ROW`），`LIVE STATE` 一行按顺序是 spinner、带 `Indicator` 数字角标的头像、icon button 和三个 `Badge` 变体，下面一行 `SPINNER AVATAR ICON BADGE` 点出这四个名字——光靠图形认不出哪个是哪个。徽章的字随 switch 在 `ON` / `OFF` 之间换，`Filled` / `Light` / `Outline` 是同一 `Tone` 的三种纸。输入框印 `WidgetsSnapshot::text`，只有空着时才显示 `VALUE` 当占位；列表行的副标题是 `SUBTITLE`，讲的是行的结构，不是动作。控件根节点带 `WidgetsAction::tag()`，同一个枚举给出 `ALL` / `from_tag`，`match` 穷尽所以漏一个 handler 编译不过；`every_action_is_drawn_once` 保证每个控件恰好画一次。tag 与矩形由框架发布的 `Layout` 给出，点击直接 `layout.at`；布局跨语言与取值不变，由 `the_tags_stay_put_across_languages_and_values` 钉住。整页一次声明仍受 `the_whole_gallery_fits_one_declaration` 的 64 节点 / 2048 字节预算约束。
 
 `TextField` 聚焦后页面换成 4×4 键盘（`ui::keyboard`，Canvas，0 节点）：`Text` 持有 24 字节、多击循环与 shift/layer 状态，`OK` 键收起键盘。键位、绘制与命中都读同一张 `CELLS` 表。四层轮转（字母 / 数字 / 符号 / 更多）合起来能打出 `0x20..=0x7E` 全部可打印 ASCII：字母层带大小写与空格，符号层放 `. , : ; ? ! - _ @ #`，更多层补齐剩下 22 个标点；层键面按下一层提示（`12` / `#` / `&` / `ab`）。
 
@@ -304,7 +305,7 @@ pub enum Slot<'a> {
 | `Sheet` | C | 不透明遮罩 + 贴边抽屉（`Edge::Bottom` / `Edge::Left`），`row_at` 分行，演示用底部 |
 | `Picker`（弹窗框） | C | scrim + 居中卡片 + 标题 + body + Cancel/OK；卡片 `min(rect − 2×8, 360×480)`，动作带 32~44，`action_at` 分确定 / 取消 / 点遮罩；scrim 只铺卡片四周的条带与四个角，卡片 body 重绘不产生混合 |
 
-所有可点控件都报 tag：Widget 用 `Style::tag`，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag，构造期 `TagTable::measure` 量一次；画廊的 `bind` 只回 `Gallery { wire, intent }`，`wire` 是路由码，`shared::intent` 不因此引用 `shared::route`。Canvas 槽的命中用 `Ui::paint_rect` 量到的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格再按绘制时的同一套等分算子格。浮层项（菜单三行、抽屉两行）不是声明节点，`bind` 用 `item_at` / `row_at` 直接分。
+所有可点控件都报 tag：Widget 用 `Style::tag`，Canvas 槽（Dialog、Keypad、Table、Chart、Gauge、SwipeAction）在声明时给槽本身带 tag；画廊的 `bind` 只回 `Gallery { wire, intent }`，`wire` 是路由码，`shared::intent` 不因此引用 `shared::route`。Canvas 槽的命中用 `Layout::slot` 给出的矩形，和绘制同一份几何；Table 行、Chart 柱、Keypad 格再按绘制时的同一套等分算子格。浮层项（菜单三行、抽屉两行）不是声明节点，`bind` 用 `item_at` / `row_at` 直接分。
 
 `Data` 的 Dialog、PopupMenu、Sheet 都是声明在 `page::body` 之后的根节点：`absolute`、`320 × 228`，各占一个槽、常驻声明、按开合绘制，盖住标题与整页内容，所以既不随列表滚走，也不靠半透明遮罩透出底下的控件。菜单锚在触发按钮下边缘（快照里发布 `menu_anchor`，绘制时夹在内容区内），抽屉从内容区底边升起；浮层打开时 `bind` 先收 Tap，点项选中并关闭，点遮罩或外部关闭。
 
@@ -334,7 +335,7 @@ pub enum Slot<'a> {
 
 ### 重绘范围
 
-页面不指定重绘矩形：布局后框架按节点指纹（`Style` + 文本 + custom 槽的 `state`）自己推导 damage，结构变了才整帧。custom 槽用 `Ui::custom_state(style, slot, state)` 声明一个覆盖其绘制的 `u32`；`Ui::custom` 表示不描述像素（快照一动就重画）。槽的整块矩形都由自己上色时加 `Style::cover()`，框架才会跳过被它盖住的节点。partial 帧先把 damage 铺回底色，再按树序重画相交节点，后画的卡片和 scrim 会盖回去。实测与数字见 `records/iot/panel-buffering.md`。
+页面不指定重绘矩形：布局后框架按节点指纹（`Style` + 文本 + custom 槽的 `state`）自己推导 damage，结构变了才整帧。custom 槽用 `Ui::custom_state(style, slot, state)` 声明一个覆盖其绘制的 `u32`；`Ui::custom` 表示不描述像素（快照一动就重画）。这个 `u32` 由视图自己的 `Hash` 决定：视图 `#[derive(Hash)]`，会动但不出现在画面上的字段（如滚轮的 `moving`）手写 `impl` 排除，再用 `ui::hash_of(&view)` 取值——框架与页面共用同一份 FNV-1a（`ui::layout::hash`），不再各算一套。槽的整块矩形都由自己上色时加 `Style::cover()`，框架才会跳过被它盖住的节点。partial 帧先把 damage 铺回底色，再按树序重画相交节点，后画的卡片和 scrim 会盖回去。实测与数字见 `records/iot/panel-buffering.md`。
 
 ## Feed
 
@@ -425,9 +426,15 @@ for (band, index) in list_window(top, rows, total).enumerate() {
 
 `Chart`、`Gauge`、`Keypad`、`Scrollbar` 与 `Feed` 同样走 `Ui::custom(slot)`，一个带一个槽；`PAINTS = 8` 是整页上限。`Feed` 只排可见行，行数不换成节点。绘制与命中共用同一份几何：页面的 `shape` 模块仍是唯一来源。
 
+## 几何发布
+
+页面不缓存几何：`Ui` 布局完一帧后，框架把每个带 tag 的节点和每个 custom 槽的矩形收进 `ui::layout::Layout`，随输入一起交给页面。`bind(op, state, layout)` 用 `layout.at(x, y)` 取 tag、`layout.slot(slot)` 取自己画的那块、`layout.scroll(area)` 取滚动框；矩形里的滚动偏移已经应用，命中不再自己加 offset。`Layout` 带页戳：与 `state.page()` 不符时框架给 `Layout::EMPTY`，上一页的矩形不会落到这一页的点击上。`PAINTS = 8` 是每页槽数，`MAX_TAGS = 24` 是每帧能报的 tag 数（菜单的 21 个按钮与 chip 最宽），`every_page_reports_all_its_tags` 钉住不静默截断。
+
+tag 编号由 `shared::ui::tag::Tag` 统一：`ALL` 列出全部变体，`tag()` 给线号，默认 `from_tag` 线性扫 `ALL`。子格 tag（日历的一天、五颗星、弹窗月格的日）用 `SubTag<FIRST, COUNT>` 家族，编译期断言各段不重叠。组件自己声明尺寸、tag 与指纹：`ui.add(calendar::Calendar::new(tag, state).width(w))`、`wheel::HourWheel`、`rating::Stars`、`color_picker::Swatch` 各自持有 `PAINT_SLOT`，页面只给数据和 tag。
+
 ## 命中与事件
 
-- Widget：`Ui::headless` 跑同一份声明，`Ui::tags()` 一次量完，存进 `ui::tag::TagTable`；可点的组件带 `Style::tag`，`TagTable::at(x, y, offset)` 得意图编号。
+- Widget：可点的组件带 `Style::tag`，几何由框架的 `Layout` 发布，`layout.at(x, y)` 得意图编号。
 - 画廊：`GalleryIntent` 带上路由码而不是 `PageId`，`shared::intent` 保持不依赖 `shared::route`；`Services::apply` 用 `PageId::from_code` 把它换回页面。
 - Cell：页面 `shape` 常量算矩形，和绘制共用。
 - `NodeId` 只在一次声明内有效，不跨帧保存；要稳定标识用 `tag`。

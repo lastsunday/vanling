@@ -139,6 +139,12 @@ pub trait ScreenPainter {
         false
     }
 
+    /// The panel's rectangles from this painter's last frame, for the hit test that runs before
+    /// the next one. A painter that does not keep them answers `None`.
+    fn layout(&self) -> Option<crate::ui::Layout> {
+        None
+    }
+
     /// Tells the painter the buffer no longer holds its last picture, so the next `paint` has
     /// to draw every pixel it needs instead of scrolling the ones already there.
     fn reset(&mut self) {}

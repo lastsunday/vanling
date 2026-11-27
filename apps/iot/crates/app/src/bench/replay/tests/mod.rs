@@ -212,7 +212,7 @@ fn the_walk_asks_before_it_leaves_forgets_and_looks_around() {
         }
         let mut asked: Vec<Command> = Vec::new();
         while let Ok(intent) = bus.try_receive() {
-            if let Some(command) = manager.apply_intent(intent) {
+            if let Some(command) = manager.apply_intent(intent, &iot_core::ui::Layout::EMPTY) {
                 asked.push(command);
             }
         }

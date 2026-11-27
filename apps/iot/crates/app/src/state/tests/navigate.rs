@@ -158,8 +158,10 @@ fn a_menu_button_opens_its_page_from_a_tap() {
     // Ask the page where its button is, so a change to the head or the grid cannot strand
     // this test on a coordinate that no longer holds a button. `Attitude` sits in the first
     // band, so it is on screen at offset 0.
-    let (x, y) = crate::services::menu::MenuPage::default()
-        .button_centre(PageId::Attitude)
+    let menu = crate::services::menu::MenuPage::default();
+    let layout = crate::services::layout_of(&menu, PageId::Menu);
+    let (x, y) = menu
+        .button_centre(&layout, PageId::Attitude)
         .expect("`Attitude` is listed");
     feed_input(
         &mut manager,

@@ -23,7 +23,7 @@ use iot_core::drivers::input::{ButtonEvent, InputEvent};
 use iot_core::drivers::motion::{MotionCapabilities, MotionSample};
 use iot_core::light::{Rgb, rgb565};
 use iot_core::ui::panel::{PANEL_COLUMNS, PANEL_ROWS};
-use iot_core::ui::{Canvas, Screen, ThemeId};
+use iot_core::ui::{Canvas, Layout, Screen, ThemeId};
 
 const WIDTH: usize = PANEL_COLUMNS;
 const HEIGHT: usize = PANEL_ROWS;
@@ -223,6 +223,27 @@ fn a_language_switch_reaches_the_pixels() {
     }
 }
 
+/// `Layout` holds a fixed number of tags; a page that declares more would lose the extras
+/// without a word, so the widest declaration still has to fit.
+#[test]
+fn every_page_reports_all_its_tags() {
+    for id in PageId::ALL {
+        let mut ui = crate::shared::surface::headless();
+        descriptor(id).view()(
+            &FrameSnapshot {
+                page: id,
+                ..FrameSnapshot::default()
+            },
+            &mut ui,
+        );
+        crate::shared::surface::finish(&mut ui);
+        let declared = ui.tags().count();
+        let mut layout = ui.geometry();
+        layout.set_page(id.code());
+        assert_eq!(layout.tags().count(), declared, "{id:?}");
+    }
+}
+
 #[test]
 fn a_language_switch_writes_the_state() {
     let mut services = Services::default();
@@ -230,6 +251,7 @@ fn a_language_switch_writes_the_state() {
     services.apply(
         &BusinessIntent::Settings(SettingsIntent::SetLang { lang: Lang::ZhHans }),
         &mut state,
+        &Layout::EMPTY,
     );
     assert_eq!(state.lang, Lang::ZhHans);
 }
@@ -243,6 +265,7 @@ fn a_menu_choice_opens_its_page_without_geometry() {
             page: PageId::Widgets.code(),
         }),
         &mut state,
+        &Layout::EMPTY,
     );
     assert_eq!(state.page(), PageId::Widgets);
 }
@@ -278,6 +301,7 @@ fn a_text_scroll_moves_one_region_and_its_thumb() {
             speed: 0,
         }),
         &mut state,
+        &Layout::EMPTY,
     );
     let after = services.snapshot();
     assert_eq!(after.text.areas[0], before.text.areas[0]);
@@ -324,6 +348,7 @@ fn a_widgets_scroll_moves_the_gallery_and_only_that() {
             speed: 0,
         }),
         &mut state,
+        &Layout::EMPTY,
     );
     let after = services.snapshot();
     assert!(after.widgets.area.offset > 0, "the gallery moved");
@@ -405,6 +430,7 @@ fn dump_every_page_when_asked() {
             speed: 0,
         }),
         &mut state,
+        &Layout::EMPTY,
     );
     let scrolled = services.snapshot();
     std::fs::write(

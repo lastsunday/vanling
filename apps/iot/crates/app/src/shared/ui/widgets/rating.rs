@@ -1,7 +1,7 @@
 //! Star rating: a whole-star input row, and a read-only row that fills a fraction of each star.
 //! The star is a scanline fill of one const polygon, so the mark costs no glyph and no table.
 
-use iot_core::ui::{Canvas, Rect};
+use iot_core::ui::{Canvas, NodeId, Rect, Style, Ui, Widget};
 
 use crate::shared::ui::theme::Theme;
 
@@ -26,6 +26,35 @@ const STAR: [(i32, i32); 10] = [
 
 pub const fn width(count: u8) -> i16 {
     SLOT * count as i16
+}
+
+/// The paint slot the page reserves for the star row.
+pub const PAINT_SLOT: u8 = 2;
+
+/// The star row as the page declares it; `state` fingerprints the stars lit.
+pub struct Stars {
+    tag: u16,
+    count: u8,
+    state: u32,
+}
+
+impl Stars {
+    pub const fn new(tag: u16, count: u8, state: u32) -> Self {
+        Self { tag, count, state }
+    }
+}
+
+impl Widget for Stars {
+    fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        ui.custom_state(
+            Style::new()
+                .width(width(self.count))
+                .height(HEIGHT)
+                .tag(self.tag),
+            PAINT_SLOT,
+            self.state,
+        )
+    }
 }
 
 /// The star a panel point picks, whole-star input only.

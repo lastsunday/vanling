@@ -16,7 +16,7 @@ fn one_input_intent_is_the_two_steps_it_replaces() {
     let mut manual = direct.clone();
 
     let operation = tap();
-    let command = direct.apply_intent(Intent::Input(operation));
+    let command = direct.apply_intent(Intent::Input(operation), &iot_core::ui::Layout::EMPTY);
 
     manual.apply_input(operation);
     let action = translate(&operation, manual.state_ref(), manual.services());
@@ -40,7 +40,7 @@ fn one_business_intent_answers_like_apply_business() {
 
     let intent = Intent::Business(BusinessIntent::Navigation(NavigationIntent::SplashOver));
     assert_eq!(
-        direct.apply_intent(intent),
+        direct.apply_intent(intent, &iot_core::ui::Layout::EMPTY),
         manual.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
         "a business intent is apply_business and nothing else"
     );

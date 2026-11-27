@@ -35,7 +35,8 @@ pub async fn run_loop(
     let mut first_frame_reported = false;
     loop {
         let wall_ms = Instant::now().as_millis() as u32;
-        schedule.process_intents(bus, manager);
+        let layout = renderers.layout();
+        schedule.process_intents(bus, manager, &layout);
         schedule.tick(manager, wall_ms);
         let active = renderers.tick(
             manager.state_ref(),

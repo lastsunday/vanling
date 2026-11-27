@@ -182,7 +182,7 @@ pub fn draw_column(
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub struct MonthView {
     pub year: u16,
     pub month: u8,

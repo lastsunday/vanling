@@ -98,12 +98,13 @@ impl Scroller {
     }
 
     /// The tag a panel point lands on, zero when none: a tag past the region is not a control.
-    pub fn tag_at(&self, tags: impl Fn(i32, i32, i16) -> u16, x: i32, y: i32) -> u16 {
+    /// The rectangles come from the layout, which already applied the scroll offset.
+    pub fn tag_at(&self, tags: impl Fn(i32, i32) -> u16, x: i32, y: i32) -> u16 {
         let area = self.area();
         if !area.rect.contains(x, y) {
             return 0;
         }
-        tags(x, y, area.offset)
+        tags(x, y)
     }
 
     /// Takes the finger's claim on a region; the first one wins until it lifts.

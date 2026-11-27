@@ -3,7 +3,7 @@
 //! Drawing and hit testing share [`Metrics`], so the cell a finger lands on is the cell drawn.
 
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{Canvas, Rect};
+use iot_core::ui::{Canvas, NodeId, Rect, Style, Ui, Widget};
 
 use crate::shared::ui::theme::Theme;
 
@@ -20,6 +20,42 @@ pub const MIN_HEIGHT: i16 = HEADER_H + ROWS as i16 * MIN_CELL;
 pub const HEIGHT: i16 = 204;
 
 const WEEKDAYS: [u8; COLUMNS] = *b"MTWTFSS";
+
+/// The paint slot the page reserves for the grid.
+pub const PAINT_SLOT: u8 = 0;
+
+/// The grid as the page declares it; `state` fingerprints the month drawn.
+pub struct Calendar {
+    tag: u16,
+    width: i16,
+    state: u32,
+}
+
+impl Calendar {
+    pub const fn new(tag: u16, state: u32) -> Self {
+        Self {
+            tag,
+            width: MIN_WIDTH,
+            state,
+        }
+    }
+
+    /// Fills the page's content column instead of the grid's own minimum.
+    pub const fn width(mut self, width: i16) -> Self {
+        self.width = width;
+        self
+    }
+}
+
+impl Widget for Calendar {
+    fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        ui.custom_state(
+            Style::new().width(self.width).height(HEIGHT).tag(self.tag),
+            PAINT_SLOT,
+            self.state,
+        )
+    }
+}
 
 /// Days in `month`, with February following the Gregorian rule.
 pub const fn days_in_month(year: u16, month: u8) -> u8 {

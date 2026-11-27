@@ -16,13 +16,21 @@ impl DeviceManager {
     /// The two halves touch different fields: the write lands in `touch`/`motion`, which only
     /// renderers and the frame snapshot read, while the binding reads the page, the lights and
     /// the link. Their order is a reading order, not a dependency.
-    pub fn apply_intent(&mut self, intent: Intent) -> Option<Command> {
+    pub fn apply_intent(
+        &mut self,
+        intent: Intent,
+        layout: &iot_core::ui::Layout,
+    ) -> Option<Command> {
         let business = match intent {
             Intent::Input(op) => {
                 self.apply_input(op);
-                self.services.bind(&op, self.state_ref())?
+                self.layout = *layout;
+                self.services.bind(&op, &self.state, &self.layout)?
             }
-            Intent::Business(business) => business,
+            Intent::Business(business) => {
+                self.layout = *layout;
+                business
+            }
         };
         self.apply_business(business)
     }
@@ -48,7 +56,7 @@ impl DeviceManager {
     /// moved, which is the manager's to hold.
     pub(crate) fn apply_business(&mut self, intent: BusinessIntent) -> Option<Command> {
         let leaving = self.state.page();
-        let (command, effects) = self.services.apply(&intent, &mut self.state);
+        let (command, effects) = self.services.apply(&intent, &mut self.state, &self.layout);
         self.apply_effects(effects);
         let landed = self.state.page();
         if landed != leaving {

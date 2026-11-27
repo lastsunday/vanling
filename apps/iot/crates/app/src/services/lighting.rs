@@ -3,7 +3,7 @@
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::PANEL_COLUMNS;
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{Rect, Style, TextAlign, Ui};
+use iot_core::ui::{Layout, Rect, Style, TextAlign, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, LightingControl, LightingIntent};
@@ -14,7 +14,7 @@ use crate::shared::page;
 use crate::shared::snapshot::{FrameSnapshot, LightingView, PageSnapshot};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::state::State;
-use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::Slider;
 use crate::shared::ui::widgets::segmented::Segmented;
@@ -35,7 +35,6 @@ const _: () = assert!(SLIDER_W > 0);
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LightingPage {
     breath: GlassBreath,
-    tags: TagTable<{ LightingControl::ALL.len() }>,
     grab: Option<(u8, LightingControl)>,
 }
 
@@ -46,18 +45,13 @@ impl Default for LightingPage {
         finish(&mut ui);
         Self {
             breath: GlassBreath::CALM,
-            tags: TagTable::measure(&ui),
             grab: None,
         }
     }
 }
 
 impl LightingPage {
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
-        self.tags.at(x, y, 0)
-    }
-
-    fn set(&mut self, control: LightingControl, x: u16, state: &mut DeviceState) {
+    fn set(&mut self, control: LightingControl, x: u16, state: &mut DeviceState, layout: &Layout) {
         match control {
             LightingControl::Off => state.glow = GlowScope::Off,
             LightingControl::Page => state.glow = GlowScope::Page,
@@ -83,7 +77,7 @@ impl LightingPage {
                 {
                     return;
                 }
-                let Some(rect) = self.tags.rect(control.tag()) else {
+                let Some(rect) = layout.rect(control.tag()) else {
                     return;
                 };
                 let pct = percent_at(rect, i32::from(x));
@@ -107,6 +101,7 @@ impl super::Service for LightingPage {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Lighting(intent) = intent else {
             return (None, Effects::default());
@@ -115,11 +110,11 @@ impl super::Service for LightingPage {
             LightingIntent::Press { id, control } => self.grab = Some((id, control)),
             LightingIntent::Slide { control, x } => {
                 if self.grab.is_some() {
-                    self.set(control, x, state);
+                    self.set(control, x, state, layout);
                 }
             }
             LightingIntent::Tap { control, x } => {
-                self.set(control, x, state);
+                self.set(control, x, state, layout);
                 self.grab = None;
             }
             LightingIntent::LetGo => self.grab = None,
@@ -129,10 +124,15 @@ impl super::Service for LightingPage {
 }
 
 impl super::LocalPage for LightingPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         let intent = match op.event {
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let control = LightingControl::from_tag(self.tag_at(i32::from(x), i32::from(y)))?;
+                let control = LightingControl::from_tag(layout.at(i32::from(x), i32::from(y))?)?;
                 LightingIntent::Press { id, control }
             }
             InputEvent::Gesture(GestureEvent::Drag { id, x, .. }) => {
@@ -145,7 +145,7 @@ impl super::LocalPage for LightingPage {
             InputEvent::Gesture(GestureEvent::Tap { id, x, y, .. }) => {
                 let control = match self.grab {
                     Some((held, control)) if held == id => control,
-                    _ => LightingControl::from_tag(self.tag_at(i32::from(x), i32::from(y)))?,
+                    _ => LightingControl::from_tag(layout.at(i32::from(x), i32::from(y))?)?,
                 };
                 LightingIntent::Tap { control, x }
             }
@@ -418,13 +418,19 @@ fn lighting_moved(prev: &FrameSnapshot, next: &FrameSnapshot) -> bool {
 mod tests {
     use super::*;
     use crate::shared::model::EFFECTS;
+    use crate::shared::route::PageId;
+
+    fn layout(page: &LightingPage) -> Layout {
+        crate::services::layout_of(page, PageId::Lighting)
+    }
 
     #[test]
     fn the_pattern_strip_switches_the_glass_style() {
         let mut page = LightingPage::default();
         let mut state = DeviceState::default();
         for pattern in EFFECTS {
-            page.set(pattern_control(pattern), 0, &mut state);
+            let layout = layout(&page);
+            page.set(pattern_control(pattern), 0, &mut state, &layout);
             assert_eq!(page.breath.pattern, pattern);
         }
     }
@@ -460,13 +466,14 @@ mod tests {
     fn a_steady_glow_ignores_the_period_slider() {
         let mut page = LightingPage::default();
         let mut state = DeviceState::default();
-        page.set(LightingControl::PatternSteady, 0, &mut state);
+        let layout = layout(&page);
+        page.set(LightingControl::PatternSteady, 0, &mut state, &layout);
         let period = page.breath.period_ms;
-        page.set(LightingControl::Period, 0, &mut state);
+        page.set(LightingControl::Period, 0, &mut state, &layout);
         assert_eq!(page.breath.period_ms, period);
 
-        page.set(LightingControl::PatternBreath, 0, &mut state);
-        page.set(LightingControl::Period, 0, &mut state);
+        page.set(LightingControl::PatternBreath, 0, &mut state, &layout);
+        page.set(LightingControl::Period, 0, &mut state, &layout);
         assert_eq!(page.breath.period_ms, GlassBreath::FASTEST_MS);
     }
 }

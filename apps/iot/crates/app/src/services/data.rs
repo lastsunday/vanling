@@ -4,7 +4,7 @@
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{Canvas, Rect, Screen, ScrollId, Style, Ui};
+use iot_core::ui::{Canvas, Layout, Rect, Screen, ScrollId, Style, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
@@ -14,7 +14,7 @@ use crate::shared::route::PageId;
 use crate::shared::snapshot::{DataSnapshot, FrameSnapshot, PageSnapshot, ScrollShift};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{BAR, ScrollConfig};
-use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::{ButtonKind, Theme};
 use crate::shared::ui::widgets::{
     Button, EmptyState, EmptyTone, PopupMenu, REVEAL_MAX, Sheet, SheetEdge, SwipeAction, Table,
@@ -26,6 +26,9 @@ use super::{Descriptor, Repaint};
 
 const AREA: ScrollId = ScrollId::new(1);
 const CONTENT_W: i16 = PANEL_COLUMNS as i16 - page::MARGIN - 2 * BAR;
+
+/// The full-panel rect all three overlay slots declare; the hit tests read the same constant.
+const OVERLAY: Rect = Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32);
 
 const TABLE_SLOT: u8 = 0;
 const CHART_SLOT: u8 = 1;
@@ -69,33 +72,36 @@ enum Action {
     Sheet1,
 }
 
+impl Tag for Action {
+    const ALL: &'static [Self] = &[
+        Self::Swipe,
+        Self::Empty,
+        Self::DialogOpen,
+        Self::MenuOpen,
+        Self::Menu0,
+        Self::Menu1,
+        Self::Menu2,
+        Self::SheetOpen,
+        Self::Sheet0,
+        Self::Sheet1,
+    ];
+
+    fn tag(self) -> u16 {
+        self as u16
+    }
+}
+
 impl Action {
-    /// The controls the declaration draws; the menu items and sheet rows are hit-tested
-    /// inside their overlay slots instead of declared.
-    const ALL: [Self; 5] = [
+    /// The controls the tree draws; the menu items and sheet rows are hit-tested inside their
+    /// overlay slots instead of declared.
+    #[cfg(test)]
+    const DECLARED: &'static [Self] = &[
         Self::Swipe,
         Self::Empty,
         Self::DialogOpen,
         Self::MenuOpen,
         Self::SheetOpen,
     ];
-
-    const fn tag(self) -> u16 {
-        self as u16
-    }
-
-    fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL
-            .into_iter()
-            .chain([
-                Self::Menu0,
-                Self::Menu1,
-                Self::Menu2,
-                Self::Sheet0,
-                Self::Sheet1,
-            ])
-            .find(|action| action.tag() == tag)
-    }
 }
 
 const MENU_ITEMS: [Msg; 3] = [Msg::Name, Msg::Mail, Msg::Save];
@@ -122,13 +128,8 @@ const ROWS: [[&[u8]; 3]; 4] = [
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataPage {
     scroll: Scroller,
-    tags: TagTable<{ Action::ALL.len() + 3 }>,
-    table: Rect,
-    chart_rect: Rect,
-    gauge_rect: Rect,
-    dialog: Rect,
-    /// The full-panel rect every overlay slot shares.
-    overlay: Rect,
+    /// The trigger's bottom edge in panel pixels, taken when the menu opens.
+    anchor: i16,
     values: DataSnapshot,
 }
 
@@ -141,12 +142,7 @@ impl Default for DataPage {
         scroll.measure(&ui, AREA, SCROLL);
         Self {
             scroll,
-            tags: TagTable::measure(&ui),
-            table: ui.paint_rect(TABLE_SLOT).unwrap_or_default(),
-            chart_rect: ui.paint_rect(CHART_SLOT).unwrap_or_default(),
-            gauge_rect: ui.paint_rect(GAUGE_SLOT).unwrap_or_default(),
-            dialog: ui.paint_rect(DIALOG_SLOT).unwrap_or_default(),
-            overlay: ui.paint_rect(MENU_SLOT).unwrap_or_default(),
+            anchor: 0,
             values: DataSnapshot {
                 gauge: BARS[0],
                 ..DataSnapshot::default()
@@ -156,17 +152,14 @@ impl Default for DataPage {
 }
 
 impl DataPage {
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         self.scroll
-            .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
+            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
     }
 
     /// The trigger's bottom edge in panel pixels, so the menu hangs under it.
     fn menu_anchor(&self) -> i16 {
-        let offset = self.scroll.view().offset;
-        self.tags.rect(Action::MenuOpen.tag()).map_or(0, |rect| {
-            i16::try_from(rect.bottom() - i32::from(offset)).unwrap_or(0)
-        })
+        self.anchor
     }
 
     fn snapshot(&self) -> DataSnapshot {
@@ -177,23 +170,31 @@ impl DataPage {
         view
     }
 
-    /// The cell of a custom mark a panel point picks, in content coordinates.
-    fn mark_at(&self, x: i32, y: i32) -> u16 {
+    /// The cell of a custom mark a panel point picks.
+    fn mark_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         let row = |rect: Rect, header: i32| -> Option<u8> {
             if !rect.contains(x, y) || y < rect.y + header {
                 return None;
             }
             u8::try_from((y - rect.y - header) / i32::from(table::ROW_H)).ok()
         };
-        if let Some(row) = row(self.table, i32::from(table::HEADER_H)) {
+        if let Some(row) = layout
+            .slot(TABLE_SLOT)
+            .and_then(|rect| row(rect, i32::from(table::HEADER_H)))
+        {
             return TAG_TABLE + u16::from(row);
         }
-        if self.chart_rect.contains(x, y) {
+        if let Some(chart) = layout.slot(CHART_SLOT)
+            && chart.contains(x, y)
+        {
             let count = i32::try_from(BARS.len()).unwrap_or(1).max(1);
-            let column = (x - self.chart_rect.x) * count / self.chart_rect.w.max(1);
+            let column = (x - chart.x) * count / chart.w.max(1);
             return TAG_CHART + u16::try_from(column.clamp(0, count - 1)).unwrap_or(0);
         }
-        if self.gauge_rect.contains(x, y) {
+        if layout
+            .slot(GAUGE_SLOT)
+            .is_some_and(|gauge| gauge.contains(x, y))
+        {
             return TAG_GAUGE;
         }
         0
@@ -277,6 +278,7 @@ impl super::Service for DataPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Gallery { wire, intent } = intent else {
             return (None, Effects::default());
@@ -287,7 +289,14 @@ impl super::Service for DataPage {
         match *intent {
             GalleryIntent::Tap { tag } => match tag {
                 TAG_DIALOG_OK | TAG_DIALOG_CANCEL | TAG_DISMISS => self.close_overlays(),
-                _ => self.tap(tag),
+                _ => {
+                    if tag == Action::MenuOpen.tag() {
+                        self.anchor = layout
+                            .rect(tag)
+                            .map_or(0, |rect| i16::try_from(rect.bottom()).unwrap_or(0));
+                    }
+                    self.tap(tag)
+                }
             },
             GalleryIntent::Slide { dx, .. } => self.values.reveal = (-dx).clamp(0, REVEAL_MAX),
             GalleryIntent::SlideEnd { dx, .. } => {
@@ -301,7 +310,12 @@ impl super::Service for DataPage {
 }
 
 impl super::LocalPage for DataPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         let tap = |intent| {
             Some(BusinessIntent::Gallery {
                 wire: PageId::Data.code(),
@@ -312,7 +326,7 @@ impl super::LocalPage for DataPage {
             let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event else {
                 return None;
             };
-            let tag = match dialog::action_at(self.dialog, i32::from(x), i32::from(y)) {
+            let tag = match dialog::action_at(OVERLAY, i32::from(x), i32::from(y)) {
                 Some(true) => TAG_DIALOG_OK,
                 Some(false) | None => TAG_DIALOG_CANCEL,
             };
@@ -324,10 +338,10 @@ impl super::LocalPage for DataPage {
             };
             let (x, y) = (i32::from(x), i32::from(y));
             let tag = if self.values.menu_open {
-                popup_menu::item_at(popup_menu::card(self.overlay, self.menu_anchor()), x, y)
+                popup_menu::item_at(popup_menu::card(OVERLAY, self.menu_anchor()), x, y)
                     .map(|row| Action::Menu0.tag() + u16::from(row))
             } else {
-                sheet::row_at(sheet::card(self.overlay, SheetEdge::Bottom), x, y)
+                sheet::row_at(sheet::card(OVERLAY, SheetEdge::Bottom), x, y)
                     .map(|row| Action::Sheet0.tag() + u16::from(row))
             };
             return tap(GalleryIntent::Tap {
@@ -339,20 +353,20 @@ impl super::LocalPage for DataPage {
         {
             let area = self.scroll.area();
             if area.rect.contains(i32::from(x), i32::from(y)) {
-                let content_y = i32::from(y) + i32::from(area.offset);
-                let tag = self.mark_at(i32::from(x), content_y);
+                let tag = self.mark_at(layout, i32::from(x), i32::from(y));
                 if tag != 0 {
                     return tap(GalleryIntent::Tap { tag });
                 }
             }
-            if let Some(action) = Action::from_tag(self.tag_at(i32::from(x), i32::from(y))) {
+            if let Some(action) = Action::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)))
+            {
                 return tap(GalleryIntent::Tap { tag: action.tag() });
             }
         }
         self.scroll.bind(
             op,
             PageId::Data.code(),
-            |x, y| self.tag_at(x, y),
+            |x, y| self.tag_at(layout, x, y),
             |tag| tag == Action::Swipe.tag(),
         )
     }
@@ -454,10 +468,10 @@ fn declare(snapshot: &FrameSnapshot, ui: &mut Ui<'_, '_>) {
         ui.custom(
             Style::new()
                 .absolute()
-                .left(0)
-                .top(0)
-                .width(PANEL_COLUMNS as i16)
-                .height(CONTENT_BOTTOM as i16),
+                .left(OVERLAY.x as i16)
+                .top(OVERLAY.y as i16)
+                .width(OVERLAY.w as i16)
+                .height(OVERLAY.h as i16),
             slot,
         );
     }
@@ -561,18 +575,20 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
     use alloc::vec::Vec;
-    use iot_core::ui::PX;
     use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::{Layout, PX};
+
+    fn layout(page: &DataPage) -> Layout {
+        crate::services::layout_of(page, PageId::Data)
+    }
 
     fn tap(page: &mut DataPage, tag: u16) {
         let mut state = DeviceState::default();
-        page.apply(
-            &BusinessIntent::Gallery {
-                wire: PageId::Data.code(),
-                intent: GalleryIntent::Tap { tag },
-            },
-            &mut state,
-        );
+        let intent = BusinessIntent::Gallery {
+            wire: PageId::Data.code(),
+            intent: GalleryIntent::Tap { tag },
+        };
+        page.apply(&intent, &mut state, &layout(page));
     }
 
     #[test]
@@ -612,27 +628,28 @@ mod tests {
     #[test]
     fn every_declared_control_is_drawn_once() {
         let page = DataPage::default();
-        let drawn: Vec<u16> = page
-            .tags
-            .iter()
+        let drawn: Vec<u16> = layout(&page)
+            .tags()
             .map(|(tag, _)| tag)
             .filter(|tag| Action::from_tag(*tag).is_some())
             .collect();
-        let expected: Vec<u16> = Action::ALL.iter().map(|action| action.tag()).collect();
+        let expected: Vec<u16> = Action::DECLARED.iter().map(|action| action.tag()).collect();
         assert_eq!(drawn, expected);
     }
 
     #[test]
     fn every_canvas_mark_carries_its_own_tag() {
         let page = DataPage::default();
-        for (tag, rect) in [
-            (TAG_TABLE, page.table),
-            (TAG_CHART, page.chart_rect),
-            (TAG_GAUGE, page.gauge_rect),
+        let layout = layout(&page);
+        for (tag, slot) in [
+            (TAG_TABLE, TABLE_SLOT),
+            (TAG_CHART, CHART_SLOT),
+            (TAG_GAUGE, GAUGE_SLOT),
         ] {
+            let rect = layout.slot(slot).expect("a mark");
             assert_eq!(
-                page.tags.at(rect.x + 2, rect.y + 2, 0),
-                tag,
+                layout.at(rect.x + 2, rect.y + 2),
+                Some(tag),
                 "the arena claims the scroll unless the mark is tagged"
             );
         }
@@ -658,21 +675,20 @@ mod tests {
     #[test]
     fn a_press_then_a_tap_reaches_the_table_the_chart_and_the_dial() {
         let mut page = DataPage::default();
-        let x = page.table.x + 4;
-        let row = page.table.y + i32::from(table::HEADER_H) + i32::from(table::ROW_H) + 4;
+        let table = layout(&page).slot(TABLE_SLOT).expect("a table");
+        let x = table.x + 4;
+        let row = table.y + i32::from(table::HEADER_H) + i32::from(table::ROW_H) + 4;
         tap_at(&mut page, x, row);
         assert_eq!(page.values.table, Some(1));
 
-        for mark in [page.chart_rect, page.gauge_rect] {
+        for slot in [CHART_SLOT, GAUGE_SLOT] {
             let area = page.scroll.area();
-            let target = mark.y + mark.h / 2 - (area.rect.y + area.rect.h / 2);
+            let mark = layout(&page).slot(slot).expect("a mark");
+            let content = mark.y + mark.h / 2 + i32::from(area.offset);
+            let target = content - (area.rect.y + area.rect.h / 2);
             page.scroll.park(i16::try_from(target.max(0)).unwrap_or(0));
-            let offset = page.scroll.area().offset;
-            tap_at(
-                &mut page,
-                mark.x + mark.w / 2,
-                mark.y + mark.h / 2 - i32::from(offset),
-            );
+            let mark = layout(&page).slot(slot).expect("a mark");
+            tap_at(&mut page, mark.x + mark.w / 2, mark.y + mark.h / 2);
         }
         assert_eq!(page.values.bar, Some(3), "the chart picked its middle bar");
         assert_eq!(
@@ -687,11 +703,13 @@ mod tests {
         let mut page = DataPage::default();
         tap(&mut page, Action::MenuOpen.tag());
         assert!(page.values.menu_open);
-        let trigger = page.tags.rect(Action::MenuOpen.tag()).expect("a trigger");
+        let trigger = layout(&page)
+            .rect(Action::MenuOpen.tag())
+            .expect("a trigger");
         page.scroll
             .park(i16::try_from(trigger.bottom() - 60).unwrap_or(0));
         let anchor = page.snapshot().menu_anchor;
-        let card = popup_menu::card(page.overlay, anchor);
+        let card = popup_menu::card(OVERLAY, anchor);
         assert!(
             card.y <= i32::from(anchor),
             "the menu hangs at or above its trigger when the panel runs out"
@@ -719,7 +737,7 @@ mod tests {
         let mut page = DataPage::default();
         tap(&mut page, Action::SheetOpen.tag());
         assert!(page.values.sheet_open);
-        let card = sheet::card(page.overlay, SheetEdge::Bottom);
+        let card = sheet::card(OVERLAY, SheetEdge::Bottom);
         assert_eq!(card.bottom(), CONTENT_BOTTOM as i32);
         let y = card.bottom() - sheet::ROW_H / 2 - 2;
         let (x, y) = (card.x + 10, y);
@@ -731,22 +749,26 @@ mod tests {
 
     #[test]
     fn every_overlay_slot_covers_the_whole_panel() {
-        let page = DataPage::default();
-        let full = Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32);
-        assert_eq!(page.dialog, full);
-        assert_eq!(page.overlay, full);
+        let mut ui = headless();
+        declare(&FrameSnapshot::default(), &mut ui);
+        finish(&mut ui);
+        for slot in [MENU_SLOT, SHEET_SLOT, DIALOG_SLOT] {
+            assert_eq!(ui.paint_rect(slot), Some(OVERLAY), "slot {slot}");
+        }
     }
 
     #[test]
     fn a_row_a_bar_and_the_dial_each_pick_their_own() {
         let mut page = DataPage::default();
-        let row = page.table.y + i32::from(table::HEADER_H) + i32::from(table::ROW_H) * 2 + 4;
-        let tag = page.mark_at(page.table.x + 4, row);
+        let table = layout(&page).slot(TABLE_SLOT).expect("a table");
+        let chart = layout(&page).slot(CHART_SLOT).expect("a chart");
+        let row = table.y + i32::from(table::HEADER_H) + i32::from(table::ROW_H) * 2 + 4;
+        let tag = page.mark_at(&layout(&page), table.x + 4, row);
         assert_eq!(tag, TAG_TABLE + 2);
         tap(&mut page, tag);
         assert_eq!(page.values.table, Some(2));
 
-        let tag = page.mark_at(page.chart_rect.x + 4, page.chart_rect.y + 4);
+        let tag = page.mark_at(&layout(&page), chart.x + 4, chart.y + 4);
         assert_eq!(tag, TAG_CHART);
         tap(&mut page, tag);
         assert_eq!(page.values.bar, Some(0));
@@ -767,12 +789,14 @@ mod tests {
 
     fn apply(page: &mut DataPage, intent: GalleryIntent) {
         let mut state = DeviceState::default();
+        let layout = layout(page);
         page.apply(
             &BusinessIntent::Gallery {
                 wire: PageId::Data.code(),
                 intent,
             },
             &mut state,
+            &layout,
         );
     }
 
@@ -835,14 +859,8 @@ mod tests {
     }
 
     #[test]
-    fn the_dialog_covers_the_whole_gallery_and_centres_its_card() {
-        let page = DataPage::default();
-        assert_eq!(
-            page.dialog,
-            Rect::new(0, 0, PANEL_COLUMNS as i32, CONTENT_BOTTOM as i32),
-            "the scrim reaches every panel pixel, so no page shows through"
-        );
-        let card = dialog::card(page.dialog);
+    fn the_dialog_centres_its_card() {
+        let card = dialog::card(OVERLAY);
         assert_eq!(card.x + card.w / 2, PANEL_COLUMNS as i32 / 2);
         assert_eq!(card.y + card.h / 2, CONTENT_BOTTOM as i32 / 2);
     }
@@ -858,9 +876,10 @@ mod tests {
     fn a_dragged_lift_picks_no_mark_and_the_next_drag_still_scrolls() {
         let mut page = DataPage::default();
         page.scroll.park(60);
-        let x = page.chart_rect.x + page.chart_rect.w / 2;
+        let chart = layout(&page).slot(CHART_SLOT).expect("a chart");
+        let x = chart.x + chart.w / 2;
         let area = page.scroll.area();
-        let from = page.chart_rect.y + page.chart_rect.h / 2 - i32::from(area.offset);
+        let from = chart.y + chart.h / 2;
         let (x, from) = (u16::try_from(x).unwrap(), u16::try_from(from).unwrap());
         let to = from - 30;
         let before = area.offset;
@@ -912,7 +931,8 @@ mod tests {
             event: InputEvent::Gesture(event),
         };
         let mut state = DeviceState::default();
-        if let Some(bound) = page.bind(&op, &state) {
+        let layout = layout(page);
+        if let Some(bound) = page.bind(&op, &state, &layout) {
             let BusinessIntent::Gallery { intent, .. } = bound else {
                 panic!("not a gallery intent")
             };
@@ -922,6 +942,7 @@ mod tests {
                     intent,
                 },
                 &mut state,
+                &layout,
             );
         }
     }

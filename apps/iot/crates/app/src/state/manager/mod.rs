@@ -39,6 +39,8 @@ pub struct DeviceManager {
     pub(super) state: DeviceState,
     pub(super) services: Services,
     pub(super) demand: DemandPolicy,
+    /// The geometry of the last frame the panel published, for the input that answers it.
+    pub(super) layout: iot_core::ui::Layout,
 }
 
 impl DeviceManager {
@@ -68,6 +70,7 @@ impl DeviceManager {
             demand: DemandPolicy::boot(&state, boot.demand_keys, boot.overrides),
             state,
             services,
+            layout: iot_core::ui::Layout::default(),
         }
     }
 

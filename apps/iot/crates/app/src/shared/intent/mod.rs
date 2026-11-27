@@ -8,6 +8,7 @@ pub use self::action::WidgetsAction;
 pub use self::keyboard::{CHARS, Cycling, Key, Layer, MAX_CANDIDATES, MULTITAP_WINDOW_MS};
 
 use crate::shared::i18n::Lang;
+use crate::shared::ui::tag::Tag;
 use iot_core::drivers::input::{ClickPattern, InputEvent, SwipeDirection};
 use iot_core::drivers::network::{AccessPoint, LinkStatus, Ssid};
 use iot_core::ui::ThemeId;
@@ -284,8 +285,8 @@ pub enum LightingControl {
     PatternSos,
 }
 
-impl LightingControl {
-    pub const ALL: [Self; 19] = [
+impl Tag for LightingControl {
+    const ALL: &'static [Self] = &[
         Self::Off,
         Self::Page,
         Self::All,
@@ -307,14 +308,12 @@ impl LightingControl {
         Self::PatternSos,
     ];
 
-    pub const fn tag(self) -> u16 {
+    fn tag(self) -> u16 {
         self as u16
     }
+}
 
-    pub fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.into_iter().find(|control| control.tag() == tag)
-    }
-
+impl LightingControl {
     /// Whether the control is a slider rather than a cell of the scope strip.
     pub const fn slider(self) -> bool {
         matches!(

@@ -262,7 +262,8 @@ pub fn with_other_core_parked<R>(f: impl FnOnce() -> R) -> R {
     })
 }
 
-const PANEL_CORE_STACK_BYTES: usize = 24 * 1024;
+/// Twice the deepest reading [`panel_core_stack_peak`] has taken (4,780 B, Audio page).
+const PANEL_CORE_STACK_BYTES: usize = 12 * 1024;
 
 /// What the second core's stack is filled with before it starts, so the deepest word it ever
 /// wrote can be found afterwards. A whole word rather than a byte, because `0xA5` turns up in
@@ -305,7 +306,7 @@ pub fn panel_core_stack_peak() -> Option<(usize, usize)> {
     Some((size - deepest, size))
 }
 
-/// Boots the second core with a 24 KiB stack for the panel's transfers and every blocking
+/// Boots the second core with its own stack for the panel's transfers and every blocking
 /// driver. That memory comes out of the main stack's wall — `.stack` fills what is left — so
 /// this is a trade, not an addition. [`panel_core_stack_peak`] reports the depth it was
 /// chosen for.

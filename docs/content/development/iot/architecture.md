@@ -81,7 +81,7 @@ weight = 10
 | `lib.rs` | 组合根：取剩余能力、建 `DeviceManager`、启动全部应用工作者、等待协调者；`run` 是产品入口，`run_with` 多收一个由调用方装箱的系统，只有 `bench::run` 用它 |
 | `main.rs` | 产品入口：芯片初始化、堆、执行器与 `Wiring`，最后按 `panel-bench` 选 `lib::run` / `bench::run` |
 | `services/` | 产品服务（页面与设备自己的 `nav`/`light`/`settings`），一个服务一个垂直切片：小页一个文件，大页一个目录（`model` / `controller` / `shape` / `view` 按需拆）；`mod.rs` 定义各平台共用的 `Service`（`apply`）与本地平台面的 `LocalPage: Service`（`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`）、持有全部服务的 `Services` 与它那一张分派表（私有 `ServiceId`：`Page(PageId)` 或设备自己的 `Navigation`/`Light`/`Settings`），以及 `PageId → Descriptor` 的唯一映射；`Services::bind` 是输入边界：瞬态页直接问页；否则按钮单击与长按都先交导航（单击翻页、长按回 Menu），页拿不到；手势只问页；无屏的 `Headless` 没有页可翻，单击仍由页接（换灯效）；页自己的输入契约在它的 `tests.rs` 或文件尾，跨页的黄金像素表在 `services/tests.rs` |
-| `services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区，`menu`/`widgets`/`lighting` 用 `TagTable` 反查命中；`headless` 没有 `view`，只绑按钮与灯珠 |
+| `services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs` | 只有一块画布的单文件页：页面类型上的 `view` 直接声明整页；`text` 另持两段独立滚动区，`menu`/`widgets`/`lighting` 用框架发布的 `Layout` 反查命中；`headless` 没有 `view`，只绑按钮与灯珠 |
 | `services/settings.rs` | 设备自己的记录：面板语言 `DeviceState.lang` 与调色板 `DeviceState.theme`，只有页面报 `SettingsIntent` 能写 |
 | `services/audio/{mod,tests}.rs`、`services/speaker/{mod,tests}.rs` | 翻译与绘制都在 `mod.rs`；`AudioState`/`PlaybackState` 这类被多个消费者读的记录留在 `shared/model` |
 | `services/network/` | 手势与控件都在 `controller/`：`mod.rs` 是手势翻译、动作条与命中；`shape.rs` 是列表、键格、动作条与对话框共用的唯一几何（绘制与命中同读它）；`view/` 按带拆（`header` / `content` / `overlay`，词在 `text.rs`），带之间的层序由 `shape::Band` 决定；`NetworkView` 在 `shared/model/network_view/`（快照要能命名它） |

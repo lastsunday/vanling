@@ -12,6 +12,7 @@ impl super::Service for LightService {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         if let BusinessIntent::Light { instance, action } = intent {
             let index = usize::from(DeviceState::light_index(*instance));

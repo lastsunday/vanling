@@ -1,12 +1,14 @@
 //! A page under construction: the tree, the runs it points into, and the slots it paints.
 
+use core::hash::{Hash, Hasher};
+
 use super::canvas::Canvas;
 use super::color::{Color, ColorId};
 use super::geometry::Rect;
 use super::layout::Span;
 use super::layout::{
-    BoxConstraints, FramePrint, NodeId, NodeInfo, NodeKind, RunStyle, ScrollId, ScrollInfo, Source,
-    Style, Tree,
+    BoxConstraints, Fnv, FramePrint, Layout, NodeId, NodeInfo, NodeKind, PAINTS, RunStyle,
+    ScrollId, ScrollInfo, Source, Style, Tree,
 };
 use super::paint;
 use super::screen::Screen;
@@ -15,9 +17,6 @@ use crate::drivers::surface::{DamageRect, FrameDamage};
 /// Bytes of run a single declaration may hold. Enough for a full debug page and two screens of
 /// keys.
 pub const TEXT_BYTES: usize = 2048;
-
-/// Custom leaves a page may declare: one per band or band-sized mark.
-const PAINTS: usize = 8;
 
 /// Spans one declaration may recolour.
 const SPANS: usize = 8;
@@ -220,18 +219,13 @@ impl<'a, 's> Ui<'a, 's> {
     }
 
     /// Declares a leaf the page paints itself: a sweep, a dial, a band. The `slot` is what the
-    /// page's own painter switches on when [`Self::paint`] reaches the leaf.
-    ///
-    /// The page does not say where its pixels changed. A frame repaints the leaf whenever the
-    /// snapshot moved; [`Self::custom_state`] narrows that to the frames the leaf's own picture
-    /// moved.
+    /// page's painter switches on. Without a state it is repainted whenever the snapshot moved.
     pub fn custom(&mut self, style: Style, slot: u8) -> NodeId {
         self.custom_state(style, slot, super::layout::UNKNOWN_PAINT)
     }
 
-    /// The same, with a fingerprint of what the leaf draws. `state` must cover every input of
-    /// the page's drawing for `slot`: a frame whose state and style are unchanged leaves the
-    /// leaf's pixels alone.
+    /// [`Self::custom`] with a fingerprint of what the leaf draws: an unchanged state and style
+    /// leave its pixels alone, so `state` must cover every input of the drawing for `slot`.
     pub fn custom_state(&mut self, style: Style, slot: u8, state: u32) -> NodeId {
         if usize::from(slot) >= PAINTS {
             debug_assert!(
@@ -302,6 +296,11 @@ impl<'a, 's> Ui<'a, 's> {
         self.tree.paint_rect(slot)
     }
 
+    /// The frame's rectangles, kept for the hit test that runs before the next one.
+    pub fn geometry(&self) -> Layout {
+        self.tree.geometry()
+    }
+
     /// Where the scroll box named `area` sits and how far it can travel, as last laid out.
     pub fn scroll_info(&self, area: ScrollId) -> Option<ScrollInfo> {
         self.tree.scroll_info(area)
@@ -329,11 +328,9 @@ impl<'a, 's> Ui<'a, 's> {
     }
 
     /// Lays the declaration out, records its fingerprints in `next`, and draws only what
-    /// `source` says the frame still needs. `extra` names pixels the caller draws outside the
-    /// tree — the debug badge — which are repainted with every partial frame.
-    ///
-    /// The answer is the rectangle set the canvas was narrowed to. The caller ships it to the
-    /// panel; a full answer means every pixel was drawn.
+    /// `source` still needs. `extra` is pixels the caller draws outside the tree (the debug
+    /// badge), repainted with every partial frame. Answers the rectangle set the canvas was
+    /// narrowed to, which the caller ships to the panel.
     pub fn paint_measured(
         &mut self,
         constraints: BoxConstraints,
@@ -460,26 +457,26 @@ impl<'a, 's> Ui<'a, 's> {
     }
 
     fn content(&self, info: &NodeInfo) -> u32 {
-        let seed = info.style.fingerprint();
+        let mut hasher = Fnv::seed(info.style.fingerprint());
         match info.kind {
-            NodeKind::Box => seed,
+            NodeKind::Box => {}
             NodeKind::Text { start, len } => {
-                let mut hash = seed;
-                for &byte in &self.text[usize::from(start)..usize::from(start + len)] {
-                    hash = mix(hash, u32::from(byte));
-                }
+                hasher.write(&self.text[usize::from(start)..usize::from(start + len)]);
                 let end = start + len;
                 for span in &self.spans[..usize::from(self.span_count)] {
                     if span.end > start && span.start < end {
-                        hash = mix(hash, u32::from(span.start));
-                        hash = mix(hash, u32::from(span.end));
-                        hash = mix(hash, span.style.fingerprint());
+                        span.start.hash(&mut hasher);
+                        span.end.hash(&mut hasher);
+                        span.style.fingerprint().hash(&mut hasher);
                     }
                 }
-                hash
             }
-            NodeKind::Paint { slot, state } => mix(mix(seed, u32::from(slot)), state),
+            NodeKind::Paint { slot, state } => {
+                slot.hash(&mut hasher);
+                state.hash(&mut hasher);
+            }
         }
+        hasher.finish() as u32
     }
 
     /// The pixels `prev` and `next` disagree on. A different shape cannot be patched, so it is
@@ -560,7 +557,8 @@ impl<'a, 's> Ui<'a, 's> {
     }
 }
 
-/// One step of the 32-bit FNV-1a every fingerprint uses.
+/// One step of the 32-bit FNV-1a every fingerprint uses. The value is folded whole rather than
+/// byte-wise: the structure walk runs once per node per frame.
 fn mix(seed: u32, value: u32) -> u32 {
     (seed ^ value).wrapping_mul(0x0100_0193)
 }
@@ -572,11 +570,8 @@ mod tests {
     use crate::ui::layout::PX;
     use crate::ui::{DecorationStyle, FontWeight, Length, Overflow, TextAlign};
 
-    /// The declaration lives on the main stack (about 80 KiB on the S3) for the length of one
-    /// page, so it is budgeted separately from that stack's other work. Every page's boxes are
-    /// part of it: the 25-line Wrap window and its one box per line are why the ceiling is
-    /// 13 KiB rather than the 10 KiB the 14-line page needed. The menu's 63-node declaration,
-    /// scroll thumb included, is the fullest page.
+    /// A ceiling on the declaration's own size, not on a stack: `Panel::declare` boxes it. The
+    /// 25-line Wrap page is the fullest, and the menu's 63 nodes the widest.
     #[test]
     fn a_declaration_fits_the_stack_the_panel_core_was_given() {
         let bytes = core::mem::size_of::<Ui<'static, 'static>>();

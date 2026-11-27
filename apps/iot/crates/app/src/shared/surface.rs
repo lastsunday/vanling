@@ -4,7 +4,7 @@
 use crate::shared::snapshot::FrameSnapshot;
 use iot_core::drivers::surface::{DamageRect, FrameDamage};
 use iot_core::ui::panel::{CONTENT_BOTTOM, FOOTER_ROWS, PANEL_COLUMNS, RIGHT};
-use iot_core::ui::{BoxConstraints, Canvas, FramePrint, PX, Rect, Screen, Source, Ui};
+use iot_core::ui::{BoxConstraints, Canvas, FramePrint, Layout, PX, Rect, Screen, Source, Ui};
 
 /// What a page declares: its picture, as the boxes and runs it wants at the screen's size.
 pub type View = for<'a, 's> fn(&FrameSnapshot, &mut Ui<'a, 's>);
@@ -102,30 +102,33 @@ impl<'a> Panel<'a> {
         custom: Custom,
         next: &mut FramePrint,
         source: Source<'_>,
-    ) -> FrameDamage {
+    ) -> (FrameDamage, Layout) {
         let screen = self.screen;
         let mut extra = FrameDamage::NONE;
         if screen.debug {
             extra.add(footer_damage());
         }
-        let damage = {
+        let (damage, layout) = {
             let mut ui = Ui::boxed_with_height(&mut self.canvas, screen, CONTENT_BOTTOM);
             view(snapshot, &mut ui);
             let mut paint = |slot: u8, canvas: &mut Canvas<'_>, rect: Rect| {
                 custom(snapshot, screen, slot, canvas, rect)
             };
-            ui.paint_measured(
+            let damage = ui.paint_measured(
                 BoxConstraints::tight(PANEL_COLUMNS as i32 * PX, CONTENT_BOTTOM as i32 * PX),
                 next,
                 source,
                 extra,
                 &mut paint,
-            )
+            );
+            let mut layout = ui.geometry();
+            layout.set_page(snapshot.page.code());
+            (damage, layout)
         };
         if screen.debug {
             self.draw_fps();
         }
-        damage
+        (damage, layout)
     }
 
     fn draw_fps(&mut self) {

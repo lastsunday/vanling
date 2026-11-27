@@ -191,6 +191,10 @@ impl Renderer for ScreenRenderer {
         &self.topics
     }
 
+    fn layout(&self) -> Option<iot_core::ui::Layout> {
+        self.painter.layout()
+    }
+
     fn flush<'a>(&'a mut self) -> Option<Pin<Box<dyn Future<Output = ()> + 'a>>> {
         self.surface.flush()
     }

@@ -3,10 +3,19 @@
 //! Every geometry comes from the rect the parent hands in; drawing and hit testing share
 //! [`Metrics`], so the row a finger lands on is the row drawn under it.
 
+use core::hash::Hash;
+
 use iot_core::ui::text::format_u16;
-use iot_core::ui::{Canvas, Rect};
+use iot_core::ui::{Canvas, NodeId, Rect, Style, Ui, Widget};
 
 use crate::shared::ui::theme::Theme;
+
+/// The paint slot the page reserves for its inline hour wheel.
+pub const PAINT_SLOT: u8 = 1;
+
+/// The inline wheel's own size: one column wide, three rows at the 44 px cap.
+pub const WIDTH: i16 = 56;
+pub const HEIGHT: i16 = 132;
 
 pub const MIN_ROW_H: i16 = 28;
 pub const MAX_ROW_H: i16 = 44;
@@ -27,6 +36,28 @@ const EASE_MS: i32 = 120;
 
 /// Row units per row: a Q8.8 fixed point so sub-row travel survives without floats.
 const UNIT: i32 = 256;
+
+/// The inline hour wheel as the page declares it; `state` fingerprints the row shown.
+pub struct HourWheel {
+    tag: u16,
+    state: u32,
+}
+
+impl HourWheel {
+    pub const fn new(tag: u16, state: u32) -> Self {
+        Self { tag, state }
+    }
+}
+
+impl Widget for HourWheel {
+    fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        ui.custom_state(
+            Style::new().width(WIDTH).height(HEIGHT).tag(self.tag),
+            PAINT_SLOT,
+            self.state,
+        )
+    }
+}
 
 /// What a wheel shows: any fixed run of labels, or a numeric range with a step and zero pad.
 #[derive(Clone, Copy, Debug)]
@@ -96,11 +127,19 @@ impl WheelView {
         map_index(round_div(self.position, UNIT), self.count, self.wrap)
     }
 
-    /// A fingerprint of the rows this wheel draws. `moving` is the animation, not the picture:
-    /// a frame between two rows is already in `position`.
+    /// A fingerprint of the rows this wheel draws.
     pub fn state(self) -> u32 {
-        let position = self.position as u32;
-        (position.wrapping_mul(31) ^ u32::from(self.count)).wrapping_mul(31) ^ u32::from(self.wrap)
+        iot_core::ui::hash_of(&self)
+    }
+}
+
+/// `moving` is the animation, not the picture: a frame between two rows is already in
+/// `position`.
+impl Hash for WheelView {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        self.position.hash(state);
+        self.count.hash(state);
+        self.wrap.hash(state);
     }
 }
 
@@ -415,6 +454,29 @@ mod tests {
     use super::*;
 
     const BOX: Rect = Rect::new(0, 0, 60, 132);
+
+    #[test]
+    fn the_fingerprint_is_the_rows_not_the_animation() {
+        let rest = WheelView {
+            position: 5 * 256,
+            count: 24,
+            wrap: true,
+            moving: false,
+        };
+        let moving = WheelView {
+            moving: true,
+            ..rest
+        };
+        assert_eq!(rest.state(), moving.state());
+        assert_ne!(
+            rest.state(),
+            WheelView {
+                position: 6 * 256,
+                ..rest
+            }
+            .state()
+        );
+    }
 
     fn settle(wheel: &mut WheelState) -> u16 {
         for _ in 0..1_000 {

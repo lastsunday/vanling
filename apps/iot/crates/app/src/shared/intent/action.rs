@@ -1,6 +1,8 @@
 //! The gallery's controls, numbered once: the tag a page draws is the verb it reports, so the
 //! view, the hit test and the handler cannot drift apart.
 
+use crate::shared::ui::tag::Tag;
+
 /// One control on the Widgets page. The discriminant is the wire tag.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
@@ -22,8 +24,8 @@ pub enum WidgetsAction {
     Tile,
 }
 
-impl WidgetsAction {
-    pub const ALL: &'static [Self] = &[
+impl Tag for WidgetsAction {
+    const ALL: &'static [Self] = &[
         Self::Filled,
         Self::Outlined,
         Self::Bare,
@@ -41,12 +43,8 @@ impl WidgetsAction {
         Self::Tile,
     ];
 
-    pub const fn tag(self) -> u16 {
+    fn tag(self) -> u16 {
         self as u16
-    }
-
-    pub fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.iter().copied().find(|action| action.tag() == tag)
     }
 }
 

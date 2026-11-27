@@ -13,7 +13,7 @@ use iot_core::drivers::camera::CameraSnapshot;
 use iot_core::drivers::surface::{
     DamageRect, FrameDamage, ScreenContext, ScreenPainter, ScreenTarget,
 };
-use iot_core::ui::{Canvas, FramePrint, Screen, Source, ThemeId};
+use iot_core::ui::{Canvas, FramePrint, Layout, Screen, Source, ThemeId};
 
 pub struct AppPainter {
     overlay: bool,
@@ -23,6 +23,8 @@ pub struct AppPainter {
     print: Option<FramePrint>,
     /// The pixels the panel has to receive for the frame in the buffer.
     damage: FrameDamage,
+    /// The rectangles that frame declared, for the hit test before the next paint.
+    layout: Layout,
 }
 
 impl AppPainter {
@@ -32,6 +34,7 @@ impl AppPainter {
             last: None,
             print: None,
             damage: FrameDamage::FULL,
+            layout: Layout::EMPTY,
         }
     }
 
@@ -100,16 +103,21 @@ impl ScreenPainter for AppPainter {
         };
         let mut next = FramePrint::new();
         let mut panel = self.panel(target, context, frame.theme);
-        let damage = panel.view_measured(
+        let (damage, layout) = panel.view_measured(
             frame,
             descriptor(frame.page).view(),
             descriptor(frame.page).custom(),
             &mut next,
             source,
         );
+        self.layout = layout;
         self.damage = ship.unwrap_or(damage);
         self.print = Some(next);
         self.last = Some(*frame);
+    }
+
+    fn layout(&self) -> Option<Layout> {
+        Some(self.layout)
     }
 
     fn paint_camera(
@@ -128,6 +136,7 @@ impl ScreenPainter for AppPainter {
         panel.declare(frame, no_custom, |snapshot, ui| {
             CameraPage::view_frame(snapshot, ui, readout)
         });
+        self.layout = Layout::EMPTY;
         // The camera wrote its own pixels into this buffer: the next page paint cannot start
         // from them.
         self.reset();
@@ -148,6 +157,7 @@ impl ScreenPainter for AppPainter {
         self.last = None;
         self.print = None;
         self.damage = FrameDamage::FULL;
+        self.layout = Layout::EMPTY;
     }
 }
 

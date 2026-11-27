@@ -2,6 +2,7 @@ pub(crate) use crate::services::Services;
 pub(crate) use crate::shared::intent::{
     BusinessIntent, InputIntent, Intent, LightAction, NavigationIntent,
 };
+pub(crate) use crate::shared::snapshot::FrameSnapshot;
 pub(crate) use crate::state::*;
 /// Every page the button can reach: the table without its transients, in the button's order.
 pub(crate) fn cycled() -> impl Iterator<Item = PageId> {
@@ -17,7 +18,7 @@ pub(crate) fn translate(
     state: &DeviceState,
     services: &Services,
 ) -> Option<BusinessIntent> {
-    services.bind(op, state)
+    services.bind(op, state, &iot_core::ui::Layout::EMPTY)
 }
 
 pub(crate) use iot_core::demand::EffectiveDemand;
@@ -155,7 +156,31 @@ pub(crate) fn press(id: u8, x: u16, y: u16) -> InputIntent {
 }
 
 pub(crate) fn feed_input(manager: &mut DeviceManager, operation: InputIntent) {
-    manager.apply_intent(Intent::Input(operation));
+    let layout = layout_of(manager);
+    manager.apply_intent(Intent::Input(operation), &layout);
+}
+
+/// The geometry the page on screen declares for the manager's own state, as a paint would
+/// have handed it to the next input.
+fn layout_of(manager: &DeviceManager) -> iot_core::ui::Layout {
+    let state = manager.state();
+    let id = state.page();
+    let snapshot = FrameSnapshot {
+        page: id,
+        lang: state.lang,
+        theme: state.theme,
+        backed: state.backed,
+        glow: state.glow,
+        backlight: state.backlight,
+        pages: manager.services().snapshot(),
+        ..FrameSnapshot::default()
+    };
+    let mut ui = crate::shared::surface::headless();
+    crate::services::descriptor(id).view()(&snapshot, &mut ui);
+    crate::shared::surface::finish(&mut ui);
+    let mut layout = ui.geometry();
+    layout.set_page(id.code());
+    layout
 }
 
 pub(crate) fn landed(mut manager: DeviceManager) -> DeviceManager {

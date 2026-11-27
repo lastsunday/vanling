@@ -3,8 +3,8 @@ title = "Hardware Constraint Record"
 weight = 20
 sort_by = "weight"
 [extra]
-source_file_hash = "f40a24f7ef0f13d210fe544c99ec85ae01d053d3"
-translated_at = "2026-11-26T15:05:00Z"
+source_file_hash = "9f02217320c2611aa676f735a4f58ee6745accd6"
+translated_at = "2026-11-27T04:30:00Z"
 +++
 
 <!-- doc-audience: ai -->
@@ -367,6 +367,24 @@ Validation error for crate esp-hal, option data-cache-size: Expected one of ["32
 ```
 
 `[measured]` **The second core is not free**: `Stack<N>` is a DRAM static (the probes use 8 KiB / 16 KiB), so it takes the same amount straight out of the main-stack wall; and `esp_rtos::start_second_core` takes `FROM_CPU_INTR1` by signature, which the product's `Priority2` speaker feed executor used to hold (`start_feed_executor(feed_intr)`). Using the second core means moving the feed to `FROM_CPU_INTR2` first and paying for the cross-core plumbing — an architecture change, not a tuning knob; the panel transfer's price and payoff are in "Audio repaint step doubled + panel transfer moved to the second core" above (`.text` +7,016 B, `.bss` +16,760 B, main stack −16,792 B).
+
+### Second-core stack 24 → 12 KiB, guard 64 → 56 KiB: headroom 16,312 → 37,048 B (`[measured]`, 2026-11-27)
+
+`[measured]` Both numbers moved together; the reading is still `nm` on the ELF:
+
+| Quantity | Before | After |
+| --- | --- | --- |
+| `PANEL_CORE_STACK` (`.bss`, `nm -S`) | 24,592 B (`0x6010`) | 12,304 B (`0x3010`) |
+| `_stack_end_cpu0` | `0x3fcd5758` | `0x3fcd2658` |
+| `_stack_start_cpu0 − _stack_end_cpu0` | 81,848 B | **94,392 B** |
+| `ESP_HAL_CONFIG_ENSURE_MAIN_STACK_MINIMUM` | 65,536 | **57,344** |
+| Headroom (region − floor) | 16,312 B | **37,048 B** |
+
+`[measured]` Shrinking the stack has a reading behind it: `[STACK] core 1 peak 4780 B of 24576 B` (Audio page, capture + panel + playback all on), so 12 KiB is still 2.5×; `Ui` has long been boxed on the heap by `Ui::boxed_with_height` and does not use this stack.
+
+`[measured]` Lowering the guard **moves the line, it does not create memory**: the region is the same DRAM, and statics may now push the stack down to 56 KiB before the link fails. The basis is the main-stack peak of 42,392 B (Ambient) / 43,224 B (Camera); 56 KiB is still 14,120 B above the deepest reading. The price is explicit: another 13 KB of growth will no longer be caught by the assertion.
+
+`[measured]` The round also rewrote the `.cargo/config.toml` comment from "64 KiB" to a reading-bound statement, and corrected the `Ui` size test's comment (it claimed the declaration lives on the main stack, contradicting `boxed_with_height`).
 
 ---
 

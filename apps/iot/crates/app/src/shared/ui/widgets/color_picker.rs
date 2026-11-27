@@ -2,7 +2,7 @@
 //! drawn from the same sampling `point_at` inverts, so a finger lands on the colour it sees.
 
 use iot_core::light::{Rgb, hsv_to_rgb};
-use iot_core::ui::{Canvas, Color, Rect};
+use iot_core::ui::{Canvas, Color, NodeId, Rect, Style, Ui, Widget};
 
 use crate::shared::ui::theme::Theme;
 
@@ -13,6 +13,31 @@ pub const GAP: i16 = 8;
 pub const BLOCKS: i16 = 12;
 pub const WIDTH: i16 = SQUARE + GAP + STRIP + GAP + SWATCH;
 pub const HEIGHT: i16 = SQUARE;
+
+/// The paint slot the page reserves for the picker.
+pub const PAINT_SLOT: u8 = 3;
+
+/// The picker as the page declares it; `state` fingerprints the colour shown.
+pub struct Swatch {
+    tag: u16,
+    state: u32,
+}
+
+impl Swatch {
+    pub const fn new(tag: u16, state: u32) -> Self {
+        Self { tag, state }
+    }
+}
+
+impl Widget for Swatch {
+    fn build(self, ui: &mut Ui<'_, '_>) -> NodeId {
+        ui.custom_state(
+            Style::new().width(WIDTH).height(HEIGHT).tag(self.tag),
+            PAINT_SLOT,
+            self.state,
+        )
+    }
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Picker {

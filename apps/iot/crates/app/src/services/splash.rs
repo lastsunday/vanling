@@ -15,7 +15,12 @@ pub struct SplashPage;
 impl super::Service for SplashPage {}
 
 impl super::LocalPage for SplashPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         match op.event {
             InputEvent::Button(ButtonEvent::LongPress) => {
                 Some(BusinessIntent::Navigation(NavigationIntent::RequestSetup))

@@ -15,7 +15,12 @@ pub struct HeadlessPage;
 impl super::Service for HeadlessPage {}
 
 impl super::LocalPage for HeadlessPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         // No page to turn here, so the click stays on the lamp.
         match op.event {
             InputEvent::Button(ButtonEvent::Click)

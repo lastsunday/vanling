@@ -69,10 +69,15 @@ impl<'a> Schedule<'a> {
     /// (mute, then unmute) must not collapse into the last one. A leftover command means the
     /// boundary was registered without a system that takes it. The ring's refusal count is
     /// folded first, so the snapshot moves with the frame it belongs to.
-    pub(crate) fn process_intents(&mut self, bus: &IntentBus, manager: &mut DeviceManager) {
+    pub(crate) fn process_intents(
+        &mut self,
+        bus: &IntentBus,
+        manager: &mut DeviceManager,
+        layout: &iot_core::ui::Layout,
+    ) {
         manager.observe_dropped(bus.dropped_count());
         while let Ok(intent) = bus.try_receive() {
-            let mut command: Option<Command> = manager.apply_intent(intent);
+            let mut command: Option<Command> = manager.apply_intent(intent, layout);
             self.deliver(&mut command);
             for step in &mut self.steps {
                 step.intent(manager);
@@ -177,7 +182,7 @@ mod tests {
         let _ = bus.try_send(Intent::Business(BusinessIntent::Navigation(
             NavigationIntent::NextPage,
         )));
-        schedule.process_intents(&bus, &mut manager);
+        schedule.process_intents(&bus, &mut manager, &iot_core::ui::Layout::EMPTY);
         schedule.tick(&mut manager, 0);
 
         assert_eq!(
@@ -205,7 +210,7 @@ mod tests {
             instance: 0,
             action: LightAction::Cycle,
         }));
-        schedule.process_intents(&bus, &mut manager);
+        schedule.process_intents(&bus, &mut manager, &iot_core::ui::Layout::EMPTY);
 
         let after = manager.state_ref().lights[0];
         assert_ne!(after, before);
@@ -241,7 +246,7 @@ mod tests {
         ))));
         let _ = bus.try_send(leave());
         let _ = bus.try_send(leave());
-        schedule.process_intents(&bus, &mut manager);
+        schedule.process_intents(&bus, &mut manager, &iot_core::ui::Layout::EMPTY);
 
         assert_eq!(network.commands.try_receive(), Some(NetworkCommand::Leave));
         assert_eq!(network.commands.try_receive(), Some(NetworkCommand::Leave));
@@ -274,7 +279,7 @@ mod tests {
             "the full ring refuses the next one"
         );
 
-        schedule.process_intents(&bus, &mut manager);
+        schedule.process_intents(&bus, &mut manager, &iot_core::ui::Layout::EMPTY);
 
         assert_eq!(
             manager.state_ref().dropped_intents,
@@ -292,6 +297,6 @@ mod tests {
         let mut schedule = Schedule::new();
 
         let _ = bus.try_send(scan());
-        schedule.process_intents(&bus, &mut manager);
+        schedule.process_intents(&bus, &mut manager, &iot_core::ui::Layout::EMPTY);
     }
 }

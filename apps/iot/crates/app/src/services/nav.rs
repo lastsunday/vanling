@@ -33,6 +33,7 @@ impl super::Service for NavService {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Navigation(intent) = intent else {
             return (None, Effects::default());

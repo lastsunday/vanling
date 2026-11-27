@@ -1472,7 +1472,7 @@ mod lamp {
             translate(&hold, &manager.state(), &Services::default()),
             Some(BusinessIntent::Navigation(NavigationIntent::RequestSetup))
         );
-        manager.apply_intent(Intent::Input(hold));
+        manager.apply_intent(Intent::Input(hold), &iot_core::ui::Layout::EMPTY);
         assert_eq!(
             manager.apply_business(BusinessIntent::Navigation(NavigationIntent::SplashOver)),
             Some(crate::shared::model::Command::Network(

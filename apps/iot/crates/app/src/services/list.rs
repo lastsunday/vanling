@@ -336,6 +336,7 @@ impl super::Service for ListPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::List(intent) = intent else {
             return (None, Effects::default());
@@ -358,7 +359,12 @@ impl super::Service for ListPage {
 }
 
 impl super::LocalPage for ListPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         let list = |intent| Some(BusinessIntent::List(intent));
         match op.event {
             InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) => list(ListIntent::Tap { x, y }),

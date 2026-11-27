@@ -13,6 +13,7 @@ impl super::Service for SettingsService {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         match intent {
             BusinessIntent::Settings(SettingsIntent::SetLang { lang }) => state.lang = *lang,
@@ -42,6 +43,7 @@ mod tests {
                 window_ms: 180,
             }),
             &mut state,
+            &iot_core::ui::Layout::EMPTY,
         );
         assert_eq!(clicks().pattern(), ClickPattern::Triple);
         assert_eq!(clicks().window_ms(), 180);

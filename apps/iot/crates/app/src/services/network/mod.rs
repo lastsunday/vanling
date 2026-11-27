@@ -28,6 +28,7 @@ impl super::Service for NetworkPage {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         match intent {
             BusinessIntent::Link(intent) => {
@@ -50,7 +51,12 @@ impl super::Service for NetworkPage {
 }
 
 impl super::LocalPage for NetworkPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         controller::bind(op, state, self.draft)
     }
 

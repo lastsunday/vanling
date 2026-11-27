@@ -3,7 +3,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent};
 use iot_core::ui::panel::PANEL_COLUMNS;
-use iot_core::ui::{ScrollId, Style, Ui};
+use iot_core::ui::{Layout, ScrollId, Style, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, GalleryIntent, InputIntent};
@@ -13,7 +13,7 @@ use crate::shared::route::PageId;
 use crate::shared::snapshot::{FeedbackSnapshot, FrameSnapshot, PageSnapshot, ScrollShift};
 use crate::shared::surface::{finish, headless};
 use crate::shared::ui::scroll::{BAR, ScrollConfig};
-use crate::shared::ui::tag::TagTable;
+use crate::shared::ui::tag::Tag;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{Banner, Button, LoadingOverlay, Skeleton, Toast};
 
@@ -39,22 +39,17 @@ enum Action {
     Overlay,
 }
 
-impl Action {
-    const ALL: [Self; 4] = [Self::Banner, Self::Toast, Self::Skeleton, Self::Overlay];
+impl Tag for Action {
+    const ALL: &'static [Self] = &[Self::Banner, Self::Toast, Self::Skeleton, Self::Overlay];
 
-    const fn tag(self) -> u16 {
+    fn tag(self) -> u16 {
         self as u16
-    }
-
-    fn from_tag(tag: u16) -> Option<Self> {
-        Self::ALL.into_iter().find(|action| action.tag() == tag)
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FeedbackPage {
     scroll: Scroller,
-    tags: TagTable<{ Action::ALL.len() }>,
     values: FeedbackSnapshot,
 }
 
@@ -67,7 +62,6 @@ impl Default for FeedbackPage {
         scroll.measure(&ui, AREA, SCROLL);
         Self {
             scroll,
-            tags: TagTable::measure(&ui),
             values: FeedbackSnapshot {
                 skeleton: true,
                 ..FeedbackSnapshot::default()
@@ -77,9 +71,9 @@ impl Default for FeedbackPage {
 }
 
 impl FeedbackPage {
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
         self.scroll
-            .tag_at(|x, y, offset| self.tags.at(x, y, offset), x, y)
+            .tag_at(|x, y| layout.at(x, y).unwrap_or(0), x, y)
     }
 
     fn snapshot(&self) -> FeedbackSnapshot {
@@ -107,6 +101,7 @@ impl super::Service for FeedbackPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Gallery { wire, intent } = intent else {
             return (None, Effects::default());
@@ -125,9 +120,14 @@ impl super::Service for FeedbackPage {
 }
 
 impl super::LocalPage for FeedbackPage {
-    fn bind(&self, op: &InputIntent, _state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        _state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         if let InputEvent::Gesture(GestureEvent::Tap { x, y, .. }) = op.event
-            && let Some(action) = Action::from_tag(self.tag_at(i32::from(x), i32::from(y)))
+            && let Some(action) = Action::from_tag(self.tag_at(layout, i32::from(x), i32::from(y)))
         {
             return Some(BusinessIntent::Gallery {
                 wire: PageId::Feedback.code(),
@@ -137,7 +137,7 @@ impl super::LocalPage for FeedbackPage {
         self.scroll.bind(
             op,
             PageId::Feedback.code(),
-            |x, y| self.tag_at(x, y),
+            |x, y| self.tag_at(layout, x, y),
             |_| false,
         )
     }
@@ -259,18 +259,20 @@ mod tests {
     use crate::services::{LocalPage, Service};
     use crate::shared::i18n::Lang;
     use alloc::vec::Vec;
-    use iot_core::ui::PX;
     use iot_core::ui::panel::CONTENT_BOTTOM;
+    use iot_core::ui::{Layout, PX};
+
+    fn layout(page: &FeedbackPage) -> Layout {
+        crate::services::layout_of(page, PageId::Feedback)
+    }
 
     fn tap(page: &mut FeedbackPage, action: Action) {
         let mut state = DeviceState::default();
-        page.apply(
-            &BusinessIntent::Gallery {
-                wire: PageId::Feedback.code(),
-                intent: GalleryIntent::Tap { tag: action.tag() },
-            },
-            &mut state,
-        );
+        let intent = BusinessIntent::Gallery {
+            wire: PageId::Feedback.code(),
+            intent: GalleryIntent::Tap { tag: action.tag() },
+        };
+        page.apply(&intent, &mut state, &layout(page));
     }
 
     #[test]
@@ -310,7 +312,7 @@ mod tests {
     #[test]
     fn every_control_is_drawn_once() {
         let page = FeedbackPage::default();
-        let drawn: Vec<u16> = page.tags.iter().map(|(tag, _)| tag).collect();
+        let drawn: Vec<u16> = layout(&page).tags().map(|(tag, _)| tag).collect();
         let expected: Vec<u16> = Action::ALL.iter().map(|action| action.tag()).collect();
         assert_eq!(drawn, expected);
     }
@@ -346,13 +348,15 @@ mod tests {
     fn the_overlay_is_a_touch_target_while_it_is_up() {
         let mut page = FeedbackPage::default();
         tap(&mut page, Action::Overlay);
-        let rect = page.tags.rect(Action::Overlay.tag()).expect("the box");
         let area = page.scroll.area();
         let max = i32::from(area.max());
+        let rect = layout(&page).rect(Action::Overlay.tag()).expect("the box");
         let target = (rect.y + rect.h / 2 - (area.rect.y + area.rect.h / 2)).clamp(0, max);
         page.scroll.park(i16::try_from(target).unwrap_or(0));
+        let rect = layout(&page).rect(Action::Overlay.tag()).expect("the box");
         let x = u16::try_from(rect.x + rect.w / 2).unwrap();
-        let y = u16::try_from(rect.y + rect.h / 2 - target).unwrap();
+        let y = u16::try_from(rect.y + rect.h / 2).unwrap();
+        let layout = layout(&page);
         let intent = page
             .bind(
                 &InputIntent {
@@ -366,10 +370,11 @@ mod tests {
                     }),
                 },
                 &DeviceState::default(),
+                &layout,
             )
             .expect("the overlay takes the tap");
         let mut state = DeviceState::default();
-        page.apply(&intent, &mut state);
+        page.apply(&intent, &mut state, &layout);
         assert!(!page.values.overlay);
     }
 

@@ -2,7 +2,7 @@
 
 use iot_core::drivers::input::{GestureEvent, InputEvent, SwipeDirection};
 use iot_core::ui::panel::TOUCH_MIN;
-use iot_core::ui::{Length, Rect, ScrollId, Style, ThemeId, Ui};
+use iot_core::ui::{Layout, Length, Rect, ScrollId, Style, ThemeId, Ui};
 
 use crate::shared::i18n::{Lang, Msg};
 use crate::shared::intent::{BusinessIntent, InputIntent, MenuIntent, SettingsIntent};
@@ -17,7 +17,6 @@ use crate::shared::ui::scroll::{
     BAR, DRAG_SLOP, Drag, Press, STEP_LINES, ScrollConfig, ScrollState, fling_speed, lift,
 };
 use crate::shared::ui::state::State;
-use crate::shared::ui::tag::TagTable;
 use crate::shared::ui::theme::Theme;
 use crate::shared::ui::widgets::{Button, Chip};
 
@@ -67,6 +66,7 @@ const SECTIONS: [Section; 3] = [
     },
 ];
 
+#[cfg(test)]
 const COUNT: usize = {
     let mut count = 0;
     let mut index = 0;
@@ -82,7 +82,6 @@ const TAG_LANG_EN: u16 = 100;
 const TAG_LANG_ZH: u16 = 101;
 const TAG_THEME_DARK: u16 = 102;
 const TAG_THEME_LIGHT: u16 = 103;
-const TAGS: usize = COUNT + 4;
 
 const SCROLL: ScrollConfig = ScrollConfig {
     bounce: true,
@@ -98,7 +97,6 @@ pub struct MenuPage {
     scroll: ScrollState<1>,
     drag: Option<Drag>,
     press: Option<Press>,
-    tags: TagTable<TAGS>,
 }
 
 impl Default for MenuPage {
@@ -112,7 +110,6 @@ impl Default for MenuPage {
             scroll,
             drag: None,
             press: None,
-            tags: TagTable::measure(&ui),
         }
     }
 }
@@ -129,12 +126,11 @@ impl MenuPage {
 
     /// The point at the centre of a listed page's button.
     #[cfg(test)]
-    pub(crate) fn button_centre(&self, page: PageId) -> Option<(u16, u16)> {
-        let rect = self.tags.rect(page.code() as u16 + 1)?;
-        let offset = i32::from(self.scroll.areas()[0].offset);
+    pub(crate) fn button_centre(&self, layout: &Layout, page: PageId) -> Option<(u16, u16)> {
+        let rect = layout.rect(page.code() as u16 + 1)?;
         Some((
             u16::try_from(rect.x + rect.w / 2).ok()?,
-            u16::try_from(rect.y + rect.h / 2 - offset).ok()?,
+            u16::try_from(rect.y + rect.h / 2).ok()?,
         ))
     }
 
@@ -160,8 +156,8 @@ impl MenuPage {
     }
 
     /// The tag of the button or chip a panel point lands on; zero on a gap.
-    fn tag_at(&self, x: i32, y: i32) -> u16 {
-        for (tag, rect) in self.tags.iter().filter(|(tag, _)| *tag >= TAG_LANG_EN) {
+    fn tag_at(&self, layout: &Layout, x: i32, y: i32) -> u16 {
+        for (tag, rect) in layout.tags().filter(|(tag, _)| *tag >= TAG_LANG_EN) {
             if rect.contains(x, y) {
                 return tag;
             }
@@ -170,7 +166,7 @@ impl MenuPage {
         if !area.rect.contains(x, y) {
             return 0;
         }
-        self.tags.at(x, y, area.offset)
+        layout.at(x, y).unwrap_or(0)
     }
 }
 
@@ -179,6 +175,7 @@ impl super::Service for MenuPage {
         &mut self,
         intent: &BusinessIntent,
         _state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         let BusinessIntent::Menu(intent) = intent else {
             return (None, Effects::default());
@@ -240,7 +237,12 @@ impl super::Service for MenuPage {
 }
 
 impl super::LocalPage for MenuPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        layout: &Layout,
+    ) -> Option<BusinessIntent> {
         let tracked = self.drag.as_ref().map(|drag| drag.area);
         let area = |x: u16, y: u16| self.scroll.area_at(i32::from(x), i32::from(y));
         match op.event {
@@ -256,7 +258,7 @@ impl super::LocalPage for MenuPage {
                         at_ms: Some(at_ms),
                     }));
                 }
-                let tag = self.tag_at(i32::from(x), i32::from(y));
+                let tag = self.tag_at(layout, i32::from(x), i32::from(y));
                 if let Some(lang) = match tag {
                     TAG_LANG_EN => Some(Lang::En),
                     TAG_LANG_ZH => Some(Lang::ZhHans),
@@ -278,7 +280,7 @@ impl super::LocalPage for MenuPage {
                     }))
             }
             InputEvent::Gesture(GestureEvent::Press { id, x, y }) => {
-                let tag = self.tag_at(i32::from(x), i32::from(y));
+                let tag = self.tag_at(layout, i32::from(x), i32::from(y));
                 if tag == 0 && area(x, y).is_none() {
                     return None;
                 }
@@ -502,7 +504,11 @@ mod tests {
     use iot_core::drivers::board::Backed;
     use iot_core::drivers::motion::MotionCapabilities;
     use iot_core::ui::panel::{CONTENT_BOTTOM, PANEL_COLUMNS};
-    use iot_core::ui::{PX, Screen};
+    use iot_core::ui::{Layout, PX, Screen};
+
+    fn layout(page: &MenuPage) -> Layout {
+        crate::services::layout_of(page, PageId::Menu)
+    }
 
     const ALL: Backed = Backed {
         motion: Some(MotionCapabilities::EMPTY),
@@ -530,7 +536,7 @@ mod tests {
     }
 
     fn page_at(page: &MenuPage, x: i32, y: i32) -> Option<PageId> {
-        PageId::from_code(u8::try_from(page.tag_at(x, y).checked_sub(1)?).ok()?)
+        PageId::from_code(u8::try_from(page.tag_at(&layout(page), x, y).checked_sub(1)?).ok()?)
     }
 
     /// Brings `content_y` into the middle of the box, so a row below the fold can be touched.
@@ -582,12 +588,14 @@ mod tests {
     #[test]
     fn a_language_chip_asks_for_its_language() {
         let page = MenuPage::default();
+        let layout = layout(&page);
         for (tag, lang) in [(TAG_LANG_EN, Lang::En), (TAG_LANG_ZH, Lang::ZhHans)] {
-            let rect = page.tags.rect(tag).expect("the chip is laid out");
+            let rect = layout.rect(tag).expect("the chip is laid out");
             assert_eq!(
                 page.bind(
                     &tap((rect.x + 2) as u16, (rect.y + 2) as u16),
-                    &DeviceState::default()
+                    &DeviceState::default(),
+                    &layout
                 ),
                 Some(BusinessIntent::Settings(SettingsIntent::SetLang { lang }))
             );
@@ -597,15 +605,17 @@ mod tests {
     #[test]
     fn a_theme_chip_asks_for_its_theme() {
         let page = MenuPage::default();
+        let layout = layout(&page);
         for (tag, theme) in [
             (TAG_THEME_DARK, ThemeId::Dark),
             (TAG_THEME_LIGHT, ThemeId::Light),
         ] {
-            let rect = page.tags.rect(tag).expect("the chip is laid out");
+            let rect = layout.rect(tag).expect("the chip is laid out");
             assert_eq!(
                 page.bind(
                     &tap((rect.x + 2) as u16, (rect.y + 2) as u16),
-                    &DeviceState::default()
+                    &DeviceState::default(),
+                    &layout
                 ),
                 Some(BusinessIntent::Settings(SettingsIntent::SetTheme { theme }))
             );
@@ -615,8 +625,9 @@ mod tests {
     #[test]
     fn the_settings_chips_are_touch_sized() {
         let page = MenuPage::default();
+        let layout = layout(&page);
         for tag in [TAG_LANG_EN, TAG_LANG_ZH, TAG_THEME_DARK, TAG_THEME_LIGHT] {
-            let rect = page.tags.rect(tag).expect("the chip is laid out");
+            let rect = layout.rect(tag).expect("the chip is laid out");
             assert!(
                 rect.w >= TOUCH_MIN as i32 && rect.h >= TOUCH_MIN as i32,
                 "chip {tag} is {}x{}",
@@ -630,12 +641,14 @@ mod tests {
     fn a_button_centre_maps_to_the_page_drawn_there() {
         let mut page = MenuPage::default();
         for expected in entries() {
-            let rect = page
-                .tags
+            let offset = i32::from(page.scroll.areas()[0].offset);
+            let rect = layout(&page)
                 .rect(expected.code() as u16 + 1)
                 .expect("the page is listed");
-            scroll_to(&mut page, rect.y + rect.h / 2);
-            let (x, y) = page.button_centre(expected).expect("the page is listed");
+            scroll_to(&mut page, rect.y + rect.h / 2 + offset);
+            let (x, y) = page
+                .button_centre(&layout(&page), expected)
+                .expect("the page is listed");
             assert_eq!(page_at(&page, i32::from(x), i32::from(y)), Some(expected));
         }
     }
@@ -649,23 +662,21 @@ mod tests {
         for section in &SECTIONS {
             for row in section.pages.chunks(COLUMNS) {
                 let first = row[0];
-                let rect = page
-                    .tags
+                let offset = i32::from(page.scroll.areas()[0].offset);
+                let rect = layout(&page)
                     .rect(first.code() as u16 + 1)
                     .expect("the page is listed");
-                scroll_to(&mut page, rect.y + rect.h / 2);
-                let offset = i32::from(page.scroll.areas()[0].offset);
+                scroll_to(&mut page, rect.y + rect.h / 2 + offset);
 
                 for (index, &expected) in row.iter().enumerate() {
-                    let rect = page
-                        .tags
+                    let rect = layout(&page)
                         .rect(expected.code() as u16 + 1)
                         .expect("the page is listed");
                     let x = rect.x + rect.w / 2;
-                    let y = rect.y + rect.h / 2 - offset;
+                    let y = rect.y + rect.h / 2;
                     assert_eq!(page_at(&page, x, y), Some(expected), "{expected:?}");
                     assert_eq!(
-                        page_at(&page, x, rect.bottom() - offset),
+                        page_at(&page, x, rect.bottom()),
                         None,
                         "the row pitch leaves air under {expected:?}"
                     );
@@ -679,11 +690,10 @@ mod tests {
                 }
 
                 let last = row[row.len() - 1];
-                let rect = page
-                    .tags
+                let rect = layout(&page)
                     .rect(last.code() as u16 + 1)
                     .expect("the page is listed");
-                let y = rect.y + rect.h / 2 - offset;
+                let y = rect.y + rect.h / 2;
                 for step in 1..=COLUMNS - row.len() {
                     let x = rect.right()
                         + i32::from(GAP)
@@ -702,7 +712,8 @@ mod tests {
 
     fn apply(page: &mut MenuPage, intent: BusinessIntent) {
         let mut state = DeviceState::default();
-        page.apply(&intent, &mut state);
+        let layout = layout(page);
+        page.apply(&intent, &mut state, &layout);
     }
 
     #[test]
@@ -712,13 +723,19 @@ mod tests {
             backed: ALL,
             ..DeviceState::default()
         };
-        let (x, y) = page.button_centre(PageId::Env).expect("`Env` is listed");
+        let (x, y) = page
+            .button_centre(&layout(&page), PageId::Env)
+            .expect("`Env` is listed");
         let press = page
-            .bind(&op(GestureEvent::Press { id: 0, x, y }), &wired)
+            .bind(
+                &op(GestureEvent::Press { id: 0, x, y }),
+                &wired,
+                &layout(&page),
+            )
             .expect("the press lands");
         apply(&mut page, press);
         assert_eq!(
-            page.bind(&tap(x, y), &wired),
+            page.bind(&tap(x, y), &wired, &layout(&page)),
             Some(BusinessIntent::Menu(MenuIntent::Choose {
                 page: PageId::Env.code()
             })),
@@ -729,16 +746,20 @@ mod tests {
     #[test]
     fn a_page_the_board_cannot_back_is_listed_but_does_not_navigate() {
         let page = MenuPage::default();
+        let layout = layout(&page);
         let (x, y) = page
-            .button_centre(PageId::Camera)
+            .button_centre(&layout, PageId::Camera)
             .expect("`Camera` is listed");
-        assert_eq!(page.bind(&tap(x, y), &DeviceState::default()), None);
+        assert_eq!(
+            page.bind(&tap(x, y), &DeviceState::default(), &layout),
+            None
+        );
         let wired = DeviceState {
             backed: ALL,
             ..DeviceState::default()
         };
         assert_eq!(
-            page.bind(&tap(x, y), &wired),
+            page.bind(&tap(x, y), &wired, &layout),
             Some(BusinessIntent::Menu(MenuIntent::Choose {
                 page: PageId::Camera.code()
             }))

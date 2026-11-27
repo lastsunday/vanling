@@ -24,6 +24,7 @@ impl super::Service for AudioPage {
         &mut self,
         intent: &BusinessIntent,
         state: &mut DeviceState,
+        _layout: &iot_core::ui::Layout,
     ) -> (Option<Command>, Effects) {
         if let BusinessIntent::Audio(intent) = intent {
             state.audio.apply(*intent, state.backed.audio);
@@ -33,7 +34,12 @@ impl super::Service for AudioPage {
 }
 
 impl super::LocalPage for AudioPage {
-    fn bind(&self, op: &InputIntent, state: &DeviceState) -> Option<BusinessIntent> {
+    fn bind(
+        &self,
+        op: &InputIntent,
+        state: &DeviceState,
+        _layout: &iot_core::ui::Layout,
+    ) -> Option<BusinessIntent> {
         match op.event {
             InputEvent::Gesture(GestureEvent::Tap { .. }) => {
                 let intent = if state.audio.phase == AudioPhase::Recording {

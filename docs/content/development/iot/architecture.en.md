@@ -2,8 +2,8 @@
 title = "Architecture"
 weight = 10
 [extra]
-source_file_hash = "0dfa21deb67c18fcd9f591a1a8829707fecd4908"
-translated_at = "2026-11-26T09:55:45Z"
+source_file_hash = "bf0b6728e42bbb8daf5e5126c32c0873cbbfc535"
+translated_at = "2026-11-27T08:00:00Z"
 +++
 
 # Architecture
@@ -85,7 +85,7 @@ A page is where the device is, not a picture on a screen: `Route.needs` asks onl
 | `lib.rs` | composition root: take the remaining capabilities, build `DeviceManager`, start every app worker, await the coordinator; `run` is the product entry, `run_with` takes one caller-boxed system and only `bench::run` uses it |
 | `main.rs` | the product entry: chip init, heap, executors and `Wiring`, then `lib::run` or `bench::run` by feature |
 | `services/` | the product's services (pages plus the device's own `nav`/`light`/`settings`), one vertical slice each: a small page is one file, a large one a directory (`model` / `controller` / `shape` / `view` as needed); `mod.rs` defines the `Service` every operating platform shares (`apply`) and the local platform's `LocalPage: Service` (`bind`/`publish`/`view`/`descriptor`/`tick`/`on_show`/`on_hide`), the `Services` holding every service and its one dispatch table (the private `ServiceId`: `Page(PageId)` or the device's own `Navigation`/`Light`/`Settings`), and the one `PageId → Descriptor` map; `Services::bind` is the input boundary: a transient page is asked directly; otherwise a button click or hold goes to navigation first (the click turns the page, the hold goes home), so no page can keep either; gestures are the page's alone; a board with no panel has no page to turn, so `Headless` keeps the click (the lamp); a page's input contract sits in its own `tests.rs` or at the end of its file, and the cross-page golden table lives in `services/tests.rs` |
-| `services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs` | single-file pages with one canvas: each page type's `view` declares the whole page; `text` also owns two independent scroll regions, and `menu`/`widgets`/`lighting` resolve hits through a `TagTable`; `headless` has no `view` and binds only the buttons and the lamp |
+| `services/{menu,input,attitude,camera,env,splash,text,widgets,lighting,headless}.rs` | single-file pages with one canvas: each page type's `view` declares the whole page; `text` also owns two independent scroll regions, and `menu`/`widgets`/`lighting` resolve hits through the framework's `Layout`; `headless` has no `view` and binds only the buttons and the lamp |
 | `services/settings.rs` | the device's own record: the panel language `DeviceState.lang` and palette `DeviceState.theme`, written only when a page reports a `SettingsIntent` |
 | `services/audio/{mod,tests}.rs`, `services/speaker/{mod,tests}.rs` | translation and drawing both in `mod.rs`; records more than one consumer reads, such as `AudioState`/`PlaybackState`, stay in `shared/model` |
 | `services/network/` | gestures and controls in `controller/`: `mod.rs` is the gesture translation, the strip and the hit tests; `shape.rs` is the one geometry the list, key grid, strip and confirmation box share (drawing and hit tests both read it); `view/` is split by band (`header` / `content` / `overlay`, with the words in `text.rs`) and `shape::Band` decides the order they stack in; `NetworkView` lives in `shared/model/network_view/` because the snapshot has to name it |
